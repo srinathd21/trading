@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Billing System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .loading {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .business-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .business-info div {
+            flex: 1;
+            padding: 0 15px;
+        }
+        
+        .business-info strong {
+            color: #2c3e50;
+            display: inline-block;
+            min-width: 120px;
+        }
+        
+        .add-product-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-title i {
+            color: #3498db;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+        
+        select, input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        .price-info {
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .price-info div {
+            text-align: center;
+        }
+        
+        .price-value {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+            flex: 1;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-primary:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .btn-success {
+            background-color: #2ecc71;
+            color: white;
+            flex: 1;
+        }
+        
+        .btn-success:hover {
+            background-color: #27ae60;
+        }
+        
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        
+        .btn-secondary {
+            background-color: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #7f8c8d;
+        }
+        
+        .cart-section {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-top: 30px;
+            overflow: hidden;
+        }
+        
+        .cart-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .cart-items {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .cart-item {
+            display: grid;
+            grid-template-columns: 3fr 1fr 1fr 1fr 1fr 0.5fr;
+            gap: 10px;
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            align-items: center;
+        }
+        
+        .cart-item-header {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #2c3e50;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .cart-item:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .item-name {
+            font-weight: 500;
+        }
+        
+        .item-code {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .qty-input {
+            width: 60px;
+            padding: 5px;
+            text-align: center;
+        }
+        
+        .remove-btn {
+            background: none;
+            border: none;
+            color: #e74c3c;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 5px;
+        }
+        
+        .remove-btn:hover {
+            color: #c0392b;
+        }
+        
+        .cart-footer {
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-top: 2px solid #ddd;
+        }
+        
+        .totals {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .total-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        
+        .total-label {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        
+        .total-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .grand-total {
+            background-color: #2c3e50;
+            color: white;
+        }
+        
+        .grand-total .total-value {
+            color: white;
+            font-size: 22px;
+        }
+        
+        .cart-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .invoice-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .invoice-details {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            margin-top: 15px;
+        }
+        
+        .invoice-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .empty-cart {
+            text-align: center;
+            padding: 40px 20px;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        
+        .stock-info {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        .stock-available {
+            color: #27ae60;
+        }
+        
+        .stock-low {
+            color: #e74c3c;
+        }
+        
+        .discount-section {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .discount-input {
+            flex: 1;
+        }
+        
+        .discount-type {
+            width: 80px;
+        }
+        
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .business-info {
+                flex-direction: column;
+            }
+            
+            .business-info div {
+                margin-bottom: 10px;
+            }
+            
+            .cart-item {
+                grid-template-columns: 1fr;
+                gap: 5px;
+                padding: 10px;
+            }
+            
+            .cart-item-header {
+                display: none;
+            }
+            
+            .cart-item > div {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .cart-item > div::before {
+                content: attr(data-label);
+                font-weight: bold;
+                color: #2c3e50;
+            }
+            
+            .totals {
+                grid-template-columns: 1fr;
+            }
+            
+            .cart-actions, .invoice-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-cash-register"></i> Advanced Billing System</h1>
+            <p>Select products from dropdown, add quantity & discount, then add to cart</p>
+        </header>
+        
+        <div id="status" class="status loading">
+            <i class="fas fa-spinner fa-spin"></i> Loading products...
+        </div>
+        
+        <div class="business-info">
+            <div>
+                <strong><i class="fas fa-building"></i> Business ID:</strong> <span id="business-id">5</span>
+            </div>
+            <div>
+                <strong><i class="fas fa-store"></i> Shop ID:</strong> <span id="shop-id">6</span>
+            </div>
+            <div>
+                <strong><i class="fas fa-boxes"></i> Products Loaded:</strong> <span id="product-count">0</span>
+            </div>
+        </div>
+        
+        <div class="add-product-section">
+            <div class="section-title">
+                <i class="fas fa-cart-plus"></i> Add Product to Invoice
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="product-select"><i class="fas fa-cube"></i> Select Product *</label>
+                    <select id="product-select" onchange="onProductSelect()">
+                        <option value="">-- Select a Product --</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="quantity"><i class="fas fa-hashtag"></i> Quantity *</label>
+                    <input type="number" id="quantity" min="1" value="1" oninput="calculateLineTotal()">
+                    <div id="stock-info" class="stock-info"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="discount"><i class="fas fa-percent"></i> Discount</label>
+                    <div class="discount-section">
+                        <input type="number" id="discount" min="0" value="0" oninput="calculateLineTotal()" class="discount-input">
+                        <select id="discount-type" onchange="calculateLineTotal()" class="discount-type">
+                            <option value="fixed">₹</option>
+                            <option value="percentage">%</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="price-info" class="price-info" style="display: none;">
+                <div>
+                    <div>Unit Price</div>
+                    <div class="price-value" id="unit-price">₹0.00</div>
+                </div>
+                <div>
+                    <div>Discount</div>
+                    <div class="price-value" id="discount-amount">₹0.00</div>
+                </div>
+                <div>
+                    <div>After Discount</div>
+                    <div class="price-value" id="price-after-discount">₹0.00</div>
+                </div>
+                <div>
+                    <div>Line Total</div>
+                    <div class="price-value" id="line-total">₹0.00</div>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button class="btn btn-primary" onclick="addToCart()" id="add-to-cart-btn" disabled>
+                    <i class="fas fa-plus-circle"></i> Add to Cart
+                </button>
+                <button class="btn btn-secondary" onclick="clearProductForm()">
+                    <i class="fas fa-redo"></i> Clear
+                </button>
+            </div>
+        </div>
+        
+        <div class="cart-section">
+            <div class="cart-header">
+                <h3><i class="fas fa-shopping-cart"></i> Current Invoice Items</h3>
+                <button class="btn btn-danger" onclick="clearCart()">
+                    <i class="fas fa-trash"></i> Clear Cart
+                </button>
+            </div>
+            
+            <div class="cart-items">
+                <div class="cart-item cart-item-header">
+                    <div>Product</div>
+                    <div>Price</div>
+                    <div>Qty</div>
+                    <div>Discount</div>
+                    <div>Total</div>
+                    <div>Action</div>
+                </div>
+                <div id="cart-items-container">
+                    <div class="empty-cart">No items in cart. Add products using the form above.</div>
+                </div>
+            </div>
+            
+            <div class="cart-footer">
+                <div class="totals">
+                    <div class="total-item">
+                        <div class="total-label">Subtotal</div>
+                        <div class="total-value" id="subtotal">₹0.00</div>
+                    </div>
+                    <div class="total-item">
+                        <div class="total-label">Total Discount</div>
+                        <div class="total-value" id="total-discount">₹0.00</div>
+                    </div>
+                    <div class="total-item grand-total">
+                        <div class="total-label">Grand Total</div>
+                        <div class="total-value" id="grand-total">₹0.00</div>
+                    </div>
+                </div>
+                
+                <div class="cart-actions">
+                    <button class="btn btn-success" onclick="saveInvoice()" id="save-invoice-btn" disabled>
+                        <i class="fas fa-save"></i> Save Invoice
+                    </button>
+                    <button class="btn btn-primary" onclick="printInvoice()" id="print-invoice-btn" disabled>
+                        <i class="fas fa-print"></i> Print Invoice
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="invoice-section" class="invoice-section">
+            <div class="section-title">
+                <i class="fas fa-file-invoice"></i> Invoice Details
+            </div>
+            <div id="invoice-details" class="invoice-details">
+                Invoice details will appear here
+            </div>
+            <div class="invoice-actions">
+                <button class="btn btn-primary" onclick="closeInvoice()">
+                    <i class="fas fa-times"></i> Close Invoice
+                </button>
+                <button class="btn btn-success" onclick="newInvoice()">
+                    <i class="fas fa-file-invoice-dollar"></i> New Invoice
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let allProducts = [];
+        let cart = [];
+        let currentInvoice = null;
+        
+        // Default business and shop IDs
+        const DEFAULT_BUSINESS_ID = 5;
+        const DEFAULT_SHOP_ID = 6;
+        
+        // DOM elements
+        const statusElement = document.getElementById('status');
+        const productSelect = document.getElementById('product-select');
+        const quantityInput = document.getElementById('quantity');
+        const discountInput = document.getElementById('discount');
+        const discountTypeSelect = document.getElementById('discount-type');
+        const priceInfoElement = document.getElementById('price-info');
+        const unitPriceElement = document.getElementById('unit-price');
+        const discountAmountElement = document.getElementById('discount-amount');
+        const priceAfterDiscountElement = document.getElementById('price-after-discount');
+        const lineTotalElement = document.getElementById('line-total');
+        const addToCartBtn = document.getElementById('add-to-cart-btn');
+        const stockInfoElement = document.getElementById('stock-info');
+        const cartItemsContainer = document.getElementById('cart-items-container');
+        const subtotalElement = document.getElementById('subtotal');
+        const totalDiscountElement = document.getElementById('total-discount');
+        const grandTotalElement = document.getElementById('grand-total');
+        const saveInvoiceBtn = document.getElementById('save-invoice-btn');
+        const printInvoiceBtn = document.getElementById('print-invoice-btn');
+        const productCountElement = document.getElementById('product-count');
+        const businessIdElement = document.getElementById('business-id');
+        const shopIdElement = document.getElementById('shop-id');
+        const invoiceSection = document.getElementById('invoice-section');
+        const invoiceDetails = document.getElementById('invoice-details');
+        
+        // Set default business and shop IDs
+        businessIdElement.textContent = DEFAULT_BUSINESS_ID;
+        shopIdElement.textContent = DEFAULT_SHOP_ID;
+        
+        // Fetch products from the database (simulated)
+        async function fetchProducts() {
+            try {
+                showStatus('Loading products from database...', 'loading');
+                
+                // Simulate API delay
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Parse the SQL data to extract products
+                const productsData = parseSQLData();
+                
+                // Filter for active products from default business
+                allProducts = productsData.filter(product => 
+                    product.business_id === DEFAULT_BUSINESS_ID && 
+                    product.is_active === 1
+                );
+                
+                // Update product count
+                productCountElement.textContent = allProducts.length;
+                
+                // Populate product dropdown
+                populateProductDropdown();
+                
+                // Load cart from session storage
+                loadCartFromSession();
+                
+                showStatus(`Successfully loaded ${allProducts.length} products`, 'success');
+                
+            } catch (error) {
+                console.error('Error fetching products:', error);
+                showStatus('Error loading products. Please try again.', 'error');
+            }
+        }
+        
+        // Parse the SQL data to create product objects
+        function parseSQLData() {
+            // Sample product data based on SQL structure
+            const products = [];
+            
+            // Business 5 products (from your data)
+            const business5Products = [
+                {
+                    id: 1,
+                    business_id: 5,
+                    product_name: "Product 11",
+                    product_code: "PR001",
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 70.00,
+                    retail_price: 105.00,
+                    wholesale_price: 105.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 181, business_id: 5 }]
+                },
+                {
+                    id: 2,
+                    business_id: 5,
+                    product_name: "Product 12",
+                    product_code: "PR002",
+                    hsn_code: "98765",
+                    category_id: 8,
+                    category_name: "Hardware",
+                    stock_price: 10000.00,
+                    retail_price: 10800.00,
+                    wholesale_price: 10500.00,
+                    unit_of_measure: "nos",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 38, business_id: 5 }]
+                },
+                {
+                    id: 3,
+                    business_id: 5,
+                    product_name: "Product 13",
+                    product_code: "PR003",
+                    hsn_code: "98765",
+                    category_id: 1,
+                    category_name: "Plumbing",
+                    stock_price: 245.00,
+                    retail_price: 252.20,
+                    wholesale_price: 252.20,
+                    unit_of_measure: "mtr",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 38, business_id: 5 }]
+                },
+                {
+                    id: 78,
+                    business_id: 5,
+                    product_name: "Red Wire",
+                    product_code: null,
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 370.00,
+                    retail_price: 425.50,
+                    wholesale_price: 407.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 17, business_id: 5 }]
+                },
+                {
+                    id: 466,
+                    business_id: 5,
+                    product_name: "Black Wire",
+                    product_code: null,
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 14000.00,
+                    retail_price: 16800.00,
+                    wholesale_price: 15400.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 67, business_id: 5 }]
+                },
+                {
+                    id: 521,
+                    business_id: 5,
+                    product_name: "Samsung S24 Ultra",
+                    product_code: null,
+                    hsn_code: "",
+                    category_id: 12,
+                    category_name: "Electronics",
+                    stock_price: 9000.00,
+                    retail_price: 9900.00,
+                    wholesale_price: 9720.00,
+                    unit_of_measure: "nos",
+                    min_stock_level: 2,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 50, business_id: 5 }]
+                },
+                {
+                    id: 522,
+                    business_id: 5,
+                    product_name: "Green Coil",
+                    product_code: "PROD033",
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 1400.00,
+                    retail_price: 1694.00,
+                    wholesale_price: 1617.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 5,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 40, business_id: 5 }]
+                },
+                {
+                    id: 523,
+                    business_id: 5,
+                    product_name: "Asian Paint",
+                    product_code: null,
+                    hsn_code: "",
+                    category_id: 3,
+                    category_name: "Paints",
+                    stock_price: 700.00,
+                    retail_price: 792.00,
+                    wholesale_price: 777.60,
+                    unit_of_measure: "ltr",
+                    min_stock_level: 0,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 15, business_id: 5 }]
+                },
+                {
+                    id: 524,
+                    business_id: 5,
+                    product_name: "Coil 1",
+                    product_code: null,
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 1260.00,
+                    retail_price: 1386.00,
+                    wholesale_price: 1323.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 5,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 15, business_id: 5 }]
+                },
+                {
+                    id: 525,
+                    business_id: 5,
+                    product_name: "Coil 2",
+                    product_code: null,
+                    hsn_code: "98765",
+                    category_id: 5,
+                    category_name: "Electrical",
+                    stock_price: 1120.00,
+                    retail_price: 1320.00,
+                    wholesale_price: 1260.00,
+                    unit_of_measure: "coil",
+                    min_stock_level: 5,
+                    is_active: 1,
+                    stocks: [{ shop_id: 6, quantity: 10, business_id: 5 }]
+                }
+            ];
+            
+            return business5Products;
+        }
+        
+        // Populate product dropdown
+        function populateProductDropdown() {
+            productSelect.innerHTML = '<option value="">-- Select a Product --</option>';
+            
+            // Group products by category for better organization
+            const categories = {};
+            allProducts.forEach(product => {
+                if (!categories[product.category_name]) {
+                    categories[product.category_name] = [];
+                }
+                categories[product.category_name].push(product);
+            });
+            
+            // Add optgroups for each category
+            Object.keys(categories).sort().forEach(category => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = category;
+                
+                categories[category].forEach(product => {
+                    const stock = product.stocks?.find(s => s.shop_id === DEFAULT_SHOP_ID);
+                    const quantity = stock ? stock.quantity : 0;
+                    
+                    const option = document.createElement('option');
+                    option.value = product.id;
+                    option.textContent = `${product.product_name} (₹${product.retail_price.toFixed(2)}/${product.unit_of_measure}) - Stock: ${quantity}`;
+                    option.dataset.product = JSON.stringify(product);
+                    
+                    // Disable if out of stock
+                    if (quantity === 0) {
+                        option.disabled = true;
+                        option.textContent += ' - OUT OF STOCK';
+                    }
+                    
+                    optgroup.appendChild(option);
+                });
+                
+                productSelect.appendChild(optgroup);
+            });
+        }
+        
+        // When product is selected from dropdown
+        function onProductSelect() {
+            const selectedProductId = productSelect.value;
+            
+            if (!selectedProductId) {
+                priceInfoElement.style.display = 'none';
+                addToCartBtn.disabled = true;
+                stockInfoElement.innerHTML = '';
+                return;
+            }
+            
+            const selectedOption = productSelect.options[productSelect.selectedIndex];
+            const product = JSON.parse(selectedOption.dataset.product);
+            
+            // Get stock info
+            const stock = product.stocks?.find(s => s.shop_id === DEFAULT_SHOP_ID);
+            const quantity = stock ? stock.quantity : 0;
+            
+            // Update stock info
+            if (quantity === 0) {
+                stockInfoElement.innerHTML = '<span class="stock-low"><i class="fas fa-exclamation-circle"></i> Out of stock</span>';
+                quantityInput.disabled = true;
+                discountInput.disabled = true;
+                addToCartBtn.disabled = true;
+            } else {
+                const stockClass = quantity <= product.min_stock_level ? 'stock-low' : 'stock-available';
+                stockInfoElement.innerHTML = `<span class="${stockClass}"><i class="fas fa-box"></i> Available: ${quantity} ${product.unit_of_measure}</span>`;
+                quantityInput.disabled = false;
+                discountInput.disabled = false;
+                addToCartBtn.disabled = false;
+                
+                // Set max quantity
+                quantityInput.max = quantity;
+                if (parseInt(quantityInput.value) > quantity) {
+                    quantityInput.value = quantity;
+                }
+            }
+            
+            // Show price info
+            priceInfoElement.style.display = 'grid';
+            
+            // Calculate line total
+            calculateLineTotal();
+        }
+        
+        // Calculate line total for selected product
+        function calculateLineTotal() {
+            const selectedProductId = productSelect.value;
+            
+            if (!selectedProductId) return;
+            
+            const selectedOption = productSelect.options[productSelect.selectedIndex];
+            const product = JSON.parse(selectedOption.dataset.product);
+            
+            const quantity = parseInt(quantityInput.value) || 1;
+            const discount = parseFloat(discountInput.value) || 0;
+            const discountType = discountTypeSelect.value;
+            const unitPrice = product.retail_price;
+            
+            // Calculate discount amount
+            let discountAmount = 0;
+            if (discountType === 'percentage') {
+                discountAmount = (unitPrice * discount / 100);
+            } else {
+                discountAmount = discount;
+            }
+            
+            // Ensure discount doesn't exceed price
+            if (discountAmount > unitPrice) {
+                discountAmount = unitPrice;
+            }
+            
+            const priceAfterDiscount = unitPrice - discountAmount;
+            const lineTotal = priceAfterDiscount * quantity;
+            
+            // Update display
+            unitPriceElement.textContent = `₹${unitPrice.toFixed(2)}`;
+            discountAmountElement.textContent = `₹${discountAmount.toFixed(2)}`;
+            priceAfterDiscountElement.textContent = `₹${priceAfterDiscount.toFixed(2)}`;
+            lineTotalElement.textContent = `₹${lineTotal.toFixed(2)}`;
+        }
+        
+        // Add product to cart
+        function addToCart() {
+            const selectedProductId = productSelect.value;
+            
+            if (!selectedProductId) {
+                alert('Please select a product first!');
+                return;
+            }
+            
+            const selectedOption = productSelect.options[productSelect.selectedIndex];
+            const product = JSON.parse(selectedOption.dataset.product);
+            
+            const quantity = parseInt(quantityInput.value) || 1;
+            const discount = parseFloat(discountInput.value) || 0;
+            const discountType = discountTypeSelect.value;
+            
+            // Get stock info
+            const stock = product.stocks?.find(s => s.shop_id === DEFAULT_SHOP_ID);
+            const stockQuantity = stock ? stock.quantity : 0;
+            
+            // Check if enough stock
+            if (quantity > stockQuantity) {
+                alert(`Only ${stockQuantity} items available in stock!`);
+                return;
+            }
+            
+            // Calculate prices
+            const unitPrice = product.retail_price;
+            let discountAmount = 0;
+            if (discountType === 'percentage') {
+                discountAmount = (unitPrice * discount / 100);
+            } else {
+                discountAmount = discount;
+            }
+            
+            if (discountAmount > unitPrice) {
+                discountAmount = unitPrice;
+            }
+            
+            const priceAfterDiscount = unitPrice - discountAmount;
+            const lineTotal = priceAfterDiscount * quantity;
+            
+            // Check if product already in cart
+            const existingItemIndex = cart.findIndex(item => item.id === product.id);
+            
+            if (existingItemIndex >= 0) {
+                // Update existing item
+                cart[existingItemIndex].quantity += quantity;
+                cart[existingItemIndex].discount += discountAmount * quantity;
+                cart[existingItemIndex].total += lineTotal;
+            } else {
+                // Add new item to cart
+                cart.push({
+                    id: product.id,
+                    name: product.product_name,
+                    code: product.product_code,
+                    unit: product.unit_of_measure,
+                    price: unitPrice,
+                    quantity: quantity,
+                    discount: discountAmount * quantity,
+                    discountPerUnit: discountAmount,
+                    discountType: discountType,
+                    discountValue: discount,
+                    total: lineTotal,
+                    stock: stockQuantity
+                });
+            }
+            
+            // Save cart to session
+            saveCartToSession();
+            
+            // Update cart display
+            updateCartDisplay();
+            
+            // Clear form
+            clearProductForm();
+            
+            // Show success message
+            showStatus(`Added ${quantity} ${product.unit_of_measure} of ${product.product_name} to cart`, 'success');
+        }
+        
+        // Clear product form
+        function clearProductForm() {
+            productSelect.value = '';
+            quantityInput.value = '1';
+            discountInput.value = '0';
+            discountTypeSelect.value = 'fixed';
+            priceInfoElement.style.display = 'none';
+            addToCartBtn.disabled = true;
+            stockInfoElement.innerHTML = '';
+            quantityInput.disabled = false;
+            discountInput.disabled = false;
+        }
+        
+        // Update cart display
+        function updateCartDisplay() {
+            if (cart.length === 0) {
+                cartItemsContainer.innerHTML = '<div class="empty-cart">No items in cart. Add products using the form above.</div>';
+                subtotalElement.textContent = '₹0.00';
+                totalDiscountElement.textContent = '₹0.00';
+                grandTotalElement.textContent = '₹0.00';
+                saveInvoiceBtn.disabled = true;
+                printInvoiceBtn.disabled = true;
+                return;
+            }
+            
+            let html = '';
+            let subtotal = 0;
+            let totalDiscount = 0;
+            
+            cart.forEach((item, index) => {
+                subtotal += item.price * item.quantity;
+                totalDiscount += item.discount;
+                
+                html += `
+                    <div class="cart-item" data-index="${index}">
+                        <div data-label="Product">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-code">${item.code || 'No code'} | ${item.unit}</div>
+                        </div>
+                        <div data-label="Price">₹${item.price.toFixed(2)}</div>
+                        <div data-label="Qty">
+                            <input type="number" class="qty-input" value="${item.quantity}" min="1" max="${item.stock}" 
+                                   onchange="updateCartItemQuantity(${index}, this.value)">
+                        </div>
+                        <div data-label="Discount">₹${item.discount.toFixed(2)}</div>
+                        <div data-label="Total">₹${item.total.toFixed(2)}</div>
+                        <div data-label="Action">
+                            <button class="remove-btn" onclick="removeFromCart(${index})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            const grandTotal = subtotal - totalDiscount;
+            
+            cartItemsContainer.innerHTML = html;
+            subtotalElement.textContent = `₹${subtotal.toFixed(2)}`;
+            totalDiscountElement.textContent = `₹${totalDiscount.toFixed(2)}`;
+            grandTotalElement.textContent = `₹${grandTotal.toFixed(2)}`;
+            saveInvoiceBtn.disabled = false;
+            printInvoiceBtn.disabled = false;
+        }
+        
+        // Update cart item quantity
+        function updateCartItemQuantity(index, newQuantity) {
+            newQuantity = parseInt(newQuantity);
+            
+            if (isNaN(newQuantity) || newQuantity < 1) {
+                newQuantity = 1;
+            }
+            
+            const item = cart[index];
+            
+            // Check stock
+            if (newQuantity > item.stock) {
+                alert(`Only ${item.stock} items available in stock!`);
+                document.querySelector(`.cart-item[data-index="${index}"] .qty-input`).value = item.quantity;
+                return;
+            }
+            
+            // Update item
+            item.quantity = newQuantity;
+            item.discount = item.discountPerUnit * newQuantity;
+            item.total = (item.price - item.discountPerUnit) * newQuantity;
+            
+            // Save and update
+            saveCartToSession();
+            updateCartDisplay();
+        }
+        
+        // Remove item from cart
+        function removeFromCart(index) {
+            if (confirm('Are you sure you want to remove this item from the cart?')) {
+                cart.splice(index, 1);
+                saveCartToSession();
+                updateCartDisplay();
+                showStatus('Item removed from cart', 'success');
+            }
+        }
+        
+        // Clear entire cart
+        function clearCart() {
+            if (cart.length === 0) return;
+            
+            if (confirm('Are you sure you want to clear the entire cart?')) {
+                cart = [];
+                saveCartToSession();
+                updateCartDisplay();
+                showStatus('Cart cleared', 'success');
+            }
+        }
+        
+        // Save cart to session storage
+        function saveCartToSession() {
+            sessionStorage.setItem('billing_cart', JSON.stringify(cart));
+            sessionStorage.setItem('billing_business_id', DEFAULT_BUSINESS_ID);
+            sessionStorage.setItem('billing_shop_id', DEFAULT_SHOP_ID);
+        }
+        
+        // Load cart from session storage
+        function loadCartFromSession() {
+            const savedCart = sessionStorage.getItem('billing_cart');
+            const savedBusinessId = sessionStorage.getItem('billing_business_id');
+            const savedShopId = sessionStorage.getItem('billing_shop_id');
+            
+            if (savedCart && savedBusinessId == DEFAULT_BUSINESS_ID && savedShopId == DEFAULT_SHOP_ID) {
+                try {
+                    cart = JSON.parse(savedCart);
+                    updateCartDisplay();
+                } catch (e) {
+                    console.error('Error loading cart from session:', e);
+                }
+            }
+        }
+        
+        // Save invoice (store in session and show details)
+        function saveInvoice() {
+            if (cart.length === 0) {
+                alert('Cart is empty!');
+                return;
+            }
+            
+            // Create invoice object
+            currentInvoice = {
+                id: 'INV-' + Date.now(),
+                date: new Date().toLocaleString(),
+                business_id: DEFAULT_BUSINESS_ID,
+                shop_id: DEFAULT_SHOP_ID,
+                items: [...cart],
+                subtotal: parseFloat(subtotalElement.textContent.replace('₹', '')),
+                total_discount: parseFloat(totalDiscountElement.textContent.replace('₹', '')),
+                grand_total: parseFloat(grandTotalElement.textContent.replace('₹', '')),
+                status: 'saved'
+            };
+            
+            // Save to session storage
+            const invoices = JSON.parse(sessionStorage.getItem('billing_invoices') || '[]');
+            invoices.push(currentInvoice);
+            sessionStorage.setItem('billing_invoices', JSON.stringify(invoices));
+            
+            // Show invoice details
+            showInvoiceDetails();
+            
+            // Clear cart
+            cart = [];
+            saveCartToSession();
+            updateCartDisplay();
+            
+            showStatus(`Invoice ${currentInvoice.id} saved successfully!`, 'success');
+        }
+        
+        // Show invoice details
+        function showInvoiceDetails() {
+            invoiceSection.style.display = 'block';
+            
+            let html = `
+                <div style="margin-bottom: 20px;">
+                    <h3>Invoice: ${currentInvoice.id}</h3>
+                    <p><strong>Date:</strong> ${currentInvoice.date}</p>
+                    <p><strong>Business ID:</strong> ${currentInvoice.business_id}</p>
+                    <p><strong>Shop ID:</strong> ${currentInvoice.shop_id}</p>
+                </div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Product</th>
+                            <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Price</th>
+                            <th style="padding: 10px; text-align: center; border: 1px solid #ddd;">Qty</th>
+                            <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Discount</th>
+                            <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            currentInvoice.items.forEach(item => {
+                html += `
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;">${item.name}<br><small>${item.code || ''} | ${item.unit}</small></td>
+                        <td style="padding: 10px; text-align: right; border: 1px solid #ddd;">₹${item.price.toFixed(2)}</td>
+                        <td style="padding: 10px; text-align: center; border: 1px solid #ddd;">${item.quantity}</td>
+                        <td style="padding: 10px; text-align: right; border: 1px solid #ddd;">₹${item.discount.toFixed(2)}</td>
+                        <td style="padding: 10px; text-align: right; border: 1px solid #ddd;">₹${item.total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">Subtotal:</td>
+                            <td style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">₹${currentInvoice.subtotal.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="4" style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">Total Discount:</td>
+                            <td style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">₹${currentInvoice.total_discount.toFixed(2)}</td>
+                        </tr>
+                        <tr style="background-color: #2c3e50; color: white;">
+                            <td colspan="4" style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">Grand Total:</td>
+                            <td style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">₹${currentInvoice.grand_total.toFixed(2)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                
+                <div style="margin-top: 20px; padding: 15px; background-color: #e8f4fc; border-radius: 5px;">
+                    <p><strong>Invoice Status:</strong> ${currentInvoice.status.toUpperCase()}</p>
+                    <p><strong>Total Items:</strong> ${currentInvoice.items.reduce((sum, item) => sum + item.quantity, 0)}</p>
+                </div>
+            `;
+            
+            invoiceDetails.innerHTML = html;
+            
+            // Scroll to invoice section
+            invoiceSection.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Print invoice
+        function printInvoice() {
+            if (cart.length === 0 && !currentInvoice) {
+                alert('No invoice to print!');
+                return;
+            }
+            
+            const invoiceToPrint = currentInvoice || {
+                id: 'DRAFT-' + Date.now(),
+                date: new Date().toLocaleString(),
+                items: cart,
+                subtotal: parseFloat(subtotalElement.textContent.replace('₹', '')),
+                total_discount: parseFloat(totalDiscountElement.textContent.replace('₹', '')),
+                grand_total: parseFloat(grandTotalElement.textContent.replace('₹', ''))
+            };
+            
+            let printContent = `
+                <html>
+                <head>
+                    <title>Invoice ${invoiceToPrint.id}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+                        .header { margin-bottom: 30px; }
+                        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                        th { background-color: #f8f9fa; font-weight: bold; }
+                        tfoot tr { background-color: #f8f9fa; font-weight: bold; }
+                        .grand-total { background-color: #2c3e50 !important; color: white; }
+                        .footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>INVOICE: ${invoiceToPrint.id}</h1>
+                        <p><strong>Date:</strong> ${invoiceToPrint.date}</p>
+                        <p><strong>Business ID:</strong> ${invoiceToPrint.business_id || DEFAULT_BUSINESS_ID}</p>
+                        <p><strong>Shop ID:</strong> ${invoiceToPrint.shop_id || DEFAULT_SHOP_ID}</p>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th style="text-align: right;">Price</th>
+                                <th style="text-align: center;">Qty</th>
+                                <th style="text-align: right;">Discount</th>
+                                <th style="text-align: right;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            invoiceToPrint.items.forEach(item => {
+                printContent += `
+                    <tr>
+                        <td>${item.name}<br><small>${item.code || ''} | ${item.unit}</small></td>
+                        <td style="text-align: right;">₹${item.price.toFixed(2)}</td>
+                        <td style="text-align: center;">${item.quantity}</td>
+                        <td style="text-align: right;">₹${item.discount.toFixed(2)}</td>
+                        <td style="text-align: right;">₹${item.total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            printContent += `
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" style="text-align: right;">Subtotal:</td>
+                                <td style="text-align: right;">₹${invoiceToPrint.subtotal.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" style="text-align: right;">Total Discount:</td>
+                                <td style="text-align: right;">₹${invoiceToPrint.total_discount.toFixed(2)}</td>
+                            </tr>
+                            <tr class="grand-total">
+                                <td colspan="4" style="text-align: right;">Grand Total:</td>
+                                <td style="text-align: right;">₹${invoiceToPrint.grand_total.toFixed(2)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    
+                    <div class="footer">
+                        <p>Generated by Advanced Billing System</p>
+                        <p>Thank you for your business!</p>
+                    </div>
+                    
+                    <div class="no-print" style="margin-top: 30px; text-align: center;">
+                        <button onclick="window.print()" style="padding: 10px 20px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">Print Invoice</button>
+                        <button onclick="window.close()" style="padding: 10px 20px; background-color: #95a5a6; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Close</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+        }
+        
+        // Close invoice section
+        function closeInvoice() {
+            invoiceSection.style.display = 'none';
+            currentInvoice = null;
+        }
+        
+        // Start new invoice
+        function newInvoice() {
+            closeInvoice();
+            clearCart();
+            showStatus('Ready to create new invoice', 'success');
+        }
+        
+        // Show status message
+        function showStatus(message, type = 'info') {
+            statusElement.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'spinner fa-spin'}"></i> ${message}`;
+            statusElement.className = `status ${type}`;
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusElement.style.display = 'none';
+                }, 3000);
+            } else {
+                statusElement.style.display = 'block';
+            }
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', fetchProducts);
+    </script>
+</body>
+</html>

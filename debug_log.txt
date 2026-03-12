@@ -1,0 +1,116 @@
+=== POST Data - 2025-12-25 16:07:57 ===
+Array
+(
+    [invoice_id] => 49
+    [customer_id] => 5
+    [item_id] => Array
+        (
+            [0] => 39
+            [1] => 40
+            [2] => 41
+        )
+
+    [return_qty] => Array
+        (
+            [39] => 1
+            [40] => 0
+            [41] => 0
+        )
+
+    [return_reason] => not_needed
+    [return_notes] => 
+)
+
+===========================
+
+=== Request Method - 2025-12-25 16:07:57 ===
+POST
+===========================
+
+=== POST Data - 2025-12-25 16:20:40 ===
+Array
+(
+    [invoice_id] => 49
+    [customer_id] => 5
+    [item_id] => Array
+        (
+            [0] => 39
+            [1] => 40
+            [2] => 41
+        )
+
+    [return_qty] => Array
+        (
+            [39] => 1
+            [40] => 0
+            [41] => 0
+        )
+
+    [return_reason] => wrong_item
+    [return_notes] => 
+)
+
+===========================
+
+=== Request Method - 2025-12-25 16:20:40 ===
+POST
+===========================
+
+=== POST Data - 2025-12-25 16:21:07 ===
+Array
+(
+    [invoice_id] => 49
+    [customer_id] => 5
+    [item_id] => Array
+        (
+            [0] => 39
+            [1] => 40
+            [2] => 41
+        )
+
+    [return_qty] => Array
+        (
+            [39] => 1
+            [40] => 0
+            [41] => 0
+        )
+
+    [return_reason] => defective
+    [return_notes] => 
+)
+
+===========================
+
+=== Request Method - 2025-12-25 16:21:07 ===
+POST
+===========================
+
+=== POST Data - 2025-12-25 16:22:22 ===
+Array
+(
+    [invoice_id] => 49
+    [customer_id] => 5
+    [item_id] => Array
+        (
+            [0] => 39
+            [1] => 40
+            [2] => 41
+        )
+
+    [return_qty] => Array
+        (
+            [39] => 1
+            [40] => 0
+            [41] => 0
+        )
+
+    [return_reason] => defective
+    [return_notes] => 
+)
+
+===========================
+
+=== Request Method - 2025-12-25 16:22:22 ===
+POST
+===========================
+

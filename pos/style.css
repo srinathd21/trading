@@ -1,0 +1,321 @@
+:root {
+    --primary-color: #4361ee;
+    --primary-dark: #3651d4;
+    --secondary-color: #7209b7;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #17a2b8;
+    --light-bg: #f8f9fa;
+    --dark-text: #212529;
+    --border-color: #dee2e6;
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 13px;
+}
+
+body {
+    background-color: #f5f7fa;
+    padding-bottom: 70px;
+}
+
+.main-container {
+    padding: 10px;
+}
+
+/* Card Styles */
+.card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+/* Table Styles */
+.table-container {
+    height: 28vh;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #343a40;
+    color: white;
+    z-index: 10;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Summary Styles */
+.bill-summary {
+    background-color: var(--light-bg);
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border-color);
+}
+
+.summary-row:last-child {
+    border-bottom: none;
+}
+
+.summary-label {
+    color: var(--dark-text);
+    font-weight: 500;
+}
+
+.summary-value {
+    font-weight: 600;
+}
+
+.grand-total {
+    font-size: 1.1rem;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 2px solid var(--primary-color) !important;
+}
+
+/* Payment Distribution */
+.payment-distribution .distribution-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.payment-distribution .distribution-row:last-child {
+    border-bottom: none;
+}
+
+/* Fixed Bottom Bar */
+.fixed-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    padding: 10px;
+    border-top: 2px solid var(--primary-color);
+    box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.fixed-bottom-bar .btn {
+    font-weight: 600;
+    padding: 12px;
+}
+
+/* Payment Input Grid */
+.payment-inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.payment-input-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px;
+    display: none;
+}
+
+.payment-input-card.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Quantity Input Group */
+.quantity-input-group {
+    display: flex;
+}
+
+.quantity-input-group .btn {
+    width: 25px;
+    padding: 2px;
+    font-size: 12px;
+}
+
+.quantity-input-group input {
+    width: 50px;
+    text-align: center;
+    border-left: none;
+    border-right: none;
+}
+
+/* Toast Styles */
+.custom-toast {
+    min-width: 300px;
+    font-size: 14px;
+}
+
+/* Loyalty Points Card */
+.loyalty-point-card {
+    border: 1px solid #4cc9f0 !important;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e3f2fd 100%) !important;
+}
+
+/* Product Price Badges */
+.price-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 5px;
+}
+
+.price-badge.retail {
+    background-color: var(--info-color);
+    color: white;
+}
+
+.price-badge.wholesale {
+    background-color: var(--success-color);
+    color: white;
+}
+
+/* Stock Badges */
+.stock-badge {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 3px;
+}
+
+.stock-badge.in-stock {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.stock-badge.low-stock {
+    background-color: var(--warning-color);
+    color: black;
+}
+
+.stock-badge.out-of-stock {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .payment-inputs-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .fixed-bottom-bar .btn {
+        font-size: 12px;
+        padding: 8px;
+    }
+    
+    .table-container {
+        height: 25vh;
+    }
+}
+
+/* Modal Scroll */
+.modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Select2 Customization */
+.select2-container--default .select2-selection--single {
+    height: 38px !important;
+    border-color: var(--border-color) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 36px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 36px !important;
+}
+
+/* Form Focus Effects */
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(67, 97, 238, 0.25);
+}
+
+/* Button Hover Effects */
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+/* Profit Analysis Table */
+#profitAnalysisBody tr td:last-child {
+    text-align: center;
+}
+
+/* Unit Conversion Badge */
+.unit-conversion-badge {
+    background-color: #6c757d;
+    color: white;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+/* Discount Badge */
+.discount-badge {
+    background-color: #fd7e14;
+    color: white;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+/* GST Badge */
+.gst-badge {
+    background-color: #6f42c1;
+    color: white;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+/* Print Styles */
+@media print {
+    .fixed-bottom-bar,
+    .product-section,
+    .btn-group {
+        display: none !important;
+    }
+    
+    body {
+        padding: 0;
+    }
+    
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+}

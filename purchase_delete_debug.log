@@ -1,0 +1,1024 @@
+[2026-02-17 22:14:04] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:14:04] Purchase ID: 45
+[2026-02-17 22:14:04] Purchase Number: PO202602-0020
+[2026-02-17 22:14:04] Shop ID: NULL
+[2026-02-17 22:14:04] === Processing Batch #1 ===
+[2026-02-17 22:14:04] Batch Details - Data: Array
+(
+    [batch_id] => 36
+    [product_id] => 576
+    [quantity_received] => 1
+    [quantity_remaining] => 1
+    [batch_number] => BATCH-20260217-864
+    [purchase_price] => 150.00
+    [old_purchase_price] => 150.00
+    [old_retail_price] => 180.00
+    [old_wholesale_price] => 165.00
+    [old_mrp] => 300.00
+)
+
+[2026-02-17 22:14:04] Looking for stock records with batch_id = 36 in shop_id = 
+[2026-02-17 22:14:04] Found 0 stock record(s) with matching batch_id
+[2026-02-17 22:14:04] No stock with exact batch_id found. Other stock records for this product in this shop: - Data: Array
+(
+)
+
+[2026-02-17 22:14:04] Other stock records for this product (different batch): 0
+[2026-02-17 22:14:04] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:14:04] 
+[2026-02-17 22:17:28] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:17:28] Purchase ID: 30
+[2026-02-17 22:17:28] Purchase Number: PO202602-0019
+[2026-02-17 22:17:28] Shop ID: NULL
+[2026-02-17 22:17:28] === Processing Batch #1 ===
+[2026-02-17 22:17:28] Batch Details - Data: Array
+(
+    [batch_id] => 22
+    [product_id] => 574
+    [quantity_received] => 3
+    [quantity_remaining] => 3
+    [batch_number] => BATCH-20260216-490
+    [purchase_price] => 175.00
+    [old_purchase_price] => 
+    [old_retail_price] => 
+    [old_wholesale_price] => 
+    [old_mrp] => 200.00
+)
+
+[2026-02-17 22:17:28] Looking for stock records with batch_id = 22 in shop_id = 
+[2026-02-17 22:17:28] Found 0 stock record(s) with matching batch_id
+[2026-02-17 22:17:28] No stock with exact batch_id found. Other stock records for this product in this shop: - Data: Array
+(
+)
+
+[2026-02-17 22:17:28] Other stock records for this product (different batch): 0
+[2026-02-17 22:17:28] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:17:28] 
+[2026-02-17 22:18:07] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:18:07] Purchase ID: 29
+[2026-02-17 22:18:07] Purchase Number: PO202602-0018
+[2026-02-17 22:18:07] Shop ID: NULL
+[2026-02-17 22:18:07] === Processing Batch #1 ===
+[2026-02-17 22:18:07] Batch Details - Data: Array
+(
+    [batch_id] => 21
+    [product_id] => 573
+    [quantity_received] => 5
+    [quantity_remaining] => 5
+    [batch_number] => BATCH-20260216-655
+    [purchase_price] => 325.00
+    [old_purchase_price] => 
+    [old_retail_price] => 
+    [old_wholesale_price] => 
+    [old_mrp] => 500.00
+)
+
+[2026-02-17 22:18:07] Looking for stock records with batch_id = 21 in shop_id = 
+[2026-02-17 22:18:07] Found 0 stock record(s) with matching batch_id
+[2026-02-17 22:18:07] No stock with exact batch_id found. Other stock records for this product in this shop: - Data: Array
+(
+)
+
+[2026-02-17 22:18:07] Other stock records for this product (different batch): 0
+[2026-02-17 22:18:07] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:18:07] 
+[2026-02-17 22:19:10] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:19:10] Purchase ID: 28
+[2026-02-17 22:19:10] Purchase Number: PO202602-0017
+[2026-02-17 22:19:10] Shop ID: 6
+[2026-02-17 22:19:10] === Processing Batch #1 ===
+[2026-02-17 22:19:10] Batch Details - Data: Array
+(
+    [batch_id] => 19
+    [product_id] => 2
+    [quantity_received] => 40
+    [quantity_remaining] => 40
+    [batch_number] => BATCH-20260209-989
+    [purchase_price] => 920.00
+    [old_purchase_price] => 
+    [old_retail_price] => 
+    [old_wholesale_price] => 
+    [old_mrp] => 1000.00
+)
+
+[2026-02-17 22:19:10] Looking for stock records with batch_id = 19 in shop_id = 6
+[2026-02-17 22:19:10] Found 1 stock record(s) with matching batch_id
+[2026-02-17 22:19:10] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 2
+            [product_id] => 2
+            [shop_id] => 6
+            [quantity] => 128.0000
+            [old_qty] => 88.0000
+            [total_secondary_units] => 
+            [batch_id] => 19
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-17 22:19:10] --- Processing Stock Record #1 ---
+[2026-02-17 22:19:10] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 2
+    [current_quantity] => 128.0000
+    [old_qty] => 88.0000
+    [batch_id] => 19
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-17 22:19:10] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-17 22:19:10] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 2
+    [quantity_set_to] => 88.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-17 22:19:10] Stock movement logged - Data: Array
+(
+    [movement_id] => 12
+    [quantity] => 40
+    [success] => YES
+)
+
+[2026-02-17 22:19:10] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 2
+    [quantity] => 88.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-17 22:19:10
+)
+
+[2026-02-17 22:19:10] Other stock records for this product (different batch): 0
+[2026-02-17 22:19:10] === Processing Batch #2 ===
+[2026-02-17 22:19:10] Batch Details - Data: Array
+(
+    [batch_id] => 20
+    [product_id] => 1
+    [quantity_received] => 50
+    [quantity_remaining] => 50
+    [batch_number] => BATCH-20260209-780
+    [purchase_price] => 70.00
+    [old_purchase_price] => 
+    [old_retail_price] => 
+    [old_wholesale_price] => 
+    [old_mrp] => 100.00
+)
+
+[2026-02-17 22:19:10] Looking for stock records with batch_id = 20 in shop_id = 6
+[2026-02-17 22:19:10] Found 1 stock record(s) with matching batch_id
+[2026-02-17 22:19:10] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 1
+            [product_id] => 1
+            [shop_id] => 6
+            [quantity] => 281.0000
+            [old_qty] => 231.0000
+            [total_secondary_units] => 231.0000
+            [batch_id] => 20
+            [use_batch_tracking] => 0
+        )
+
+)
+
+[2026-02-17 22:19:10] --- Processing Stock Record #1 ---
+[2026-02-17 22:19:10] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 1
+    [current_quantity] => 281.0000
+    [old_qty] => 231.0000
+    [batch_id] => 20
+    [use_batch_tracking] => 0
+    [total_secondary_units] => 231.0000
+)
+
+[2026-02-17 22:19:10] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-17 22:19:10] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 1
+    [quantity_set_to] => 231.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-17 22:19:10] Stock movement logged - Data: Array
+(
+    [movement_id] => 13
+    [quantity] => 50
+    [success] => YES
+)
+
+[2026-02-17 22:19:10] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 1
+    [quantity] => 231.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-17 22:19:10
+)
+
+[2026-02-17 22:19:10] Other stock records for this product (different batch): 0
+[2026-02-17 22:19:10] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:19:10] 
+[2026-02-17 22:19:54] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:19:54] Purchase ID: 46
+[2026-02-17 22:19:54] Purchase Number: PO202602-0017
+[2026-02-17 22:19:54] Shop ID: 6
+[2026-02-17 22:19:54] === Processing Batch #1 ===
+[2026-02-17 22:19:54] Batch Details - Data: Array
+(
+    [batch_id] => 37
+    [product_id] => 576
+    [quantity_received] => 1
+    [quantity_remaining] => 1
+    [batch_number] => BATCH-20260217-264
+    [purchase_price] => 150.00
+    [old_purchase_price] => 150.00
+    [old_retail_price] => 180.00
+    [old_wholesale_price] => 165.00
+    [old_mrp] => 300.00
+)
+
+[2026-02-17 22:19:54] Looking for stock records with batch_id = 37 in shop_id = 6
+[2026-02-17 22:19:54] Found 1 stock record(s) with matching batch_id
+[2026-02-17 22:19:54] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 9.0000
+            [old_qty] => 8.0000
+            [total_secondary_units] => 
+            [batch_id] => 37
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-17 22:19:54] --- Processing Stock Record #1 ---
+[2026-02-17 22:19:54] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 9.0000
+    [old_qty] => 8.0000
+    [batch_id] => 37
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-17 22:19:54] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-17 22:19:54] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 8.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-17 22:19:54] Stock movement logged - Data: Array
+(
+    [movement_id] => 14
+    [quantity] => 1
+    [success] => YES
+)
+
+[2026-02-17 22:19:54] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 8.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-17 22:19:54
+)
+
+[2026-02-17 22:19:54] Other stock records for this product (different batch): 0
+[2026-02-17 22:19:54] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:19:54] 
+[2026-02-17 22:26:27] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-17 22:26:27] Purchase ID: 48
+[2026-02-17 22:26:27] Purchase Number: PO202602-0017
+[2026-02-17 22:26:27] Shop ID: 6
+[2026-02-17 22:26:27] === Processing Batch #1 ===
+[2026-02-17 22:26:27] Batch Details - Data: Array
+(
+    [batch_id] => 38
+    [product_id] => 576
+    [quantity_received] => 3
+    [quantity_remaining] => 3
+    [batch_number] => BATCH-20260217-24
+    [purchase_price] => 180.00
+    [old_purchase_price] => 150.00
+    [old_retail_price] => 180.00
+    [old_wholesale_price] => 165.00
+    [old_mrp] => 300.00
+)
+
+[2026-02-17 22:26:27] Looking for stock records with batch_id = 38 in shop_id = 6
+[2026-02-17 22:26:27] Found 1 stock record(s) with matching batch_id
+[2026-02-17 22:26:27] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 11.0000
+            [old_qty] => 8.0000
+            [total_secondary_units] => 
+            [batch_id] => 38
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-17 22:26:27] --- Processing Stock Record #1 ---
+[2026-02-17 22:26:27] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 11.0000
+    [old_qty] => 8.0000
+    [batch_id] => 38
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-17 22:26:27] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-17 22:26:27] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 8.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-17 22:26:27] Stock movement logged - Data: Array
+(
+    [movement_id] => 15
+    [quantity] => 3
+    [success] => YES
+)
+
+[2026-02-17 22:26:27] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 8.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-17 22:26:27
+)
+
+[2026-02-17 22:26:27] Other stock records for this product (different batch): 0
+[2026-02-17 22:26:27] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-17 22:26:27] 
+[2026-02-18 00:43:17] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-18 00:43:17] Purchase ID: 50
+[2026-02-18 00:43:17] Purchase Number: PO202602-0018
+[2026-02-18 00:43:17] Shop ID: 6
+[2026-02-18 00:43:17] === Processing Batch #1 ===
+[2026-02-18 00:43:17] Batch Details - Data: Array
+(
+    [batch_id] => 46
+    [product_id] => 576
+    [quantity_received] => 2
+    [quantity_remaining] => 2
+    [batch_number] => BATCH-20260217-814
+    [purchase_price] => 150.15
+    [old_purchase_price] => 150.00
+    [old_retail_price] => 180.00
+    [old_wholesale_price] => 165.00
+    [old_mrp] => 300.00
+)
+
+[2026-02-18 00:43:17] Looking for stock records with batch_id = 46 in shop_id = 6
+[2026-02-18 00:43:17] Found 1 stock record(s) with matching batch_id
+[2026-02-18 00:43:17] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 2.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 0.0000
+            [batch_id] => 46
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-18 00:43:17] --- Processing Stock Record #1 ---
+[2026-02-18 00:43:17] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 2.0000
+    [old_qty] => 0.0000
+    [batch_id] => 46
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0.0000
+)
+
+[2026-02-18 00:43:17] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-18 00:43:17] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-18 00:43:17] Stock movement logged - Data: Array
+(
+    [movement_id] => 26
+    [quantity] => 2
+    [success] => YES
+)
+
+[2026-02-18 00:43:17] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-18 00:43:17
+)
+
+[2026-02-18 00:43:17] Other stock records for this product (different batch): 0
+[2026-02-18 00:43:17] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-18 00:43:17] 
+[2026-02-18 01:01:02] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-18 01:01:02] Purchase ID: 52
+[2026-02-18 01:01:02] Purchase Number: PO202602-0019
+[2026-02-18 01:01:02] Shop ID: 6
+[2026-02-18 01:01:02] === Processing Batch #1 ===
+[2026-02-18 01:01:02] Batch Details - Data: Array
+(
+    [batch_id] => 48
+    [product_id] => 576
+    [quantity_received] => 3
+    [quantity_remaining] => 3
+    [batch_number] => BATCH-20260217-4
+    [purchase_price] => 175.00
+    [old_purchase_price] => 210.00
+    [old_retail_price] => 252.00
+    [old_wholesale_price] => 231.00
+    [old_mrp] => 350.00
+)
+
+[2026-02-18 01:01:02] Looking for stock records with batch_id = 48 in shop_id = 6
+[2026-02-18 01:01:02] Found 1 stock record(s) with matching batch_id
+[2026-02-18 01:01:02] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 3.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 0.0000
+            [batch_id] => 48
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-18 01:01:02] --- Processing Stock Record #1 ---
+[2026-02-18 01:01:02] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 3.0000
+    [old_qty] => 0.0000
+    [batch_id] => 48
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0.0000
+)
+
+[2026-02-18 01:01:02] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-18 01:01:02] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-18 01:01:02] Stock movement logged - Data: Array
+(
+    [movement_id] => 27
+    [quantity] => 3
+    [success] => YES
+)
+
+[2026-02-18 01:01:02] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-18 01:01:02
+)
+
+[2026-02-18 01:01:02] Other stock records for this product (different batch): 0
+[2026-02-18 01:01:02] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-18 01:01:02] 
+[2026-02-18 01:15:51] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-18 01:15:51] Purchase ID: 54
+[2026-02-18 01:15:51] Purchase Number: PO202602-0020
+[2026-02-18 01:15:51] Shop ID: 6
+[2026-02-18 01:15:51] === Processing Batch #1 ===
+[2026-02-18 01:15:51] Batch Details - Data: Array
+(
+    [batch_id] => 50
+    [product_id] => 576
+    [quantity_received] => 1
+    [quantity_remaining] => 1
+    [batch_number] => BATCH-20260217-753
+    [purchase_price] => 210.00
+    [old_purchase_price] => 175.00
+    [old_retail_price] => 210.00
+    [old_wholesale_price] => 192.50
+    [old_mrp] => 350.00
+)
+
+[2026-02-18 01:15:51] Looking for stock records with batch_id = 50 in shop_id = 6
+[2026-02-18 01:15:51] Found 1 stock record(s) with matching batch_id
+[2026-02-18 01:15:51] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 1.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 0.0000
+            [batch_id] => 50
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-18 01:15:51] --- Processing Stock Record #1 ---
+[2026-02-18 01:15:51] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 1.0000
+    [old_qty] => 0.0000
+    [batch_id] => 50
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0.0000
+)
+
+[2026-02-18 01:15:51] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-18 01:15:51] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-18 01:15:51] Stock movement logged - Data: Array
+(
+    [movement_id] => 28
+    [quantity] => 1
+    [success] => YES
+)
+
+[2026-02-18 01:15:51] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-18 01:15:51
+)
+
+[2026-02-18 01:15:51] Other stock records for this product (different batch): 0
+[2026-02-18 01:15:51] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-18 01:15:51] 
+[2026-02-18 01:24:42] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-18 01:24:42] Purchase ID: 55
+[2026-02-18 01:24:42] Purchase Number: PO202602-0020
+[2026-02-18 01:24:42] Shop ID: 6
+[2026-02-18 01:24:42] === Processing Batch #1 ===
+[2026-02-18 01:24:42] Batch Details - Data: Array
+(
+    [batch_id] => 51
+    [product_id] => 576
+    [quantity_received] => 1
+    [quantity_remaining] => 1
+    [batch_number] => BATCH-20260217-659
+    [purchase_price] => 150.00
+    [old_purchase_price] => 175.00
+    [old_retail_price] => 210.00
+    [old_wholesale_price] => 192.50
+    [old_mrp] => 350.00
+)
+
+[2026-02-18 01:24:42] Looking for stock records with batch_id = 51 in shop_id = 6
+[2026-02-18 01:24:42] Found 1 stock record(s) with matching batch_id
+[2026-02-18 01:24:42] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 0.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 0.0000
+            [batch_id] => 51
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-18 01:24:42] --- Processing Stock Record #1 ---
+[2026-02-18 01:24:42] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 584
+    [current_quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 51
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0.0000
+)
+
+[2026-02-18 01:24:42] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-18 01:24:42] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 584
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-18 01:24:42] Stock movement logged - Data: Array
+(
+    [movement_id] => 29
+    [quantity] => 1
+    [success] => YES
+)
+
+[2026-02-18 01:24:42] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 584
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-18 01:24:42
+)
+
+[2026-02-18 01:24:42] Other stock records for this product (different batch): 0
+[2026-02-18 01:24:42] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-18 01:24:42] 
+[2026-02-18 01:24:51] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-18 01:24:51] Purchase ID: 53
+[2026-02-18 01:24:51] Purchase Number: PO202602-0019
+[2026-02-18 01:24:51] Shop ID: 6
+[2026-02-18 01:24:51] === Processing Batch #1 ===
+[2026-02-18 01:24:51] Batch Details - Data: Array
+(
+    [batch_id] => 49
+    [product_id] => 576
+    [quantity_received] => 1
+    [quantity_remaining] => 1
+    [batch_number] => BATCH-20260217-986
+    [purchase_price] => 175.00
+    [old_purchase_price] => 210.00
+    [old_retail_price] => 252.00
+    [old_wholesale_price] => 231.00
+    [old_mrp] => 350.00
+)
+
+[2026-02-18 01:24:51] Looking for stock records with batch_id = 49 in shop_id = 6
+[2026-02-18 01:24:51] Found 0 stock record(s) with matching batch_id
+[2026-02-18 01:24:51] No stock with exact batch_id found. Other stock records for this product in this shop: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 584
+            [product_id] => 576
+            [shop_id] => 6
+            [quantity] => 0.0000
+            [old_qty] => 0.0000
+            [batch_id] => 
+            [use_batch_tracking] => 0
+        )
+
+)
+
+[2026-02-18 01:24:51] Other stock records for this product (different batch): 0
+[2026-02-18 01:24:51] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-18 01:24:51] 
+[2026-02-28 20:12:39] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-28 20:12:39] Purchase ID: 67
+[2026-02-28 20:12:39] Purchase Number: PO202602-0002
+[2026-02-28 20:12:39] Shop ID: 22
+[2026-02-28 20:12:39] === Processing Batch #1 ===
+[2026-02-28 20:12:39] Batch Details - Data: Array
+(
+    [batch_id] => 64
+    [product_id] => 580
+    [quantity_received] => 20
+    [quantity_remaining] => 20
+    [batch_number] => BATCH-20260225-721
+    [purchase_price] => 135.70
+    [old_purchase_price] => 136.00
+    [old_retail_price] => 170.00
+    [old_wholesale_price] => 156.40
+    [old_mrp] => 1475.00
+)
+
+[2026-02-28 20:12:39] Looking for stock records with batch_id = 64 in shop_id = 22
+[2026-02-28 20:12:39] Found 1 stock record(s) with matching batch_id
+[2026-02-28 20:12:39] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 588
+            [product_id] => 580
+            [shop_id] => 22
+            [quantity] => 20.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 
+            [batch_id] => 64
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-28 20:12:39] --- Processing Stock Record #1 ---
+[2026-02-28 20:12:39] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 588
+    [current_quantity] => 20.0000
+    [old_qty] => 0.0000
+    [batch_id] => 64
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-28 20:12:39] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-28 20:12:39] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 588
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-28 20:12:39] Stock movement logged - Data: Array
+(
+    [movement_id] => 46
+    [quantity] => 20
+    [success] => YES
+)
+
+[2026-02-28 20:12:39] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 588
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-28 20:12:39
+)
+
+[2026-02-28 20:12:39] Other stock records for this product (different batch): 0
+[2026-02-28 20:12:39] === Processing Batch #2 ===
+[2026-02-28 20:12:39] Batch Details - Data: Array
+(
+    [batch_id] => 65
+    [product_id] => 581
+    [quantity_received] => 2
+    [quantity_remaining] => 2
+    [batch_number] => BATCH-20260225-480
+    [purchase_price] => 1037.54
+    [old_purchase_price] => 1037.00
+    [old_retail_price] => 1350.00
+    [old_wholesale_price] => 1192.55
+    [old_mrp] => 2796.60
+)
+
+[2026-02-28 20:12:39] Looking for stock records with batch_id = 65 in shop_id = 22
+[2026-02-28 20:12:39] Found 1 stock record(s) with matching batch_id
+[2026-02-28 20:12:39] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 589
+            [product_id] => 581
+            [shop_id] => 22
+            [quantity] => 2.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 
+            [batch_id] => 65
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-28 20:12:39] --- Processing Stock Record #1 ---
+[2026-02-28 20:12:39] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 589
+    [current_quantity] => 2.0000
+    [old_qty] => 0.0000
+    [batch_id] => 65
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-28 20:12:39] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-28 20:12:39] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 589
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-28 20:12:39] Stock movement logged - Data: Array
+(
+    [movement_id] => 47
+    [quantity] => 2
+    [success] => YES
+)
+
+[2026-02-28 20:12:39] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 589
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-28 20:12:39
+)
+
+[2026-02-28 20:12:39] Other stock records for this product (different batch): 0
+[2026-02-28 20:12:39] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-28 20:12:39] 
+[2026-02-28 20:12:44] ========== STARTING PURCHASE DELETION DEBUG ==========
+[2026-02-28 20:12:44] Purchase ID: 66
+[2026-02-28 20:12:44] Purchase Number: PO202602-0001
+[2026-02-28 20:12:44] Shop ID: 22
+[2026-02-28 20:12:44] === Processing Batch #1 ===
+[2026-02-28 20:12:44] Batch Details - Data: Array
+(
+    [batch_id] => 63
+    [product_id] => 578
+    [quantity_received] => 2
+    [quantity_remaining] => 2
+    [batch_number] => BATCH-20260221-51
+    [purchase_price] => 929.67
+    [old_purchase_price] => 930.00
+    [old_retail_price] => 1200.20
+    [old_wholesale_price] => 1070.05
+    [old_mrp] => 1995.00
+)
+
+[2026-02-28 20:12:44] Looking for stock records with batch_id = 63 in shop_id = 22
+[2026-02-28 20:12:44] Found 1 stock record(s) with matching batch_id
+[2026-02-28 20:12:44] Stock records found: - Data: Array
+(
+    [0] => Array
+        (
+            [id] => 586
+            [product_id] => 578
+            [shop_id] => 22
+            [quantity] => 2.0000
+            [old_qty] => 0.0000
+            [total_secondary_units] => 
+            [batch_id] => 63
+            [use_batch_tracking] => 1
+        )
+
+)
+
+[2026-02-28 20:12:44] --- Processing Stock Record #1 ---
+[2026-02-28 20:12:44] Stock BEFORE update - Data: Array
+(
+    [stock_id] => 586
+    [current_quantity] => 2.0000
+    [old_qty] => 0.0000
+    [batch_id] => 63
+    [use_batch_tracking] => 1
+    [total_secondary_units] => 0
+)
+
+[2026-02-28 20:12:44] Stock UPDATE executed - Data: Array
+(
+    [success] => YES
+    [rows_affected] => 1
+)
+
+[2026-02-28 20:12:44] Stock AFTER update (verification) - Data: Array
+(
+    [stock_id] => 586
+    [quantity_set_to] => 0.0000
+    [old_qty_set_to] => 0
+    [batch_id_set_to] => NULL
+    [use_batch_tracking_set_to] => 0
+)
+
+[2026-02-28 20:12:44] Stock movement logged - Data: Array
+(
+    [movement_id] => 48
+    [quantity] => 2
+    [success] => YES
+)
+
+[2026-02-28 20:12:44] VERIFICATION - Stock record after all operations - Data: Array
+(
+    [id] => 586
+    [quantity] => 0.0000
+    [old_qty] => 0.0000
+    [batch_id] => 
+    [use_batch_tracking] => 0
+    [last_updated] => 2026-02-28 20:12:44
+)
+
+[2026-02-28 20:12:44] Other stock records for this product (different batch): 0
+[2026-02-28 20:12:44] ========== BATCH PROCESSING COMPLETED ==========
+[2026-02-28 20:12:44] 

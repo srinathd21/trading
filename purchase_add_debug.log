@@ -1,0 +1,72 @@
+[2026-02-18 01:13:46] Processing stock update for product - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [current_quantity] => 0.0000
+    [old_qty] => 0.0000
+    [qty_to_add] => 1
+    [has_stock_record] => yes
+)
+
+[2026-02-18 01:13:46] Product out of stock, updating prices directly from batch - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [current_quantity] => 0.0000
+    [new_mrp] => 350
+    [new_retail_price] => 252
+    [new_wholesale_price] => 231
+)
+
+[2026-02-18 01:13:46] Stock update completed for product - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [qty_added] => 1
+    [batch_id] => 50
+)
+
+[2026-02-18 01:13:46] Purchase completed successfully - Array
+(
+    [purchase_id] => 54
+    [purchase_number] => PO202602-0020
+    [grand_total] => 210
+    [total_gst] => 32.033898305085
+)
+
+[2026-02-18 01:18:48] Processing stock update for product - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [current_quantity] => 0.0000
+    [old_qty] => 0.0000
+    [qty_to_add] => 1
+    [has_stock_record] => yes
+)
+
+[2026-02-18 01:18:48] Product out of stock, updating prices directly from batch - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [current_quantity] => 0.0000
+    [new_mrp] => 300
+    [new_retail_price] => 180
+    [new_wholesale_price] => 165
+)
+
+[2026-02-18 01:18:48] Stock update completed for product - Array
+(
+    [product_id] => 576
+    [product_name] => Wipro
+    [qty_added] => 1
+    [batch_id] => 51
+)
+
+[2026-02-18 01:18:48] Purchase completed successfully - Array
+(
+    [purchase_id] => 55
+    [purchase_number] => PO202602-0020
+    [grand_total] => 150
+    [total_gst] => 22.881355932203
+)
+

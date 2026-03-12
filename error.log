@@ -1,0 +1,373 @@
+[17-Feb-2026 14:26:35 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:26:35 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:18 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:18 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:18 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:18 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:19 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:19 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:20 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:20 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:20 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:20 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:20 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:20 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:27:21 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:27:21 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php:205
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php(205): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchases.php on line 205
+[17-Feb-2026 14:37:41 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:37:41 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php:202
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(202): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php on line 202
+[17-Feb-2026 14:39:37 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:39:37 Asia/Kolkata] PHP Fatal error:  Uncaught PDOException: There is no active transaction in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php:202
+Stack trace:
+#0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(202): PDO->rollBack()
+#1 {main}
+  thrown in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php on line 202
+[17-Feb-2026 14:42:05 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:42:05 Asia/Kolkata] Purchase deletion error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'shop_id' in 'SELECT'
+[17-Feb-2026 14:42:05 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(40): PDO->prepare()
+#1 {main}
+[17-Feb-2026 14:43:57 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:43:57 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:43:57 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:43:57 Asia/Kolkata] Purchase deletion error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'business_id' in 'WHERE'
+[17-Feb-2026 14:43:57 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(79): PDO->prepare()
+#1 {main}
+[17-Feb-2026 14:50:01 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:50:01 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:50:01 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:50:01 Asia/Kolkata] Purchase deletion error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'business_id' in 'WHERE'
+[17-Feb-2026 14:50:01 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(79): PDO->prepare()
+#1 {main}
+[17-Feb-2026 14:51:36 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:51:36 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:51:36 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:51:36 Asia/Kolkata] Found 1 payments
+[17-Feb-2026 14:51:36 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:51:36 Asia/Kolkata] Purchase deletion error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'mrp' in 'SELECT'
+[17-Feb-2026 14:51:36 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(127): PDO->prepare()
+#1 {main}
+[17-Feb-2026 14:53:41 Asia/Kolkata] Attempting to delete purchase ID: 37 for business: 5
+[17-Feb-2026 14:53:41 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:53:41 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:53:41 Asia/Kolkata] Found 1 payments
+[17-Feb-2026 14:53:41 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:53:41 Asia/Kolkata] Restored product 527 prices to original values
+[17-Feb-2026 14:53:41 Asia/Kolkata] Deleted 1 payments
+[17-Feb-2026 14:53:41 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:53:41 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:53:41 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:53:41 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:53:41 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:55:40 Asia/Kolkata] Attempting to delete purchase ID: 36 for business: 5
+[17-Feb-2026 14:55:40 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:55:40 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:55:40 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:55:40 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:55:40 Asia/Kolkata] Restored product 574 prices from previous batch
+[17-Feb-2026 14:55:40 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:55:40 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:55:40 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:55:40 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:55:40 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:55:45 Asia/Kolkata] Attempting to delete purchase ID: 35 for business: 5
+[17-Feb-2026 14:55:45 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:55:45 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:55:45 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:55:45 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:55:45 Asia/Kolkata] Restored product 575 prices from previous batch
+[17-Feb-2026 14:55:45 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:55:45 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:55:45 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:55:45 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:55:45 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:55:50 Asia/Kolkata] Attempting to delete purchase ID: 34 for business: 5
+[17-Feb-2026 14:55:50 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:55:50 Asia/Kolkata] Found 0 batches
+[17-Feb-2026 14:55:50 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:55:50 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:55:50 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:55:50 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:55:50 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:55:50 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:55:50 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:55:55 Asia/Kolkata] Attempting to delete purchase ID: 33 for business: 5
+[17-Feb-2026 14:55:55 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:55:55 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:55:55 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:55:55 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:55:55 Asia/Kolkata] Restored product 574 prices from previous batch
+[17-Feb-2026 14:55:55 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:55:55 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:55:55 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:55:55 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:55:55 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:56:00 Asia/Kolkata] Attempting to delete purchase ID: 31 for business: 5
+[17-Feb-2026 14:56:00 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:56:00 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:56:00 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:56:00 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:56:00 Asia/Kolkata] Restored product 575 prices to original values
+[17-Feb-2026 14:56:00 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:56:00 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:56:00 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:56:00 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:56:00 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 14:59:45 Asia/Kolkata] Attempting to delete purchase ID: 38 for business: 5
+[17-Feb-2026 14:59:45 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 14:59:45 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 14:59:45 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 14:59:45 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 14:59:45 Asia/Kolkata] Restored product 576 prices to original values
+[17-Feb-2026 14:59:45 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 14:59:45 Asia/Kolkata] Deleted batches
+[17-Feb-2026 14:59:45 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 14:59:45 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 14:59:45 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 15:08:12 Asia/Kolkata] Attempting to delete purchase ID: 39 for business: 5
+[17-Feb-2026 15:08:12 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:08:12 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:08:12 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:08:12 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:08:12 Asia/Kolkata] Purchase deletion error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'mrp' in 'SELECT'
+[17-Feb-2026 15:08:12 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(171): PDO->prepare()
+#1 {main}
+[17-Feb-2026 15:09:12 Asia/Kolkata] Attempting to delete purchase ID: 39 for business: 5
+[17-Feb-2026 15:09:12 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:09:12 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:09:12 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:09:12 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:09:12 Asia/Kolkata] Restored product 576 prices to original values
+[17-Feb-2026 15:09:12 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 15:09:12 Asia/Kolkata] Deleted batches
+[17-Feb-2026 15:09:12 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 15:09:12 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 15:09:12 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 15:21:03 Asia/Kolkata] Attempting to delete purchase ID: 40 for business: 5
+[17-Feb-2026 15:21:03 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:21:03 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:21:03 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:21:03 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:21:03 Asia/Kolkata] Restored product 576 prices using old price fields from current batch
+[17-Feb-2026 15:21:03 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 15:21:03 Asia/Kolkata] Deleted batches
+[17-Feb-2026 15:21:03 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 15:21:03 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 15:21:03 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 15:35:47 Asia/Kolkata] Attempting to delete purchase ID: 41 for business: 5
+[17-Feb-2026 15:35:47 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:35:47 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:35:47 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:35:47 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:35:47 Asia/Kolkata] Restored product 576 prices using old price fields from current batch
+[17-Feb-2026 15:35:47 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 15:35:47 Asia/Kolkata] Deleted batches
+[17-Feb-2026 15:35:47 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 15:35:47 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 15:35:47 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 15:39:22 Asia/Kolkata] Attempting to delete purchase ID: 42 for business: 5
+[17-Feb-2026 15:39:22 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:39:22 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:39:22 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:39:22 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:39:22 Asia/Kolkata] Restored product 576 prices using old price fields from current batch
+[17-Feb-2026 15:39:22 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 15:39:22 Asia/Kolkata] Deleted batches
+[17-Feb-2026 15:39:22 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 15:39:22 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 15:39:22 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 15:42:58 Asia/Kolkata] Attempting to delete purchase ID: 43 for business: 5
+[17-Feb-2026 15:42:58 Asia/Kolkata] Found 1 purchase items
+[17-Feb-2026 15:42:58 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 15:42:58 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 15:42:58 Asia/Kolkata] Purchase has NULL shop_id - skipping stock restoration
+[17-Feb-2026 15:42:58 Asia/Kolkata] Restored product 576 prices using old price fields from current batch
+[17-Feb-2026 15:42:58 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 15:42:58 Asia/Kolkata] Deleted batches
+[17-Feb-2026 15:42:58 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 15:42:58 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 15:42:58 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:04:24 Asia/Kolkata] Attempting to delete purchase ID: 44 for business: 5
+[17-Feb-2026 22:04:24 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:04:24 Asia/Kolkata] Restored product 576 prices to old values from batch 35
+[17-Feb-2026 22:04:24 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:04:24 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:04:24 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:04:24 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:04:24 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:04:24 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:11:09 Asia/Kolkata] Attempting to delete purchase ID: 45 for business: 5
+[17-Feb-2026 22:11:09 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:11:09 Asia/Kolkata] Purchase deletion error: SQLSTATE[HY093]: Invalid parameter number
+[17-Feb-2026 22:11:09 Asia/Kolkata] Stack trace: #0 /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php(76): PDOStatement->execute()
+#1 {main}
+[17-Feb-2026 22:14:04 Asia/Kolkata] Attempting to delete purchase ID: 45 for business: 5
+[17-Feb-2026 22:14:04 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:14:04 Asia/Kolkata] Restored product 576 prices to old values from batch 36
+[17-Feb-2026 22:14:04 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:14:04 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:14:04 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:14:04 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:14:04 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:14:04 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:17:28 Asia/Kolkata] Attempting to delete purchase ID: 30 for business: 5
+[17-Feb-2026 22:17:28 Asia/Kolkata] PHP Warning:  Undefined array key "current_shop_id" in /home/u329947844/domains/ecommer.in/public_html/billing/trading/purchase_delete.php on line 49
+[17-Feb-2026 22:17:28 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:17:28 Asia/Kolkata] Restored product 574 prices to old values from batch 22
+[17-Feb-2026 22:17:28 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:17:28 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:17:28 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:17:28 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:17:28 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:17:28 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:17:36 Asia/Kolkata] Attempting to delete purchase ID: 30 for business: 5
+[17-Feb-2026 22:17:36 Asia/Kolkata] Purchase deletion error: Purchase order not found.
+[17-Feb-2026 22:17:36 Asia/Kolkata] Stack trace: #0 {main}
+[17-Feb-2026 22:18:07 Asia/Kolkata] Attempting to delete purchase ID: 29 for business: 5
+[17-Feb-2026 22:18:07 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:18:07 Asia/Kolkata] Restored product 573 prices to old values from batch 21
+[17-Feb-2026 22:18:07 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:18:07 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:18:07 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:18:07 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:18:07 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:18:07 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:19:10 Asia/Kolkata] Attempting to delete purchase ID: 28 for business: 5
+[17-Feb-2026 22:19:10 Asia/Kolkata] Found 2 batches
+[17-Feb-2026 22:19:10 Asia/Kolkata] Updated stock ID 2 for product 2: set quantity to old_qty (88.0000), cleared batch tracking
+[17-Feb-2026 22:19:10 Asia/Kolkata] Updated stock ID 1 for product 1: set quantity to old_qty (231.0000), cleared batch tracking
+[17-Feb-2026 22:19:10 Asia/Kolkata] Product 2 has other active batches, skipping price restoration
+[17-Feb-2026 22:19:10 Asia/Kolkata] Product 1 has other active batches, skipping price restoration
+[17-Feb-2026 22:19:10 Asia/Kolkata] Found 1 payments
+[17-Feb-2026 22:19:10 Asia/Kolkata] Deleted 1 payments
+[17-Feb-2026 22:19:10 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:19:10 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:19:10 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:19:10 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:19:10 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:19:54 Asia/Kolkata] Attempting to delete purchase ID: 46 for business: 5
+[17-Feb-2026 22:19:54 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:19:54 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (8.0000), cleared batch tracking
+[17-Feb-2026 22:19:54 Asia/Kolkata] Restored product 576 prices to old values from batch 37
+[17-Feb-2026 22:19:54 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:19:54 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:19:54 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:19:54 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:19:54 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:19:54 Asia/Kolkata] Purchase deletion successful
+[17-Feb-2026 22:26:27 Asia/Kolkata] Attempting to delete purchase ID: 48 for business: 5
+[17-Feb-2026 22:26:27 Asia/Kolkata] Found 1 batches
+[17-Feb-2026 22:26:27 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (8.0000), cleared batch tracking
+[17-Feb-2026 22:26:27 Asia/Kolkata] Restored product 576 prices to old values from batch 38
+[17-Feb-2026 22:26:27 Asia/Kolkata] Found 0 payments
+[17-Feb-2026 22:26:27 Asia/Kolkata] Deleted purchase items
+[17-Feb-2026 22:26:27 Asia/Kolkata] Deleted batches
+[17-Feb-2026 22:26:27 Asia/Kolkata] Deleted GST credits
+[17-Feb-2026 22:26:27 Asia/Kolkata] Deleted purchase
+[17-Feb-2026 22:26:27 Asia/Kolkata] Purchase deletion successful
+[18-Feb-2026 00:43:17 Asia/Kolkata] Attempting to delete purchase ID: 50 for business: 5
+[18-Feb-2026 00:43:17 Asia/Kolkata] Found 1 batches
+[18-Feb-2026 00:43:17 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (0.0000), cleared batch tracking
+[18-Feb-2026 00:43:17 Asia/Kolkata] Product 576 has other active batches, skipping price restoration
+[18-Feb-2026 00:43:17 Asia/Kolkata] Found 0 payments
+[18-Feb-2026 00:43:17 Asia/Kolkata] Deleted purchase items
+[18-Feb-2026 00:43:17 Asia/Kolkata] Deleted batches
+[18-Feb-2026 00:43:17 Asia/Kolkata] Deleted GST credits
+[18-Feb-2026 00:43:17 Asia/Kolkata] Deleted purchase
+[18-Feb-2026 00:43:17 Asia/Kolkata] Purchase deletion successful
+[18-Feb-2026 01:01:02 Asia/Kolkata] Attempting to delete purchase ID: 52 for business: 5
+[18-Feb-2026 01:01:02 Asia/Kolkata] Found 1 batches
+[18-Feb-2026 01:01:02 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (0.0000), cleared batch tracking
+[18-Feb-2026 01:01:02 Asia/Kolkata] Product 576 has other active batches, skipping price restoration
+[18-Feb-2026 01:01:02 Asia/Kolkata] Found 0 payments
+[18-Feb-2026 01:01:02 Asia/Kolkata] Deleted purchase items
+[18-Feb-2026 01:01:02 Asia/Kolkata] Deleted batches
+[18-Feb-2026 01:01:02 Asia/Kolkata] Deleted GST credits
+[18-Feb-2026 01:01:02 Asia/Kolkata] Deleted purchase
+[18-Feb-2026 01:01:02 Asia/Kolkata] Purchase deletion successful
+[18-Feb-2026 01:15:51 Asia/Kolkata] Attempting to delete purchase ID: 54 for business: 5
+[18-Feb-2026 01:15:51 Asia/Kolkata] Found 1 batches
+[18-Feb-2026 01:15:51 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (0.0000), cleared batch tracking
+[18-Feb-2026 01:15:51 Asia/Kolkata] Product 576 has other active batches, skipping price restoration
+[18-Feb-2026 01:15:51 Asia/Kolkata] Found 0 payments
+[18-Feb-2026 01:15:51 Asia/Kolkata] Deleted purchase items
+[18-Feb-2026 01:15:51 Asia/Kolkata] Deleted batches
+[18-Feb-2026 01:15:51 Asia/Kolkata] Deleted GST credits
+[18-Feb-2026 01:15:51 Asia/Kolkata] Deleted purchase
+[18-Feb-2026 01:15:51 Asia/Kolkata] Purchase deletion successful
+[18-Feb-2026 01:24:42 Asia/Kolkata] Attempting to delete purchase ID: 55 for business: 5
+[18-Feb-2026 01:24:42 Asia/Kolkata] Found 1 batches
+[18-Feb-2026 01:24:42 Asia/Kolkata] Updated stock ID 584 for product 576: set quantity to old_qty (0.0000), cleared batch tracking
+[18-Feb-2026 01:24:42 Asia/Kolkata] Product 576 has other active batches, skipping price restoration
+[18-Feb-2026 01:24:42 Asia/Kolkata] Found 0 payments
+[18-Feb-2026 01:24:42 Asia/Kolkata] Deleted purchase items
+[18-Feb-2026 01:24:42 Asia/Kolkata] Deleted batches
+[18-Feb-2026 01:24:42 Asia/Kolkata] Deleted GST credits
+[18-Feb-2026 01:24:42 Asia/Kolkata] Deleted purchase
+[18-Feb-2026 01:24:42 Asia/Kolkata] Purchase deletion successful
+[18-Feb-2026 01:24:51 Asia/Kolkata] Attempting to delete purchase ID: 53 for business: 5
+[18-Feb-2026 01:24:51 Asia/Kolkata] Found 1 batches
+[18-Feb-2026 01:24:51 Asia/Kolkata] Product 576 has other active batches, skipping price restoration
+[18-Feb-2026 01:24:51 Asia/Kolkata] Found 0 payments
+[18-Feb-2026 01:24:51 Asia/Kolkata] Deleted purchase items
+[18-Feb-2026 01:24:51 Asia/Kolkata] Deleted batches
+[18-Feb-2026 01:24:51 Asia/Kolkata] Deleted GST credits
+[18-Feb-2026 01:24:51 Asia/Kolkata] Deleted purchase
+[18-Feb-2026 01:24:51 Asia/Kolkata] Purchase deletion successful
+[28-Feb-2026 20:12:39 Asia/Kolkata] Attempting to delete purchase ID: 67 for business: 18
+[28-Feb-2026 20:12:39 Asia/Kolkata] Found 2 batches
+[28-Feb-2026 20:12:39 Asia/Kolkata] Updated stock ID 588 for product 580: set quantity to old_qty (0.0000), cleared batch tracking
+[28-Feb-2026 20:12:39 Asia/Kolkata] Updated stock ID 589 for product 581: set quantity to old_qty (0.0000), cleared batch tracking
+[28-Feb-2026 20:12:39 Asia/Kolkata] Restored product 580 prices to old values from batch 64
+[28-Feb-2026 20:12:39 Asia/Kolkata] Restored product 581 prices to old values from batch 65
+[28-Feb-2026 20:12:39 Asia/Kolkata] Found 0 payments
+[28-Feb-2026 20:12:39 Asia/Kolkata] Deleted purchase items
+[28-Feb-2026 20:12:39 Asia/Kolkata] Deleted batches
+[28-Feb-2026 20:12:39 Asia/Kolkata] Deleted GST credits
+[28-Feb-2026 20:12:39 Asia/Kolkata] Deleted purchase
+[28-Feb-2026 20:12:39 Asia/Kolkata] Purchase deletion successful
+[28-Feb-2026 20:12:44 Asia/Kolkata] Attempting to delete purchase ID: 66 for business: 18
+[28-Feb-2026 20:12:44 Asia/Kolkata] Found 1 batches
+[28-Feb-2026 20:12:44 Asia/Kolkata] Updated stock ID 586 for product 578: set quantity to old_qty (0.0000), cleared batch tracking
+[28-Feb-2026 20:12:44 Asia/Kolkata] Restored product 578 prices to old values from batch 63
+[28-Feb-2026 20:12:44 Asia/Kolkata] Found 0 payments
+[28-Feb-2026 20:12:44 Asia/Kolkata] Deleted purchase items
+[28-Feb-2026 20:12:44 Asia/Kolkata] Deleted batches
+[28-Feb-2026 20:12:44 Asia/Kolkata] Deleted GST credits
+[28-Feb-2026 20:12:44 Asia/Kolkata] Deleted purchase
+[28-Feb-2026 20:12:44 Asia/Kolkata] Purchase deletion successful
