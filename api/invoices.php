@@ -891,7 +891,12 @@ $stmt->execute([
             ]);
            
             // ==============================================
-            // FIXED: BATCH TRACKING LOGIC
+            // STORE OLD STOCK QUANTITY BEFORE DEDUCTION
+            // ==============================================
+            $old_stock_quantity = $current_stock;
+           
+            // ==============================================
+            // FIXED: BATCH TRACKING LOGIC WITH ITERATIVE DEDUCTION
             // ==============================================
 // ==============================================
 // FIXED: BATCH TRACKING LOGIC WITH ITERATIVE DEDUCTION
@@ -1346,6 +1351,92 @@ if ($use_batch_tracking && $batch_id) {
         }
     }
 }
+
+            // ==============================================
+            // RECORD STOCK ADJUSTMENT IN STOCK_ADJUSTMENTS TABLE
+            // ==============================================
+            
+            // Generate unique adjustment number
+            $date = new DateTime();
+            $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            
+            // Ensure uniqueness of adjustment number
+            $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+            $check_adj->execute([$adjustment_number]);
+            while ($check_adj->fetch()) {
+                $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                $check_adj->execute([$adjustment_number]);
+            }
+            
+            // Get final stock after deduction for this item
+            $final_stock_stmt = $pdo->prepare("
+                SELECT quantity, total_secondary_units
+                FROM product_stocks
+                WHERE product_id = ? 
+                  AND shop_id = ? 
+                  AND business_id = ?
+            ");
+            $final_stock_stmt->execute([$product_id, $shop_id, $business_id]);
+            $final_stock = $final_stock_stmt->fetch();
+            $new_stock_quantity = (float)($final_stock['quantity'] ?? 0);
+            
+            // Prepare notes for adjustment
+            $adjustment_notes = "Sale from invoice #$invoice_number | ";
+            if ($is_secondary && $secondary_unit) {
+                $adjustment_notes .= "Sold: $qty $unit ($quantity_in_primary_units $unit_of_measure)";
+            } else {
+                $adjustment_notes .= "Sold: $qty $unit";
+            }
+            
+            if ($secondary_unit && $sec_unit_conversion > 0) {
+                $adjustment_notes .= " | Secondary units: $quantity_in_sec_units $secondary_unit";
+            }
+            
+            if ($use_batch_tracking) {
+                $adjustment_notes .= " | Batch tracking used, batch_id: $batch_id";
+            }
+            
+            // Record stock adjustment
+            $adj_stmt = $pdo->prepare("
+                INSERT INTO stock_adjustments (
+                    adjustment_number,
+                    product_id,
+                    shop_id,
+                    adjustment_type,
+                    quantity,
+                    old_stock,
+                    new_stock,
+                    reason,
+                    reference_id,
+                    reference_type,
+                    notes,
+                    adjusted_by,
+                    adjusted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            
+            $adj_stmt->execute([
+                $adjustment_number,
+                $product_id,
+                $shop_id,
+                'remove', // adjustment_type
+                $quantity_in_primary_units, // quantity in primary units
+                $old_stock_quantity, // old_stock
+                $new_stock_quantity, // new_stock
+                'Stock deduction for sale',
+                $invoice_id,
+                'sale',
+                $adjustment_notes,
+                $user_id
+            ]);
+            
+            debug_log("Stock adjustment recorded for item #$item_index", [
+                'adjustment_number' => $adjustment_number,
+                'old_stock' => $old_stock_quantity,
+                'new_stock' => $new_stock_quantity,
+                'quantity_removed' => $quantity_in_primary_units
+            ]);
+           
             // ==============================================
             // FINAL VERIFICATION: GET UPDATED STOCK
             // ==============================================
@@ -1911,6 +2002,8 @@ function deleteInvoice() {
             $stock = $stock_stmt->fetch();
             
             if ($stock) {
+                $old_stock_quantity = (float)$stock['quantity'];
+                
                 // Restore quantity (simplified - you might need to adjust based on your logic)
                 $restore_qty = $item['quantity'];
                 
@@ -1930,6 +2023,58 @@ function deleteInvoice() {
                                WHERE product_id = ? AND business_id = ?";
                 $update_stmt = $pdo->prepare($update_sql);
                 $update_stmt->execute([$restore_qty, $restore_sec_qty, $item['product_id'], $business_id]);
+                
+                // Get new stock quantity after restoration
+                $new_stock_stmt = $pdo->prepare("SELECT quantity FROM product_stocks WHERE product_id = ? AND business_id = ?");
+                $new_stock_stmt->execute([$item['product_id'], $business_id]);
+                $new_stock = $new_stock_stmt->fetch();
+                $new_stock_quantity = (float)$new_stock['quantity'];
+                
+                // Generate unique adjustment number for stock restoration
+                $date = new DateTime();
+                $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                
+                // Ensure uniqueness of adjustment number
+                $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+                $check_adj->execute([$adjustment_number]);
+                while ($check_adj->fetch()) {
+                    $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                    $check_adj->execute([$adjustment_number]);
+                }
+                
+                // Record stock adjustment for restoration
+                $adj_stmt = $pdo->prepare("
+                    INSERT INTO stock_adjustments (
+                        adjustment_number,
+                        product_id,
+                        shop_id,
+                        adjustment_type,
+                        quantity,
+                        old_stock,
+                        new_stock,
+                        reason,
+                        reference_id,
+                        reference_type,
+                        notes,
+                        adjusted_by,
+                        adjusted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+                
+                $adj_stmt->execute([
+                    $adjustment_number,
+                    $item['product_id'],
+                    $shop_id,
+                    'add',
+                    $restore_qty,
+                    $old_stock_quantity,
+                    $new_stock_quantity,
+                    'Stock restoration from deleted invoice',
+                    $invoice_id,
+                    'sale_deletion',
+                    "Restored $restore_qty units from deleted invoice #{$invoice['invoice_number']}",
+                    $user_id
+                ]);
             }
         }
         
@@ -1946,6 +2091,15 @@ function deleteInvoice() {
         $delete_items_sql = "DELETE FROM invoice_items WHERE invoice_id = ?";
         $delete_items_stmt = $pdo->prepare($delete_items_sql);
         $delete_items_stmt->execute([$invoice_id]);
+        
+        // Delete GST summary if exists
+        try {
+            $delete_gst_sql = "DELETE FROM invoice_gst_summary WHERE invoice_id = ?";
+            $delete_gst_stmt = $pdo->prepare($delete_gst_sql);
+            $delete_gst_stmt->execute([$invoice_id]);
+        } catch (Exception $e) {
+            // Table might not exist, ignore
+        }
         
         // Delete invoice
         $delete_sql = "DELETE FROM invoices WHERE id = ? AND business_id = ?";

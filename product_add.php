@@ -432,10 +432,14 @@ $stmt->execute([
 
                     // Add initial stock to product_stocks table
                     if ($initial_stock > 0) {
-                        $check_stock = $pdo->prepare("SELECT id FROM product_stocks WHERE product_id = ? AND shop_id = ?");
+                        $check_stock = $pdo->prepare("SELECT id, quantity FROM product_stocks WHERE product_id = ? AND shop_id = ?");
                         $check_stock->execute([$product_id, $current_shop_id]);
+                        $existing_stock = $check_stock->fetch();
 
-                        if ($check_stock->fetch()) {
+                        if ($existing_stock) {
+                            // Store old quantity before update
+                            $old_quantity = $existing_stock['quantity'];
+                            
                             // Update existing stock
                             $update_stmt = $pdo->prepare("
                                 UPDATE product_stocks 
@@ -450,8 +454,12 @@ $stmt->execute([
                                 $product_id,
                                 $current_shop_id
                             ]);
+                            
+                            $new_quantity = $old_quantity + $initial_stock;
                         } else {
                             // Insert new stock record
+                            $old_quantity = 0;
+                            
                             $insert_stmt = $pdo->prepare("
                                 INSERT INTO product_stocks 
                                 (product_id, shop_id, business_id, quantity, total_secondary_units, last_updated) 
@@ -464,7 +472,59 @@ $stmt->execute([
                                 $initial_stock,
                                 $total_secondary_units
                             ]);
+                            
+                            $new_quantity = $initial_stock;
                         }
+                        
+                        // Generate unique adjustment number
+                        $date = new DateTime();
+                        $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                        
+                        // Ensure uniqueness of adjustment number
+                        $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+                        $check_adj->execute([$adjustment_number]);
+                        while ($check_adj->fetch()) {
+                            $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                            $check_adj->execute([$adjustment_number]);
+                        }
+                        
+                        // Record stock adjustment
+                        $adj_stmt = $pdo->prepare("
+                            INSERT INTO stock_adjustments (
+                                adjustment_number,
+                                product_id,
+                                shop_id,
+                                adjustment_type,
+                                quantity,
+                                old_stock,
+                                new_stock,
+                                reason,
+                                reference_type,
+                                notes,
+                                adjusted_by,
+                                adjusted_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        ");
+                        
+                        $notes = "Initial stock added";
+                        if ($total_secondary_units && $secondary_unit) {
+                            $notes .= " ($total_secondary_units $secondary_unit)";
+                        }
+                        
+                        $adj_stmt->execute([
+                            $adjustment_number,
+                            $product_id,
+                            $current_shop_id,
+                            'add', // adjustment_type
+                            $initial_stock,
+                            $old_quantity,
+                            $new_quantity,
+                            'Initial stock on product creation',
+                            'initial_stock',
+                            $notes,
+                            $_SESSION['user_id']
+                        ]);
+                        
                     } else {
                         // Even if no initial stock, create a record with 0 quantity
                         $check_stock = $pdo->prepare("SELECT id FROM product_stocks WHERE product_id = ? AND shop_id = ?");
@@ -480,6 +540,40 @@ $stmt->execute([
                                 $product_id,
                                 $current_shop_id,
                                 $current_business_id
+                            ]);
+                            
+                            // Still record a zero stock adjustment for audit trail
+                            $adjustment_number = 'ADJ' . date('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                            
+                            $adj_stmt = $pdo->prepare("
+                                INSERT INTO stock_adjustments (
+                                    adjustment_number,
+                                    product_id,
+                                    shop_id,
+                                    adjustment_type,
+                                    quantity,
+                                    old_stock,
+                                    new_stock,
+                                    reason,
+                                    reference_type,
+                                    notes,
+                                    adjusted_by,
+                                    adjusted_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                            ");
+                            
+                            $adj_stmt->execute([
+                                $adjustment_number,
+                                $product_id,
+                                $current_shop_id,
+                                'add', // adjustment_type
+                                0,
+                                0,
+                                0,
+                                'Product created with zero stock',
+                                'initial_stock',
+                                'Product added with no initial stock',
+                                $_SESSION['user_id']
                             ]);
                         }
                     }

@@ -435,6 +435,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Update stock if adjustment is made
                     if ($stock_adjustment != 0) {
                         $current_quantity = $product['current_stock'] ?? 0;
+                        $old_quantity = $current_quantity;
                         
                         // Calculate quantity in primary units
                         $primary_quantity = $stock_adjustment;
@@ -467,42 +468,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $current_shop_id
                         ]);
 
-                        // Determine movement type
-                        $movement_type = 'adjustment';
-                        if ($stock_adjustment_type === 'add') {
-                            $movement_type = 'restock';
-                        } elseif ($stock_adjustment_type === 'remove') {
-                            $movement_type = 'adjustment';
+                        // Generate unique adjustment number
+                        $date = new DateTime();
+                        $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                        
+                        // Ensure uniqueness of adjustment number
+                        $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+                        $check_adj->execute([$adjustment_number]);
+                        while ($check_adj->fetch()) {
+                            $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                            $check_adj->execute([$adjustment_number]);
                         }
-
-                        // Calculate secondary quantity for logging
-                        $secondary_quantity = 0;
+                        
+                        // Determine adjustment type
+                        $adjustment_type = $stock_adjustment_type === 'add' ? 'add' : 'remove';
+                        
+                        // Prepare reason and notes
+                        $reason = "Manual stock adjustment during product update";
+                        $notes = "Stock adjusted from $old_quantity to $new_quantity";
+                        
                         if ($adjust_in_secondary) {
-                            $secondary_quantity = $stock_adjustment;
-                        } elseif ($sec_unit_conversion > 0) {
-                            $secondary_quantity = $primary_quantity * $sec_unit_conversion;
+                            $notes .= " (adjusted in secondary units: $stock_adjustment $secondary_unit)";
+                        } else {
+                            $notes .= " (adjusted in primary units: $primary_quantity $unit)";
+                        }
+                        
+                        // Calculate secondary quantity for logging
+                        $secondary_quantity_log = 0;
+                        if ($sec_unit_conversion > 0) {
+                            if ($adjust_in_secondary) {
+                                $secondary_quantity_log = $stock_adjustment;
+                            } else {
+                                $secondary_quantity_log = $primary_quantity * $sec_unit_conversion;
+                            }
+                        }
+                        
+                        if ($secondary_unit && $sec_unit_conversion > 0) {
+                            $notes .= " | Secondary unit conversion: 1 $unit = $sec_unit_conversion $secondary_unit";
                         }
 
-                        // Log stock movement according to the actual table structure
-                        $log_stmt = $pdo->prepare("
-                            INSERT INTO stock_movements 
-                            (product_id, stock_id, shop_id, business_id, movement_type, quantity, secondary_quantity, notes, created_by, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        // Record stock adjustment in stock_adjustments table
+                        $adj_stmt = $pdo->prepare("
+                            INSERT INTO stock_adjustments (
+                                adjustment_number,
+                                product_id,
+                                shop_id,
+                                adjustment_type,
+                                quantity,
+                                old_stock,
+                                new_stock,
+                                reason,
+                                reference_type,
+                                notes,
+                                adjusted_by,
+                                adjusted_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                         ");
                         
-                        $notes = "Stock adjustment during product update";
-                        if ($adjust_in_secondary) {
-                            $notes .= " (adjusted in secondary units)";
-                        }
-                        
-                        $log_stmt->execute([
+                        $adj_stmt->execute([
+                            $adjustment_number,
                             $product_id,
-                            $product['stock_id'] ?? null,
                             $current_shop_id,
-                            $current_business_id,
-                            $movement_type,
-                            $primary_quantity,
-                            $secondary_quantity,
+                            $adjustment_type,
+                            $primary_quantity, // Store primary quantity in the quantity field
+                            $old_quantity,
+                            $new_quantity,
+                            $reason,
+                            'manual_adjustment',
                             $notes,
                             $_SESSION['user_id']
                         ]);
