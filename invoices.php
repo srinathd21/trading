@@ -28,18 +28,31 @@ $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 $customer_id_filter = (int)($_GET['customer_id'] ?? 0);
 $search = trim($_GET['search'] ?? '');
+$status_filter = $_GET['status'] ?? 'all'; // New status filter: all, pending, paid, partial
 
 // Build WHERE clause
 $where = "WHERE i.business_id = ? AND DATE(i.created_at) BETWEEN ? AND ?";
 $params = [$business_id, $start_date, $end_date];
+
 if ($user_role !== 'admin') {
     $where .= " AND i.shop_id = ?";
     $params[] = $current_shop_id;
 }
+
 if ($customer_id_filter > 0) {
     $where .= " AND i.customer_id = ?";
     $params[] = $customer_id_filter;
 }
+
+// Add status filter
+if ($status_filter === 'pending') {
+    $where .= " AND i.pending_amount > 0";
+} elseif ($status_filter === 'paid') {
+    $where .= " AND i.pending_amount = 0 AND i.total > 0";
+} elseif ($status_filter === 'partial') {
+    $where .= " AND i.pending_amount > 0 AND i.paid_amount > 0 AND i.pending_amount < i.total";
+}
+
 if ($search) {
     $where .= " AND (i.invoice_number LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)";
     $like = "%$search%";
@@ -211,7 +224,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                 </div>
                 <?php unset($_SESSION['whatsapp_error']); endif; ?>
 
-                <!-- Filter Card -->
+                <!-- Enhanced Filter Card with Status Filter -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-body">
                         <h5 class="card-title mb-4">
@@ -219,13 +232,22 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                         </h5>
                         <form method="GET" id="filterForm">
                             <div class="row g-3 align-items-end">
-                                <div class="col-lg-3 col-md-6">
+                                <div class="col-lg-2 col-md-6">
                                     <label class="form-label">From Date</label>
                                     <input type="date" name="start_date" class="form-control" value="<?= $start_date ?>">
                                 </div>
-                                <div class="col-lg-3 col-md-6">
+                                <div class="col-lg-2 col-md-6">
                                     <label class="form-label">To Date</label>
                                     <input type="date" name="end_date" class="form-control" value="<?= $end_date ?>">
+                                </div>
+                                <div class="col-lg-2 col-md-6">
+                                    <label class="form-label">Status</label>
+                                    <select name="status" class="form-select">
+                                        <option value="all" <?= $status_filter == 'all' ? 'selected' : '' ?>>All Invoices</option>
+                                        <option value="pending" <?= $status_filter == 'pending' ? 'selected' : '' ?>>Pending Only</option>
+                                        <option value="paid" <?= $status_filter == 'paid' ? 'selected' : '' ?>>Paid Only</option>
+                                        <option value="partial" <?= $status_filter == 'partial' ? 'selected' : '' ?>>Partial Only</option>
+                                    </select>
                                 </div>
                                 <div class="col-lg-3 col-md-6">
                                     <label class="form-label">Customer</label>
@@ -254,7 +276,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         <button type="submit" class="btn btn-primary">
                                             <i class="bx bx-filter me-1"></i> Apply
                                         </button>
-                                        <?php if ($start_date != date('Y-m-01') || $end_date != date('Y-m-d') || $customer_id_filter || $search): ?>
+                                        <?php if ($start_date != date('Y-m-01') || $end_date != date('Y-m-d') || $customer_id_filter || $search || $status_filter != 'all'): ?>
                                         <a href="invoices.php" class="btn btn-outline-secondary">
                                             <i class="bx bx-reset"></i>
                                         </a>
@@ -282,6 +304,11 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         </span>
                                     </div>
                                 </div>
+                                <?php if ($status_filter != 'all'): ?>
+                                <div class="mt-2">
+                                    <span class="badge bg-info">Filtered: <?= ucfirst($status_filter) ?></span>
+                                </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -338,6 +365,49 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                     </div>
                 </div>
 
+                <!-- Active Filters Display -->
+                <?php if ($status_filter != 'all' || $customer_id_filter || $search): ?>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="fw-medium text-muted">Active Filters:</span>
+                            <?php if ($status_filter != 'all'): ?>
+                            <span class="badge bg-primary">
+                                Status: <?= ucfirst($status_filter) ?>
+                                <a href="?<?= http_build_query(array_merge($_GET, ['status' => 'all'])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($customer_id_filter): 
+                                $customer_name = '';
+                                foreach($customers_list as $c) {
+                                    if($c['id'] == $customer_id_filter) {
+                                        $customer_name = $c['name'];
+                                        break;
+                                    }
+                                }
+                            ?>
+                            <span class="badge bg-info">
+                                Customer: <?= htmlspecialchars($customer_name) ?>
+                                <a href="?<?= http_build_query(array_merge($_GET, ['customer_id' => ''])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($search): ?>
+                            <span class="badge bg-secondary">
+                                Search: "<?= htmlspecialchars($search) ?>"
+                                <a href="?<?= http_build_query(array_merge($_GET, ['search' => ''])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
+                            <span class="badge bg-dark">
+                                Date: <?= date('d M Y', strtotime($start_date)) ?> - <?= date('d M Y', strtotime($end_date)) ?>
+                                <a href="?<?= http_build_query(array_merge($_GET, ['start_date' => date('Y-m-01'), 'end_date' => date('Y-m-d')])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
+                            </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Invoices Table -->
                 <div class="card shadow-sm">
                     <div class="card-body">
@@ -354,7 +424,24 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                 </thead>
                                 <tbody>
                                     <?php if (empty($invoices)): ?>
-                                    
+                                    <tr>
+                                        <td colspan="5" class="text-center py-5">
+                                            <div class="empty-state">
+                                                <i class="bx bx-receipt fs-1 text-muted mb-3"></i>
+                                                <h5>No invoices found</h5>
+                                                <p class="text-muted">
+                                                    <?php if ($search || $customer_id_filter || $status_filter != 'all' || $start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
+                                                        Try adjusting your filters or <a href="invoices.php">clear all filters</a>
+                                                    <?php else: ?>
+                                                        Start by creating your first invoice
+                                                    <?php endif; ?>
+                                                </p>
+                                                <a href="pos.php" class="btn btn-primary">
+                                                    <i class="bx bx-plus-circle me-1"></i> Create Invoice
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
                                     <?php else: ?>
                                     <?php 
                                     foreach ($invoices as $i => $inv):
@@ -463,81 +550,81 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                             </div>
                                         </td>
                                         <td class="text-center">
-    <div class="btn-group-vertical btn-group-sm" style="width: 100%;" role="group">
-        <div class="btn-group btn-group-sm mb-1" role="group">
-            <a href="invoice_print.php?invoice_id=<?= $inv['id'] ?>" target="_blank"
-               class="btn btn-outline-success btn-sm" title="Print Invoice">
-                <i class="bx bx-printer"></i>
-            </a>
-            <a href="invoice_view.php?invoice_id=<?= $inv['id'] ?>"
-               class="btn btn-outline-primary btn-sm" title="View Details">
-                <i class="bx bx-show"></i>
-            </a>
-            <?php if ($pending > 0): ?>
-            <a href="collect_payment.php?invoice_id=<?= $inv['id'] ?>"
-               class="btn btn-outline-warning btn-sm" title="Collect Payment">
-                <i class="bx bx-money"></i>
-            </a>
-            <?php endif; ?>
-            <a href="payment_history.php?invoice_id=<?= $inv['id'] ?>"
-               class="btn btn-outline-info btn-sm" title="Payment History">
-               <i class="bx bx-history"></i>
-            </a>
-        </div>
-        <div class="btn-group btn-group-sm" role="group">
-            <?php if ($has_whatsapp): ?>
-            <button type="button" 
-                    class="btn btn-outline-success btn-sm whatsapp-btn"
-                    data-invoice-id="<?= $inv['id'] ?>"
-                    data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
-                    data-customer-name="<?= htmlspecialchars($inv['customer_name'] ?? 'Customer') ?>"
-                    data-customer-phone="<?= htmlspecialchars($inv['customer_phone']) ?>"
-                    data-total="<?= $total ?>"
-                    title="Send Invoice via WhatsApp">
-                <i class="bx bxl-whatsapp"></i>
-            </button>
-            <?php else: ?>
-            <button type="button" 
-                    class="btn btn-outline-secondary btn-sm" 
-                    disabled
-                    title="Customer phone number not available">
-                <i class="bx bxl-whatsapp"></i>
-            </button>
-            <?php endif; ?>
-            
-            <?php if ($item_count > 0 && $can_process_returns): ?>
-            <button class="btn btn-outline-danger btn-sm return-btn"
-                    data-invoice-id="<?= $inv['id'] ?>"
-                    data-customer-id="<?= $inv['customer_id'] ?? 0 ?>"
-                    data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
-                    title="Return Items">
-                <i class="bx bx-undo"></i>
-            </button>
-            <?php endif; ?>
-            
-            <?php if (in_array($user_role, ['admin', 'shop_manager']) && !$has_returns): ?>
-            <button type="button" 
-                    class="btn btn-outline-danger btn-sm delete-invoice-btn" 
-                    title="Delete Invoice" 
-                    data-invoice-id="<?= $inv['id'] ?>" 
-                    data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
-                    data-total="₹<?= number_format($total, 2) ?>"
-                    data-has-returns="<?= $has_returns ? 'true' : 'false' ?>">
-                <i class="bx bx-trash"></i>
-            </button>
-            <?php endif; ?>
-        </div>
-    </div>
-    
-    <?php if ($has_returns): ?>
-    <div class="mt-2">
-        <a href="return_management.php?search_invoice=<?= urlencode($inv['invoice_number']) ?>" 
-           class="btn btn-sm btn-outline-danger w-100" title="View Returns">
-            <i class="bx bx-refresh me-1"></i> View Returns
-        </a>
-    </div>
-    <?php endif; ?>
-</td>
+                                            <div class="btn-group-vertical btn-group-sm" style="width: 100%;" role="group">
+                                                <div class="btn-group btn-group-sm mb-1" role="group">
+                                                    <a href="invoice_print.php?invoice_id=<?= $inv['id'] ?>" target="_blank"
+                                                       class="btn btn-outline-success btn-sm" title="Print Invoice">
+                                                        <i class="bx bx-printer"></i>
+                                                    </a>
+                                                    <a href="invoice_view.php?invoice_id=<?= $inv['id'] ?>"
+                                                       class="btn btn-outline-primary btn-sm" title="View Details">
+                                                        <i class="bx bx-show"></i>
+                                                    </a>
+                                                    <?php if ($pending > 0): ?>
+                                                    <a href="collect_payment.php?invoice_id=<?= $inv['id'] ?>"
+                                                       class="btn btn-outline-warning btn-sm" title="Collect Payment">
+                                                        <i class="bx bx-money"></i>
+                                                    </a>
+                                                    <?php endif; ?>
+                                                    <a href="payment_history.php?invoice_id=<?= $inv['id'] ?>"
+                                                       class="btn btn-outline-info btn-sm" title="Payment History">
+                                                       <i class="bx bx-history"></i>
+                                                    </a>
+                                                </div>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <?php if ($has_whatsapp): ?>
+                                                    <button type="button" 
+                                                            class="btn btn-outline-success btn-sm whatsapp-btn"
+                                                            data-invoice-id="<?= $inv['id'] ?>"
+                                                            data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
+                                                            data-customer-name="<?= htmlspecialchars($inv['customer_name'] ?? 'Customer') ?>"
+                                                            data-customer-phone="<?= htmlspecialchars($inv['customer_phone']) ?>"
+                                                            data-total="<?= $total ?>"
+                                                            title="Send Invoice via WhatsApp">
+                                                        <i class="bx bxl-whatsapp"></i>
+                                                    </button>
+                                                    <?php else: ?>
+                                                    <button type="button" 
+                                                            class="btn btn-outline-secondary btn-sm" 
+                                                            disabled
+                                                            title="Customer phone number not available">
+                                                        <i class="bx bxl-whatsapp"></i>
+                                                    </button>
+                                                    <?php endif; ?>
+                                                    
+                                                    <?php if ($item_count > 0 && $can_process_returns): ?>
+                                                    <button class="btn btn-outline-danger btn-sm return-btn"
+                                                            data-invoice-id="<?= $inv['id'] ?>"
+                                                            data-customer-id="<?= $inv['customer_id'] ?? 0 ?>"
+                                                            data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
+                                                            title="Return Items">
+                                                        <i class="bx bx-undo"></i>
+                                                    </button>
+                                                    <?php endif; ?>
+                                                    
+                                                    <?php if (in_array($user_role, ['admin', 'shop_manager']) && !$has_returns): ?>
+                                                    <button type="button" 
+                                                            class="btn btn-outline-danger btn-sm delete-invoice-btn" 
+                                                            title="Delete Invoice" 
+                                                            data-invoice-id="<?= $inv['id'] ?>" 
+                                                            data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
+                                                            data-total="₹<?= number_format($total, 2) ?>"
+                                                            data-has-returns="<?= $has_returns ? 'true' : 'false' ?>">
+                                                        <i class="bx bx-trash"></i>
+                                                    </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                            
+                                            <?php if ($has_returns): ?>
+                                            <div class="mt-2">
+                                                <a href="return_management.php?search_invoice=<?= urlencode($inv['invoice_number']) ?>" 
+                                                   class="btn btn-sm btn-outline-danger w-100" title="View Returns">
+                                                    <i class="bx bx-refresh me-1"></i> View Returns
+                                                </a>
+                                            </div>
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                     <?php endforeach; ?>
                                     <?php endif; ?>
@@ -748,6 +835,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
         </div>
     </div>
 </div>
+
 <!-- Delete Invoice Confirmation Modal -->
 <div class="modal fade" id="deleteInvoiceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -804,6 +892,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
         </div>
     </div>
 </div>
+
 <?php include('includes/rightbar.php') ?>
 <?php include('includes/scripts.php') ?>
 
@@ -835,6 +924,11 @@ $(document).ready(function() {
     });
 
     $('[data-bs-toggle="tooltip"]').tooltip();
+
+    // Auto-submit on status change (optional)
+    $('select[name="status"]').on('change', function() {
+        $('#filterForm').submit();
+    });
 
     // ==================== WHATSAPP BUTTON HANDLER ====================
     $('#invoicesTable tbody').on('click', '.whatsapp-btn', function(e) {
@@ -1028,159 +1122,7 @@ $(document).ready(function() {
             validateQuickReturnForm();
         });
     }
-    // ==================== DELETE INVOICE FUNCTIONALITY ====================
-// Toast notification function
-function showToast(message, type = 'success') {
-    const toastId = 'toast-' + Date.now();
-    const icon = type === 'success' ? 'bx-check-circle' : (type === 'error' ? 'bx-error-circle' : 'bx-info-circle');
-    const title = type === 'success' ? 'Success' : (type === 'error' ? 'Error' : 'Info');
-    
-    // Remove existing toasts if any
-    if ($('.toast-container').length === 0) {
-        $('body').append('<div class="toast-container"></div>');
-    }
-    
-    const toastHtml = `
-        <div id="${toastId}" class="custom-toast toast-${type}">
-            <div class="toast-header">
-                <div>
-                    <i class="bx ${icon} me-2" style="color: ${type === 'success' ? '#28a745' : '#dc3545'}"></i>
-                    <strong>${title}</strong>
-                </div>
-                <button type="button" class="toast-close" onclick="$(this).closest('.custom-toast').remove()">&times;</button>
-            </div>
-            <div class="toast-body">
-                ${message}
-            </div>
-        </div>
-    `;
-    
-    $('.toast-container').append(toastHtml);
-    
-    // Auto remove after 5 seconds
-    setTimeout(function() {
-        $('#' + toastId).fadeOut(300, function() {
-            $(this).remove();
-            if ($('.toast-container').children().length === 0) {
-                $('.toast-container').remove();
-            }
-        });
-    }, 5000);
-}
 
-// Handle delete button click
-$(document).on('click', '.delete-invoice-btn:not(:disabled)', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const invoiceId = $(this).data('invoice-id');
-    const invoiceNumber = $(this).data('invoice-number');
-    const total = $(this).data('total');
-    const hasReturns = $(this).data('has-returns') === 'true';
-    
-    if (hasReturns) {
-        showToast('Cannot delete invoice with existing returns', 'error');
-        return;
-    }
-    
-    // Show confirmation modal with details
-    $('#deleteInvoiceId').val(invoiceId);
-    $('#deleteInvoiceNumber').val(invoiceNumber);
-    $('#deleteInvoiceTotal').val(total);
-    $('#modalInvoiceNumber').text(invoiceNumber);
-    $('#modalInvoiceTotal').text(total);
-    
-    // Show the modal
-    const deleteModal = new bootstrap.Modal(document.getElementById('deleteInvoiceModal'));
-    deleteModal.show();
-});
-
-// Handle delete confirmation
-$('#confirmDeleteBtn').click(function() {
-    const invoiceId = $('#deleteInvoiceId').val();
-    const btn = $(this);
-    const originalText = btn.html();
-    
-    btn.html('<i class="bx bx-loader bx-spin me-2"></i> Deleting...');
-    btn.prop('disabled', true);
-    
-    $.ajax({
-        url: 'delete_invoice.php',
-        method: 'POST',
-        data: { invoice_id: invoiceId },
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                // Hide modal
-                bootstrap.Modal.getInstance(document.getElementById('deleteInvoiceModal')).hide();
-                
-                // Show success toast
-                showToast(response.message, 'success');
-                
-                // Remove the row from table
-                $(`tr[data-id="${invoiceId}"]`).fadeOut(500, function() {
-                    $(this).remove();
-                    
-                    // Update DataTable if using it
-                    if (typeof invoicesTable !== 'undefined') {
-                        invoicesTable.row($(this)).remove().draw();
-                    }
-                    
-                    // Update stats if needed (optional)
-                    updateStatsAfterDelete();
-                });
-            } else {
-                // Show error toast
-                showToast(response.message, 'error');
-                btn.html(originalText);
-                btn.prop('disabled', false);
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Delete error:', error);
-            let errorMessage = 'Failed to delete invoice. Please try again.';
-            
-            // Try to parse error response
-            try {
-                const response = JSON.parse(xhr.responseText);
-                if (response.message) {
-                    errorMessage = response.message;
-                }
-            } catch(e) {
-                // If response is not JSON, use default message
-            }
-            
-            showToast(errorMessage, 'error');
-            btn.html(originalText);
-            btn.prop('disabled', false);
-        }
-    });
-});
-
-// Reset modal on close
-$('#deleteInvoiceModal').on('hidden.bs.modal', function() {
-    $('#confirmDeleteBtn').html('<i class="bx bx-trash me-1"></i> Yes, Delete Invoice');
-    $('#confirmDeleteBtn').prop('disabled', false);
-});
-
-// Optional: Update stats after delete
-function updateStatsAfterDelete() {
-    $.ajax({
-        url: 'get_invoice_stats.php',
-        method: 'GET',
-        data: {
-            start_date: $('input[name="start_date"]').val(),
-            end_date: $('input[name="end_date"]').val(),
-            customer_id: $('select[name="customer_id"]').val()
-        },
-        success: function(response) {
-            if (response) {
-                // Update stats cards if you want to refresh them
-                // You'll need to parse and update the stats values
-            }
-        }
-    });
-}
     function validateQuickReturnForm() {
         let hasReturnItems = false;
         $('.return-qty-input').each(function() {
@@ -1438,6 +1380,161 @@ $('#returnForm').submit(function(e) {
     setTimeout(() => {
         $('.alert').fadeOut();
     }, 5000);
+
+    // ==================== DELETE INVOICE FUNCTIONALITY ====================
+    // Toast notification function
+    function showToast(message, type = 'success') {
+        const toastId = 'toast-' + Date.now();
+        const icon = type === 'success' ? 'bx-check-circle' : (type === 'error' ? 'bx-error-circle' : 'bx-info-circle');
+        const title = type === 'success' ? 'Success' : (type === 'error' ? 'Error' : 'Info');
+        
+        // Remove existing toasts if any
+        if ($('.toast-container').length === 0) {
+            $('body').append('<div class="toast-container"></div>');
+        }
+        
+        const toastHtml = `
+            <div id="${toastId}" class="custom-toast toast-${type}">
+                <div class="toast-header">
+                    <div>
+                        <i class="bx ${icon} me-2" style="color: ${type === 'success' ? '#28a745' : '#dc3545'}"></i>
+                        <strong>${title}</strong>
+                    </div>
+                    <button type="button" class="toast-close" onclick="$(this).closest('.custom-toast').remove()">&times;</button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            </div>
+        `;
+        
+        $('.toast-container').append(toastHtml);
+        
+        // Auto remove after 5 seconds
+        setTimeout(function() {
+            $('#' + toastId).fadeOut(300, function() {
+                $(this).remove();
+                if ($('.toast-container').children().length === 0) {
+                    $('.toast-container').remove();
+                }
+            });
+        }, 5000);
+    }
+
+    // Handle delete button click
+    $(document).on('click', '.delete-invoice-btn:not(:disabled)', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const invoiceId = $(this).data('invoice-id');
+        const invoiceNumber = $(this).data('invoice-number');
+        const total = $(this).data('total');
+        const hasReturns = $(this).data('has-returns') === 'true';
+        
+        if (hasReturns) {
+            showToast('Cannot delete invoice with existing returns', 'error');
+            return;
+        }
+        
+        // Show confirmation modal with details
+        $('#deleteInvoiceId').val(invoiceId);
+        $('#deleteInvoiceNumber').val(invoiceNumber);
+        $('#deleteInvoiceTotal').val(total);
+        $('#modalInvoiceNumber').text(invoiceNumber);
+        $('#modalInvoiceTotal').text(total);
+        
+        // Show the modal
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteInvoiceModal'));
+        deleteModal.show();
+    });
+
+    // Handle delete confirmation
+    $('#confirmDeleteBtn').click(function() {
+        const invoiceId = $('#deleteInvoiceId').val();
+        const btn = $(this);
+        const originalText = btn.html();
+        
+        btn.html('<i class="bx bx-loader bx-spin me-2"></i> Deleting...');
+        btn.prop('disabled', true);
+        
+        $.ajax({
+            url: 'delete_invoice.php',
+            method: 'POST',
+            data: { invoice_id: invoiceId },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Hide modal
+                    bootstrap.Modal.getInstance(document.getElementById('deleteInvoiceModal')).hide();
+                    
+                    // Show success toast
+                    showToast(response.message, 'success');
+                    
+                    // Remove the row from table
+                    $(`tr[data-id="${invoiceId}"]`).fadeOut(500, function() {
+                        $(this).remove();
+                        
+                        // Update DataTable if using it
+                        if (typeof invoicesTable !== 'undefined') {
+                            invoicesTable.row($(this)).remove().draw();
+                        }
+                        
+                        // Update stats if needed (optional)
+                        updateStatsAfterDelete();
+                    });
+                } else {
+                    // Show error toast
+                    showToast(response.message, 'error');
+                    btn.html(originalText);
+                    btn.prop('disabled', false);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Delete error:', error);
+                let errorMessage = 'Failed to delete invoice. Please try again.';
+                
+                // Try to parse error response
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.message) {
+                        errorMessage = response.message;
+                    }
+                } catch(e) {
+                    // If response is not JSON, use default message
+                }
+                
+                showToast(errorMessage, 'error');
+                btn.html(originalText);
+                btn.prop('disabled', false);
+            }
+        });
+    });
+
+    // Reset modal on close
+    $('#deleteInvoiceModal').on('hidden.bs.modal', function() {
+        $('#confirmDeleteBtn').html('<i class="bx bx-trash me-1"></i> Yes, Delete Invoice');
+        $('#confirmDeleteBtn').prop('disabled', false);
+    });
+
+    // Optional: Update stats after delete
+    function updateStatsAfterDelete() {
+        $.ajax({
+            url: 'get_invoice_stats.php',
+            method: 'GET',
+            data: {
+                start_date: $('input[name="start_date"]').val(),
+                end_date: $('input[name="end_date"]').val(),
+                customer_id: $('select[name="customer_id"]').val(),
+                status: $('select[name="status"]').val()
+            },
+            success: function(response) {
+                if (response) {
+                    // Update stats cards if you want to refresh them
+                    // You'll need to parse and update the stats values
+                }
+            }
+        });
+    }
 });
 </script>
 
@@ -1509,6 +1606,10 @@ $('#returnForm').submit(function(e) {
 .whatsapp-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+/* Active filters styling */
+.badge a:hover {
+    opacity: 0.8;
 }
 @media (max-width: 992px) {
     .page-title-box .d-flex {

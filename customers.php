@@ -82,13 +82,90 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             exit();
         }
     } 
-    // Remove the delete_customer action completely
+    // FIXED: Delete customer action with improved handling
+    elseif ($action == 'delete_customer') {
+        $customer_id = (int)($_POST['id'] ?? 0);
+        
+        if (!$customer_id) {
+            $_SESSION['error'] = "Invalid customer ID!";
+            header('Location: customers.php');
+            exit();
+        }
+        
+        try {
+            // Start transaction
+            $pdo->beginTransaction();
+            
+            // First, check if customer has any invoices
+            $check_stmt = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE customer_id = ? AND business_id = ?");
+            $check_stmt->execute([$customer_id, $business_id]);
+            $invoice_count = $check_stmt->fetchColumn();
+            
+            if ($invoice_count > 0) {
+                // Customer has invoices - prevent deletion
+                $_SESSION['error'] = "Cannot delete customer with existing invoices. Consider marking them as inactive instead.";
+                $pdo->rollBack();
+                header('Location: customers.php');
+                exit();
+            } else {
+                // Customer has no invoices - safe to delete permanently
+                
+                // Delete related records
+                try {
+                    // Delete from customer_points
+                    $delete_points = $pdo->prepare("DELETE FROM customer_points WHERE customer_id = ? AND business_id = ?");
+                    $delete_points->execute([$customer_id, $business_id]);
+                } catch (PDOException $e) {
+                    // Table might not exist, continue
+                }
+                
+                try {
+                    // Delete from point_transactions
+                    $delete_pt = $pdo->prepare("DELETE FROM point_transactions WHERE customer_id = ? AND business_id = ?");
+                    $delete_pt->execute([$customer_id, $business_id]);
+                } catch (PDOException $e) {
+                    // Table might not exist, continue
+                }
+                
+                try {
+                    // Delete from customer_addresses
+                    $delete_addresses = $pdo->prepare("DELETE FROM customer_addresses WHERE customer_id = ?");
+                    $delete_addresses->execute([$customer_id]);
+                } catch (PDOException $e) {
+                    // Table might not exist, continue
+                }
+                
+                // Delete the customer
+                $delete_stmt = $pdo->prepare("DELETE FROM customers WHERE id = ? AND business_id = ?");
+                $delete_stmt->execute([$customer_id, $business_id]);
+                
+                if ($delete_stmt->rowCount() > 0) {
+                    $_SESSION['success'] = "Customer deleted successfully!";
+                } else {
+                    $_SESSION['error'] = "Customer not found or already deleted!";
+                }
+            }
+            
+            $pdo->commit();
+            header('Location: customers.php');
+            exit();
+            
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            $_SESSION['error'] = "Database error: " . $e->getMessage();
+            header('Location: customers.php');
+            exit();
+        }
+    }
 }
 
 // ==================== SEARCH AND FILTER ====================
 $search = trim($_GET['search'] ?? '');
 $customer_type = $_GET['customer_type'] ?? '';
+// MODIFIED: Add is_active check if you're using soft delete
 $where = "WHERE c.business_id = ?";
+// Uncomment next line if you have is_active column for soft delete
+// $where .= " AND (c.is_active = 1 OR c.is_active IS NULL)";
 $params = [$business_id];
 if ($search) {
     $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.gstin LIKE ? OR c.address LIKE ?)";
@@ -168,6 +245,10 @@ $type_stats = $type_stats_stmt->fetch();
 <!doctype html>
 <html lang="en">
 <?php include('includes/head.php') ?>
+<head>
+    <!-- Make sure SweetAlert2 is included -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
 <body data-sidebar="dark">
 <div id="layout-wrapper">
     <?php include('includes/topbar.php') ?>
@@ -360,7 +441,15 @@ $type_stats = $type_stats_stmt->fetch();
                                 </thead>
                                 <tbody>
                                     <?php if (empty($customers)): ?>
-                                    
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5">
+                                            <div class="empty-state">
+                                                <i class="bx bx-user-x display-1 text-muted"></i>
+                                                <h5 class="mt-3">No Customers Found</h5>
+                                                <p class="text-muted">Click "Add Customer" to create your first customer.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
                                     <?php else: ?>
                                     <?php foreach ($customers as $c): 
                                         // Calculate total outstanding (manual + invoice)
@@ -564,6 +653,17 @@ $type_stats = $type_stats_stmt->fetch();
                                                     <i class="bx bxl-whatsapp"></i>
                                                 </button>
                                                 <?php endif; ?>
+                                                
+                                                <!-- FIXED: Delete Button with SweetAlert -->
+                                                <button class="btn btn-outline-danger delete-customer-btn"
+                                                        data-id="<?= $c['id'] ?>"
+                                                        data-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
+                                                        data-invoice-count="<?= $c['total_invoices'] ?>"
+                                                        data-bs-toggle="tooltip" 
+                                                        title="<?= $c['total_invoices'] > 0 ? 'Cannot delete - has invoices' : 'Delete Customer' ?>"
+                                                        <?= $c['total_invoices'] > 0 ? 'disabled' : '' ?>>
+                                                    <i class="bx bx-trash"></i>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -706,14 +806,19 @@ $type_stats = $type_stats_stmt->fetch();
 <?php include('includes/rightbar.php') ?>
 <?php include('includes/scripts.php') ?>
 
+<!-- Hidden form for delete submission -->
+<form method="POST" action="customers.php" id="deleteForm" style="display: none;">
+    <input type="hidden" name="action" value="delete_customer">
+    <input type="hidden" name="id" id="deleteId" value="">
+</form>
+
 <script>
 $(document).ready(function() {
-     // Initialize DataTable
+    // Initialize DataTable
     $('#customersTable').DataTable({
         responsive: true,
-       pageLength: 25,
-ordering: false,
-
+        pageLength: 25,
+        ordering: false,
         dom: "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
              "<'row'<'col-sm-12'tr>>" +
              "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
@@ -730,7 +835,7 @@ ordering: false,
     
     $('[data-bs-toggle="tooltip"]').tooltip();
 
-    // Edit customer button (FIXED)
+    // Edit customer button
     $(document).on('click', '.edit-customer-btn', function () {
         $('#editId').val($(this).data('id'));
         $('#custName').val($(this).data('name'));
@@ -752,10 +857,47 @@ ordering: false,
         modal.show();
     });
 
-    // View customer details (FIXED)
+    // View customer details
     $(document).on('click', '.view-customer-btn', function () {
         const customerId = $(this).data('id');
         window.location.href = 'customer_details.php?id=' + customerId;
+    });
+
+    // FIXED: SweetAlert Delete customer button handler
+    $(document).on('click', '.delete-customer-btn:not(:disabled)', function (e) {
+        e.preventDefault();
+        
+        const customerId = $(this).data('id');
+        const customerName = $(this).data('name');
+        const invoiceCount = $(this).data('invoice-count');
+        
+        if (invoiceCount > 0) {
+            Swal.fire({
+                title: 'Cannot Delete',
+                text: `This customer has ${invoiceCount} invoice(s). Deletion is not allowed. Consider marking them as inactive instead.`,
+                icon: 'warning',
+                confirmButtonColor: '#3085d6',
+                confirmButtonText: 'OK'
+            });
+            return;
+        }
+        
+        Swal.fire({
+            title: 'Are you sure?',
+            text: `You are about to delete customer "${customerName}". This action cannot be undone!`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Set the delete ID and submit the form
+                $('#deleteId').val(customerId);
+                $('#deleteForm').submit();
+            }
+        });
     });
 
     // Re-enable tooltips after table redraw
@@ -839,10 +981,14 @@ ordering: false,
 .credit-progress .progress-bar {
     transition: width 0.3s ease;
 }
+.btn-outline-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 @media (max-width: 768px) {
     .btn-group { flex-wrap: wrap; gap: 3px; }
     .btn-group .btn { flex: 1; min-width: 40px; padding: 0.375rem 0.5rem; }
 }
 </style>
 </body>
-</html>
+</html> 

@@ -38,7 +38,7 @@ unset($_SESSION['success'], $_SESSION['error'], $_SESSION['form_data']);
 $search = trim($_GET['search'] ?? '');
 $shop_filter = $_GET['shop_filter'] ?? '';
 $status_filter = $_GET['status'] ?? 'all';
-$outstanding_filter = $_GET['outstanding'] ?? 'all'; // New filter for outstanding status
+$outstanding_filter = $_GET['outstanding'] ?? 'all';
 
 $where = "WHERE m.business_id = :business_id";
 $params = ['business_id' => $business_id];
@@ -91,6 +91,7 @@ $base_sql = "
     FROM manufacturers m
     LEFT JOIN shops s ON m.shop_id = s.id
     $where
+    GROUP BY m.id  /* Add GROUP BY to ensure unique manufacturers */
 ";
 
 $stmt = $pdo->prepare($base_sql);
@@ -127,6 +128,13 @@ foreach ($manufacturers as &$manufacturer) {
     
     $manufacturer['net_outstanding'] = max(0, $manufacturer['net_outstanding']); // Ensure non-negative
 }
+
+// Create a unique array based on manufacturer ID before applying filter
+$unique_manufacturers = [];
+foreach ($manufacturers as $manufacturer) {
+    $unique_manufacturers[$manufacturer['id']] = $manufacturer;
+}
+$manufacturers = array_values($unique_manufacturers);
 
 // Apply outstanding filter after calculation
 if ($outstanding_filter !== 'all') {
@@ -589,49 +597,49 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                                     </button>
 
                                                     <?php if ($net_outstanding > 0): ?>
-    <?php
-    // Get the first pending purchase for this supplier to redirect to its payment page
-    $pending_purchase_stmt = $pdo->prepare("
-        SELECT id, purchase_number 
-        FROM purchases 
-        WHERE manufacturer_id = ? AND payment_status != 'paid' 
-        ORDER BY purchase_date ASC 
-        LIMIT 1
-    ");
-    $pending_purchase_stmt->execute([$m['id']]);
-    $pending_purchase = $pending_purchase_stmt->fetch();
-    
-    if ($pending_purchase): 
-    ?>
-        <a href="purchase_payment.php?id=<?= $pending_purchase['id'] ?>" 
-           class="btn btn-sm btn-outline-success"
-           title="Make Payment for PO: <?= htmlspecialchars($pending_purchase['purchase_number']) ?>">
-            <i class="bx bx-money"></i>
-        </a>
-    <?php else: ?>
-        <button class="btn btn-sm btn-outline-success make-payment-btn"
-                data-id="<?= $m['id'] ?>"
-                data-name="<?= htmlspecialchars($m['name']) ?>"
-                data-outstanding-type="<?= htmlspecialchars($outstanding_type) ?>"
-                data-outstanding-amount="<?= (float)$outstanding_amount ?>"
-                data-purchase-balance="<?= (float)$purchase_balance ?>"
-                data-net-outstanding="<?= (float)$net_outstanding ?>"
-                title="Make Payment">
-            <i class="bx bx-money"></i>
-        </button>
-    <?php endif; ?>
-<?php else: ?>
-    <button class="btn btn-sm btn-outline-success make-payment-btn"
-            data-id="<?= $m['id'] ?>"
-            data-name="<?= htmlspecialchars($m['name']) ?>"
-            data-outstanding-type="<?= htmlspecialchars($outstanding_type) ?>"
-            data-outstanding-amount="<?= (float)$outstanding_amount ?>"
-            data-purchase-balance="<?= (float)$purchase_balance ?>"
-            data-net-outstanding="<?= (float)$net_outstanding ?>"
-            title="Make Payment">
-        <i class="bx bx-money"></i>
-    </button>
-<?php endif; ?>
+                                                        <?php
+                                                        // Get the first pending purchase for this supplier to redirect to its payment page
+                                                        $pending_purchase_stmt = $pdo->prepare("
+                                                            SELECT id, purchase_number 
+                                                            FROM purchases 
+                                                            WHERE manufacturer_id = ? AND payment_status != 'paid' 
+                                                            ORDER BY purchase_date ASC 
+                                                            LIMIT 1
+                                                        ");
+                                                        $pending_purchase_stmt->execute([$m['id']]);
+                                                        $pending_purchase = $pending_purchase_stmt->fetch();
+                                                        
+                                                        if ($pending_purchase): 
+                                                        ?>
+                                                            <a href="purchase_payment.php?id=<?= $pending_purchase['id'] ?>" 
+                                                               class="btn btn-sm btn-outline-success"
+                                                               title="Make Payment for PO: <?= htmlspecialchars($pending_purchase['purchase_number']) ?>">
+                                                                <i class="bx bx-money"></i>
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <button class="btn btn-sm btn-outline-success make-payment-btn"
+                                                                    data-id="<?= $m['id'] ?>"
+                                                                    data-name="<?= htmlspecialchars($m['name']) ?>"
+                                                                    data-outstanding-type="<?= htmlspecialchars($outstanding_type) ?>"
+                                                                    data-outstanding-amount="<?= (float)$outstanding_amount ?>"
+                                                                    data-purchase-balance="<?= (float)$purchase_balance ?>"
+                                                                    data-net-outstanding="<?= (float)$net_outstanding ?>"
+                                                                    title="Make Payment">
+                                                                <i class="bx bx-money"></i>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    <?php else: ?>
+                                                        <button class="btn btn-sm btn-outline-success make-payment-btn"
+                                                                data-id="<?= $m['id'] ?>"
+                                                                data-name="<?= htmlspecialchars($m['name']) ?>"
+                                                                data-outstanding-type="<?= htmlspecialchars($outstanding_type) ?>"
+                                                                data-outstanding-amount="<?= (float)$outstanding_amount ?>"
+                                                                data-purchase-balance="<?= (float)$purchase_balance ?>"
+                                                                data-net-outstanding="<?= (float)$net_outstanding ?>"
+                                                                title="Make Payment">
+                                                            <i class="bx bx-money"></i>
+                                                        </button>
+                                                    <?php endif; ?>
 
                                                     <a href="purchases.php?manufacturer=<?= $m['id'] ?>"
                                                        class="btn btn-sm btn-outline-info"
@@ -691,7 +699,6 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
     </div>
 </div>
 
-
 <!-- Add/Edit Modal -->
 <div class="modal fade" id="addManufacturerModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl">
@@ -706,7 +713,6 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
             <form method="POST" action="manufacturers_process.php" id="manufacturerForm" enctype="multipart/form-data">
                 <input type="hidden" name="id" id="editId" value="">
                 <div class="modal-body">
-                    <!-- ... (keep existing tabs content) ... -->
                     <ul class="nav nav-tabs nav-tabs-custom" id="supplierTabs" role="tablist">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic-tab-pane" type="button" role="tab">
@@ -1184,6 +1190,28 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
 let contactCount = 1;
 
 $(document).ready(function() {
+    // Destroy existing DataTable instance if it exists
+    if ($.fn.DataTable.isDataTable('#suppliersTable')) {
+        $('#suppliersTable').DataTable().destroy();
+    }
+    
+    // Initialize DataTable with proper settings
+    $('#suppliersTable').DataTable({
+        responsive: true,
+        pageLength: 25,
+        lengthMenu: [10, 25, 50, 100],
+        order: [[0, 'asc']],
+        columnDefs: [
+            { orderable: false, targets: [8] },
+            { searchable: false, targets: [8] }
+        ],
+        // Disable DataTable's built-in search to avoid conflicts with our filter form
+        searching: false,
+        // Ensure no duplicate rows
+        retrieve: true,
+        paging: true,
+        info: true
+    });
 
     // Tooltips
     $('[data-bs-toggle="tooltip"]').tooltip();
@@ -1205,20 +1233,6 @@ $(document).ready(function() {
         width: '100%',
         dropdownParent: $('#makePaymentModal')
     });
-
-    // DataTables init
-    if ($.fn.DataTable) {
-        $('#suppliersTable').DataTable({
-            responsive: true,
-            pageLength: 25,
-            lengthMenu: [10, 25, 50, 100],
-            order: [[0, 'asc']],
-            columnDefs: [
-                { orderable: false, targets: [8] },
-                { searchable: false, targets: [8] }
-            ]
-        });
-    }
 
     // SweetAlert messages
     <?php if ($success): ?>
@@ -1426,215 +1440,81 @@ $(document).ready(function() {
     });
 
     // Make Payment button handler
-    // Make Payment button handler
-$(document).on('click', '.make-payment-btn', function() {
-    const id = $(this).data('id');
-    const name = $(this).data('name');
-    const purchaseBalance = parseFloat($(this).data('purchase-balance') || 0);
-    const outstandingAmount = parseFloat($(this).data('outstanding-amount') || 0);
-    const outstandingType = String($(this).data('outstanding-type') || 'none');
-    const netOutstanding = parseFloat($(this).data('net-outstanding') || 0);
+    $(document).on('click', '.make-payment-btn', function() {
+        const id = $(this).data('id');
+        const name = $(this).data('name');
+        const purchaseBalance = parseFloat($(this).data('purchase-balance') || 0);
+        const outstandingAmount = parseFloat($(this).data('outstanding-amount') || 0);
+        const outstandingType = String($(this).data('outstanding-type') || 'none');
+        const netOutstanding = parseFloat($(this).data('net-outstanding') || 0);
 
-    // Calculate net payable based on outstanding type
-    let netPayable = purchaseBalance;
-    if (outstandingType === 'debit') {
-        netPayable += outstandingAmount; // We owe them, add to payable
-    } else if (outstandingType === 'credit') {
-        netPayable = Math.max(0, purchaseBalance - outstandingAmount); // They owe us, subtract from payable
-    }
-
-    $('#paymentForm')[0].reset();
-    $('#paymentManufacturerId').val(id);
-    $('#paymentSupplierName').text(name);
-    
-    // Update summary
-    $('#summaryPurchaseDue').text('₹' + purchaseBalance.toFixed(2));
-    $('#summaryOutstandingDue').text('₹' + outstandingAmount.toFixed(2) + (outstandingType !== 'none' ? ' (' + outstandingType + ')' : ''));
-    $('#summaryNetPayable').text('₹' + netPayable.toFixed(2));
-    
-    $('#maxAmountHint').text('Maximum payable: ₹' + netPayable.toFixed(2));
-    $('#paymentAmount').attr('max', netPayable);
-
-    // Check if only outstanding exists (no purchase balance)
-    if (purchaseBalance === 0 && outstandingAmount > 0 && outstandingType === 'debit') {
-        // Outstanding only payment - hide purchase selection section
-        $('#pendingPurchasesContent').hide();
-        $('#pendingPurchasesLoading').hide();
-        $('#purchasesTableFooter').hide();
-        $('.card:has(#pendingPurchasesContent)').hide(); // Hide the pending purchases card
-        
-        // Update modal title to indicate outstanding payment
-        $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Pay Outstanding to: ' + name);
-        
-        // Show outstanding only message
-        const outstandingMessage = `
-            <div class="alert alert-info mb-3">
-                <i class="bx bx-info-circle me-2"></i>
-                This supplier has a debit outstanding of <strong>₹${outstandingAmount.toFixed(2)}</strong> with no pending purchase orders.
-                The payment will be applied directly to the outstanding balance.
-            </div>
-        `;
-        
-        // Insert message after summary card
-        $('.card.mb-4:first').after(outstandingMessage);
-        
-        // Auto-select "outstanding only" mode in the background
-        $('#paymentForm').data('payment-mode', 'outstanding-only');
-        
-    } else {
-        // Normal payment with purchases - show purchase selection
-        $('.card:has(#pendingPurchasesContent)').show();
-        $('#pendingPurchasesContent').hide();
-        $('#purchasesTableFooter').hide();
-        
-        // Remove any outstanding message if exists
-        $('.alert-info').remove();
-        
-        // Update modal title back to normal
-        $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: ' + name);
-        
-        // Load pending purchases
-        loadPendingPurchases(id);
-    }
-    
-    // Select All purchases checkbox
-    $('#selectAllPurchases').prop('checked', false);
-
-    const modal = new bootstrap.Modal(document.getElementById('makePaymentModal'));
-    modal.show();
-});
-
-// Process payment button - updated to handle outstanding-only payments
-$('#processPaymentBtn').on('click', function() {
-    const selectedPurchases = [];
-    $('.purchase-checkbox:checked').each(function() {
-        selectedPurchases.push($(this).val());
-    });
-
-    const amount = parseFloat($('#paymentAmount').val() || 0);
-    const maxAmount = parseFloat($('#paymentAmount').attr('max') || 0);
-    const paymentMode = $('#paymentForm').data('payment-mode') || 'normal';
-    
-    // For outstanding-only mode, we don't need selected purchases
-    if (paymentMode !== 'outstanding-only' && selectedPurchases.length === 0) {
-        Swal.fire({
-            icon: 'error',
-            title: 'No Selection',
-            text: 'Please select at least one purchase order to pay'
-        });
-        return;
-    }
-
-    if (amount <= 0) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Invalid Amount',
-            text: 'Please enter a valid payment amount'
-        });
-        return;
-    }
-
-    if (amount > maxAmount) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Amount Exceeded',
-            text: 'Payment amount cannot exceed ₹' + maxAmount.toFixed(2)
-        });
-        return;
-    }
-
-    // Show loading
-    Swal.fire({
-        title: 'Processing Payment',
-        html: 'Please wait...',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
+        // Calculate net payable based on outstanding type
+        let netPayable = purchaseBalance;
+        if (outstandingType === 'debit') {
+            netPayable += outstandingAmount; // We owe them, add to payable
+        } else if (outstandingType === 'credit') {
+            netPayable = Math.max(0, purchaseBalance - outstandingAmount); // They owe us, subtract from payable
         }
-    });
 
-    // Prepare data for AJAX
-    const postData = {
-        manufacturer_id: $('#paymentManufacturerId').val(),
-        payment_date: $('input[name="payment_date"]').val(),
-        payment_method: $('select[name="payment_method"]').val(),
-        amount: amount,
-        reference_no: $('input[name="reference_no"]').val(),
-        notes: $('textarea[name="notes"]').val()
-    };
-    
-    // Only add purchases if in normal mode and purchases selected
-    if (paymentMode !== 'outstanding-only' && selectedPurchases.length > 0) {
-        postData.purchases = selectedPurchases;
-        postData.outstanding_amount = 0; // No outstanding portion in this case
-    } else {
-        // Outstanding-only payment
-        postData.purchases = [];
-        postData.outstanding_amount = amount; // Entire amount goes to outstanding
-    }
+        $('#paymentForm')[0].reset();
+        $('#paymentManufacturerId').val(id);
+        $('#paymentSupplierName').text(name);
+        
+        // Update summary
+        $('#summaryPurchaseDue').text('₹' + purchaseBalance.toFixed(2));
+        $('#summaryOutstandingDue').text('₹' + outstandingAmount.toFixed(2) + (outstandingType !== 'none' ? ' (' + outstandingType + ')' : ''));
+        $('#summaryNetPayable').text('₹' + netPayable.toFixed(2));
+        
+        $('#maxAmountHint').text('Maximum payable: ₹' + netPayable.toFixed(2));
+        $('#paymentAmount').attr('max', netPayable);
 
-    // Process payment via AJAX
-    $.ajax({
-        url: 'process_supplier_payment.php',
-        method: 'POST',
-        data: postData,
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success!',
-                    text: response.message,
-                    timer: 1500,
-                    showConfirmButton: false
-                }).then(() => {
-                    const modalEl = document.getElementById('makePaymentModal');
-                    const modal = bootstrap.Modal.getInstance(modalEl);
-                    if (modal) modal.hide();
-                    location.reload();
-                });
-            } else {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: response.message
-                });
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('AJAX Error:', error);
-            console.error('Response:', xhr.responseText);
-            Swal.fire({
-                icon: 'error',
-                title: 'Error!',
-                text: 'Failed to process payment. Please try again.'
-            });
+        // Check if only outstanding exists (no purchase balance)
+        if (purchaseBalance === 0 && outstandingAmount > 0 && outstandingType === 'debit') {
+            // Outstanding only payment - hide purchase selection section
+            $('#pendingPurchasesContent').hide();
+            $('#pendingPurchasesLoading').hide();
+            $('#purchasesTableFooter').hide();
+            $('.card:has(#pendingPurchasesContent)').hide(); // Hide the pending purchases card
+            
+            // Update modal title to indicate outstanding payment
+            $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Pay Outstanding to: ' + name);
+            
+            // Show outstanding only message
+            const outstandingMessage = `
+                <div class="alert alert-info mb-3">
+                    <i class="bx bx-info-circle me-2"></i>
+                    This supplier has a debit outstanding of <strong>₹${outstandingAmount.toFixed(2)}</strong> with no pending purchase orders.
+                    The payment will be applied directly to the outstanding balance.
+                </div>
+            `;
+            
+            // Insert message after summary card
+            $('.card.mb-4:first').after(outstandingMessage);
+            
+            // Auto-select "outstanding only" mode in the background
+            $('#paymentForm').data('payment-mode', 'outstanding-only');
+            
+        } else {
+            // Normal payment with purchases - show purchase selection
+            $('.card:has(#pendingPurchasesContent)').show();
+            $('#pendingPurchasesContent').hide();
+            $('#purchasesTableFooter').hide();
+            
+            // Remove any outstanding message if exists
+            $('.alert-info').remove();
+            
+            // Update modal title back to normal
+            $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: ' + name);
+            
+            // Load pending purchases
+            loadPendingPurchases(id);
         }
-    });
-});
+        
+        // Select All purchases checkbox
+        $('#selectAllPurchases').prop('checked', false);
 
-// Clear outstanding message when modal is hidden
-$('#makePaymentModal').on('hidden.bs.modal', function () {
-    $('.alert-info').remove();
-    $('#pendingPurchasesContent').show();
-    $('.card:has(#pendingPurchasesContent)').show();
-    $('#paymentForm').removeData('payment-mode');
-    
-    // Reset modal title
-    $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: <span id="paymentSupplierName"></span>');
-});
-
-    // Select all purchases
-    $(document).on('change', '#selectAllPurchases', function() {
-        $('.purchase-checkbox').prop('checked', $(this).is(':checked'));
-        updateSelectedTotal();
-    });
-
-    // Individual purchase checkbox
-    $(document).on('change', '.purchase-checkbox', function() {
-        updateSelectedTotal();
-        const allChecked = $('.purchase-checkbox:checked').length === $('.purchase-checkbox').length;
-        $('#selectAllPurchases').prop('checked', allChecked);
+        const modal = new bootstrap.Modal(document.getElementById('makePaymentModal'));
+        modal.show();
     });
 
     // Process payment button
@@ -1646,8 +1526,10 @@ $('#makePaymentModal').on('hidden.bs.modal', function () {
 
         const amount = parseFloat($('#paymentAmount').val() || 0);
         const maxAmount = parseFloat($('#paymentAmount').attr('max') || 0);
+        const paymentMode = $('#paymentForm').data('payment-mode') || 'normal';
         
-        if (selectedPurchases.length === 0) {
+        // For outstanding-only mode, we don't need selected purchases
+        if (paymentMode !== 'outstanding-only' && selectedPurchases.length === 0) {
             Swal.fire({
                 icon: 'error',
                 title: 'No Selection',
@@ -1684,19 +1566,31 @@ $('#makePaymentModal').on('hidden.bs.modal', function () {
             }
         });
 
+        // Prepare data for AJAX
+        const postData = {
+            manufacturer_id: $('#paymentManufacturerId').val(),
+            payment_date: $('input[name="payment_date"]').val(),
+            payment_method: $('select[name="payment_method"]').val(),
+            amount: amount,
+            reference_no: $('input[name="reference_no"]').val(),
+            notes: $('textarea[name="notes"]').val()
+        };
+        
+        // Only add purchases if in normal mode and purchases selected
+        if (paymentMode !== 'outstanding-only' && selectedPurchases.length > 0) {
+            postData.purchases = selectedPurchases;
+            postData.outstanding_amount = 0; // No outstanding portion in this case
+        } else {
+            // Outstanding-only payment
+            postData.purchases = [];
+            postData.outstanding_amount = amount; // Entire amount goes to outstanding
+        }
+
         // Process payment via AJAX
         $.ajax({
             url: 'process_supplier_payment.php',
             method: 'POST',
-            data: {
-                manufacturer_id: $('#paymentManufacturerId').val(),
-                payment_date: $('input[name="payment_date"]').val(),
-                payment_method: $('select[name="payment_method"]').val(),
-                amount: amount,
-                reference_no: $('input[name="reference_no"]').val(),
-                notes: $('textarea[name="notes"]').val(),
-                purchases: selectedPurchases
-            },
+            data: postData,
             dataType: 'json',
             success: function(response) {
                 if (response.success) {
@@ -1730,6 +1624,30 @@ $('#makePaymentModal').on('hidden.bs.modal', function () {
                 });
             }
         });
+    });
+
+    // Clear outstanding message when modal is hidden
+    $('#makePaymentModal').on('hidden.bs.modal', function () {
+        $('.alert-info').remove();
+        $('#pendingPurchasesContent').show();
+        $('.card:has(#pendingPurchasesContent)').show();
+        $('#paymentForm').removeData('payment-mode');
+        
+        // Reset modal title
+        $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: <span id="paymentSupplierName"></span>');
+    });
+
+    // Select all purchases
+    $(document).on('change', '#selectAllPurchases', function() {
+        $('.purchase-checkbox').prop('checked', $(this).is(':checked'));
+        updateSelectedTotal();
+    });
+
+    // Individual purchase checkbox
+    $(document).on('change', '.purchase-checkbox', function() {
+        updateSelectedTotal();
+        const allChecked = $('.purchase-checkbox:checked').length === $('.purchase-checkbox').length;
+        $('#selectAllPurchases').prop('checked', allChecked);
     });
 
     // Primary checkbox change
@@ -1832,7 +1750,7 @@ function updateSelectedTotal() {
     }
 }
 
-// ----- Contact Management Functions (keep existing) -----
+// ----- Contact Management Functions -----
 function addNewContact(contactData = null) {
     const index = contactCount++;
     const isPrimary = contactData ? contactData.is_primary : false;
@@ -2056,7 +1974,7 @@ function toggleOutstandingAmount() {
         flex-direction: row;
         flex-wrap: wrap;
     }
-}
+}  
 </style>
 
 </body>

@@ -94,12 +94,10 @@ if ($current_business_id) {
 }
 
 // ==================== CHECK FOR 1-MONTH MODAL ====================
-// This will show a modal exactly 30 days before expiry
 $show_one_month_modal = false;
 if ($one_month_before && !isset($_COOKIE['cloud_one_month_shown'])) {
     $show_one_month_modal = true;
-    // Set cookie to show modal only once
-    setcookie('cloud_one_month_shown', '1', time() + (86400 * 30), '/'); // 30 days
+    setcookie('cloud_one_month_shown', '1', time() + (86400 * 30), '/');
 }
 
 $today      = date('Y-m-d');
@@ -112,45 +110,50 @@ $today_returns = $month_returns = 0;
 $today_net_revenue = $month_net_revenue = 0;
 $yesterday_gross_revenue = $yesterday_gross_sales = $yesterday_returns = $yesterday_net_revenue = 0;
 $shop_stock_value = $low_stock_items = $today_expenses = $pending_transfers = 0;
-$pending_invoices = $pending_payments = $pending_requirements = $active_customers = 0;
+$pending_invoices_count = $pending_invoices_amount = $pending_payments = $pending_requirements = $active_customers = 0;
 $total_products = $out_of_stock = 0;
 $recent_sales = [];
 $trend = [];
+
+// Manufacturer outstanding stats
+$total_supplier_outstanding = 0;
+$total_credit = 0;
+$total_debit = 0;
+$total_purchase_paid = 0;
 
 // ==================== KPIs (Only if a business is selected) ====================
 if ($current_business_id) {
 
     // Helper function to execute revenue query with proper shop filter
     function getRevenueData($pdo, $dateCondition, $dateParams, $current_business_id, $current_shop_id, $is_admin) {
+        $shopSql = "";
+        $params = array_merge($dateParams, [$current_business_id]);
 
-    $shopSql = "";
-    $params = array_merge($dateParams, [$current_business_id]);
+        if (!$is_admin) {
+            $shopSql = " AND i.shop_id = ?";
+            $params[] = $current_shop_id;
+        }
 
-    if (!$is_admin) {
-        $shopSql = " AND i.shop_id = ?";
-        $params[] = $current_shop_id;
+        $sql = "
+            SELECT
+                COUNT(*) AS cnt,
+                COALESCE(SUM(i.total), 0) AS gross_rev,
+                COALESCE(SUM(r.returns), 0) AS returns
+            FROM invoices i
+            LEFT JOIN (
+                SELECT invoice_id, SUM(return_qty * unit_price) AS returns
+                FROM invoice_items
+                GROUP BY invoice_id
+            ) r ON r.invoice_id = i.id
+            WHERE $dateCondition
+              AND i.business_id = ?
+              $shopSql
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
-
-    $sql = "
-        SELECT
-            COUNT(*) AS cnt,
-            COALESCE(SUM(i.total), 0) AS gross_rev,
-            COALESCE(SUM(r.returns), 0) AS returns
-        FROM invoices i
-        LEFT JOIN (
-            SELECT invoice_id, SUM(return_qty * unit_price) AS returns
-            FROM invoice_items
-            GROUP BY invoice_id
-        ) r ON r.invoice_id = i.id
-        WHERE $dateCondition
-          AND i.business_id = ?
-          $shopSql
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
-}
 
     // 1. Today's Gross & Net Revenue
     $todayData = getRevenueData(
@@ -161,9 +164,9 @@ if ($current_business_id) {
         $current_shop_id,
         $is_admin
     );
-    $today_gross_sales = $todayData['cnt'] ?? 0;
-    $today_gross_revenue = $todayData['gross_rev'] ?? 0;
-    $today_returns = $todayData['returns'] ?? 0;
+    $today_gross_sales = (int)($todayData['cnt'] ?? 0);
+    $today_gross_revenue = (float)($todayData['gross_rev'] ?? 0);
+    $today_returns = (float)($todayData['returns'] ?? 0);
     $today_net_revenue = $today_gross_revenue - $today_returns;
 
     // 2. Yesterday's
@@ -175,9 +178,9 @@ if ($current_business_id) {
         $current_shop_id,
         $is_admin
     );
-    $yesterday_gross_sales = $yesterdayData['cnt'] ?? 0;
-    $yesterday_gross_revenue = $yesterdayData['gross_rev'] ?? 0;
-    $yesterday_returns = $yesterdayData['returns'] ?? 0;
+    $yesterday_gross_sales = (int)($yesterdayData['cnt'] ?? 0);
+    $yesterday_gross_revenue = (float)($yesterdayData['gross_rev'] ?? 0);
+    $yesterday_returns = (float)($yesterdayData['returns'] ?? 0);
     $yesterday_net_revenue = $yesterday_gross_revenue - $yesterday_returns;
 
     // 3. This Month
@@ -189,15 +192,15 @@ if ($current_business_id) {
         $current_shop_id,
         $is_admin
     );
-    $month_gross_sales = $monthData['cnt'] ?? 0;
-    $month_gross_revenue = $monthData['gross_rev'] ?? 0;
-    $month_returns = $monthData['returns'] ?? 0;
+    $month_gross_sales = (int)($monthData['cnt'] ?? 0);
+    $month_gross_revenue = (float)($monthData['gross_rev'] ?? 0);
+    $month_returns = (float)($monthData['returns'] ?? 0);
     $month_net_revenue = $month_gross_revenue - $month_returns;
 
-    // 4. Pending Invoices
+    // 4. Pending Invoices - EXACTLY like invoices.php
     $sql = "SELECT
-                COUNT(DISTINCT i.id) AS cnt,
-                COALESCE(SUM(i.pending_amount), 0) AS amt
+                COUNT(*) as count,
+                COALESCE(SUM(i.pending_amount), 0) as pending
             FROM invoices i
             WHERE i.pending_amount > 0
               AND i.business_id = ?";
@@ -208,59 +211,54 @@ if ($current_business_id) {
     }
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $row = $stmt->fetch();
-    $pending_invoices = $row['cnt'] ?? 0;
-    $pending_invoices_amount = $row['amt'] ?? 0;
-// 5. Current Stock Value (for current shop only)
-$sql = "SELECT COALESCE(SUM(ps.quantity * p.stock_price), 0)
-        FROM product_stocks ps
-        JOIN products p ON ps.product_id = p.id
-        WHERE ps.business_id = ?
-          AND p.is_active = 1
-          AND ps.shop_id = ?";  // Added shop filter
+    $pending_invoice_data = $stmt->fetch();
+    $pending_invoices_count = (int)($pending_invoice_data['count'] ?? 0);
+    $pending_invoices_amount = (float)($pending_invoice_data['pending'] ?? 0);
 
-$params = [$current_business_id, $current_shop_id];
+    // 5. Current Stock Value (for current shop only)
+    $sql = "SELECT COALESCE(SUM(ps.quantity * p.stock_price), 0)
+            FROM product_stocks ps
+            JOIN products p ON ps.product_id = p.id
+            WHERE ps.business_id = ?
+              AND p.is_active = 1
+              AND ps.shop_id = ?";
+    $params = [$current_business_id, $current_shop_id];
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $shop_stock_value = (float)$stmt->fetchColumn();
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$shop_stock_value = $stmt->fetchColumn();
-// 6. Low Stock Items (for current shop only)
-$sql = "SELECT COUNT(DISTINCT p.id)
-        FROM products p
-        LEFT JOIN product_stocks ps ON p.id = ps.product_id 
-            AND ps.shop_id = ?  -- Only for current shop
-        WHERE p.is_active = 1
-          AND p.business_id = ?
-          AND ps.quantity IS NOT NULL  -- Must have stock record
-          AND ps.quantity < p.min_stock_level
-          AND ps.quantity > 0";  // Greater than zero but below min
+    // 6. Low Stock Items (for current shop only)
+    $sql = "SELECT COUNT(DISTINCT p.id)
+            FROM products p
+            LEFT JOIN product_stocks ps ON p.id = ps.product_id 
+                AND ps.shop_id = ?
+            WHERE p.is_active = 1
+              AND p.business_id = ?
+              AND ps.quantity IS NOT NULL
+              AND ps.quantity < p.min_stock_level
+              AND ps.quantity > 0";
+    $params = [$current_shop_id, $current_business_id];
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $low_stock_items = (int)$stmt->fetchColumn();
 
-$params = [$current_shop_id, $current_business_id];
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$low_stock_items = $stmt->fetchColumn();
-   // In the dashboard.php file, replace the out_of_stock query with:
-
-// 7. Out of Stock (for current shop only - matching products page logic)
-$sql = "SELECT COUNT(DISTINCT p.id)
-        FROM products p
-        LEFT JOIN product_stocks ps ON p.id = ps.product_id 
-            AND ps.shop_id = ?  -- Only join for the current shop
-        WHERE p.is_active = 1
-          AND p.business_id = ?
-          AND (ps.quantity IS NULL OR ps.quantity = 0)";  // Products with no stock record OR zero quantity
-
-$params = [$current_shop_id, $current_business_id];
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$out_of_stock = $stmt->fetchColumn();
+    // 7. Out of Stock (for current shop only)
+    $sql = "SELECT COUNT(DISTINCT p.id)
+            FROM products p
+            LEFT JOIN product_stocks ps ON p.id = ps.product_id 
+                AND ps.shop_id = ?
+            WHERE p.is_active = 1
+              AND p.business_id = ?
+              AND (ps.quantity IS NULL OR ps.quantity = 0)";
+    $params = [$current_shop_id, $current_business_id];
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $out_of_stock = (int)$stmt->fetchColumn();
 
     // 8. Total Active Products
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM products WHERE is_active = 1 AND business_id = ?");
     $stmt->execute([$current_business_id]);
-    $total_products = $stmt->fetchColumn();
+    $total_products = (int)$stmt->fetchColumn();
 
     // 9. Today's Expenses
     $sql = "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE date = ? AND business_id = ?";
@@ -271,20 +269,9 @@ $out_of_stock = $stmt->fetchColumn();
     }
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $today_expenses = $stmt->fetchColumn();
+    $today_expenses = (float)$stmt->fetchColumn();
 
-    // 10. Pending Stock Transfers
-    $sql = "SELECT COUNT(*) FROM stock_transfers WHERE status IN ('pending', 'approved', 'in_transit') AND business_id = ?";
-    $params = [$current_business_id];
-    if (!$is_admin) {
-        $sql .= " AND (from_shop_id = ? OR to_shop_id = ?)";
-        $params = array_merge($params, [$current_shop_id, $current_shop_id]);
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $pending_transfers = $stmt->fetchColumn();
-
-    // 11. Active Customers (last 30 days)
+    // 10. Active Customers
     $sql = "SELECT COUNT(DISTINCT customer_id)
             FROM invoices
             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
@@ -296,9 +283,9 @@ $out_of_stock = $stmt->fetchColumn();
     }
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $active_customers = $stmt->fetchColumn();
+    $active_customers = (int)$stmt->fetchColumn();
 
-    // 12. Pending Requirements
+    // 11. Pending Requirements (for field executives)
     if ($is_field_executive || $is_admin) {
         if ($is_field_executive) {
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM store_requirements WHERE requirement_status = 'pending' AND business_id = ? AND field_executive_id = ?");
@@ -307,15 +294,76 @@ $out_of_stock = $stmt->fetchColumn();
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM store_requirements WHERE requirement_status = 'pending' AND business_id = ?");
             $stmt->execute([$current_business_id]);
         }
-        $pending_requirements = $stmt->fetchColumn();
+        $pending_requirements = (int)$stmt->fetchColumn();
     }
 
-    // 13. Pending Supplier Payments
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM purchases WHERE payment_status IN ('unpaid', 'partial') AND business_id = ?");
-    $stmt->execute([$current_business_id]);
-    $pending_payments = $stmt->fetchColumn();
+    // 12. Purchase Stats - EXACTLY like purchases.php
+    $sql = "SELECT 
+                COALESCE(SUM(total_amount - paid_amount), 0) as pending_amount,
+                COALESCE(SUM(paid_amount), 0) as total_paid,
+                COUNT(*) as total_orders,
+                SUM(CASE WHEN payment_status IN ('unpaid', 'partial') THEN 1 ELSE 0 END) as pending_orders
+            FROM purchases 
+            WHERE business_id = ?";
+    $params = [$current_business_id];
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $purchase_stats = $stmt->fetch();
+    $pending_payments = (float)($purchase_stats['pending_amount'] ?? 0);
+    $total_paid_purchases = (float)($purchase_stats['total_paid'] ?? 0);
+    $total_purchase_orders = (int)($purchase_stats['total_orders'] ?? 0);
+    $pending_purchase_orders = (int)($purchase_stats['pending_orders'] ?? 0);
 
-    // 14. Recent Sales
+    // 13. Total Supplier Outstanding - EXACTLY like manufacturers.php
+    $manufacturer_sql = "
+        SELECT 
+            m.id,
+            m.initial_outstanding_amount,
+            m.initial_outstanding_type,
+            COALESCE((SELECT SUM(total_amount - paid_amount) FROM purchases WHERE manufacturer_id = m.id AND payment_status != 'paid'), 0) as purchase_balance
+        FROM manufacturers m
+        WHERE m.business_id = ? AND m.is_active = 1
+    ";
+    $stmt = $pdo->prepare($manufacturer_sql);
+    $stmt->execute([$current_business_id]);
+    $manufacturers = $stmt->fetchAll();
+    
+    $total_supplier_outstanding = 0;
+    $total_credit = 0;
+    $total_debit = 0;
+    
+    foreach ($manufacturers as $m) {
+        $purchase_balance = (float)($m['purchase_balance'] ?? 0);
+        $initial_outstanding = (float)($m['initial_outstanding_amount'] ?? 0);
+        $initial_type = $m['initial_outstanding_type'] ?? 'none';
+        
+        // Calculate net outstanding based on type
+        if ($initial_type === 'credit') {
+            // Credit: Supplier owes us - reduces what we owe
+            $net = max(0, $purchase_balance - $initial_outstanding);
+            $total_credit += $initial_outstanding;
+        } elseif ($initial_type === 'debit') {
+            // Debit: We owe supplier - increases what we owe
+            $net = $purchase_balance + $initial_outstanding;
+            $total_debit += $initial_outstanding;
+        } else {
+            $net = $purchase_balance;
+        }
+        $total_supplier_outstanding += $net;
+    }
+
+    // 14. Pending Stock Transfers
+    $sql = "SELECT COUNT(*) FROM stock_transfers WHERE status IN ('pending', 'approved', 'in_transit') AND business_id = ?";
+    $params = [$current_business_id];
+    if (!$is_admin) {
+        $sql .= " AND (from_shop_id = ? OR to_shop_id = ?)";
+        $params = array_merge($params, [$current_shop_id, $current_shop_id]);
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $pending_transfers = (int)$stmt->fetchColumn();
+
+    // 15. Recent Sales
     $sql = "SELECT
                 i.invoice_number,
                 i.total AS gross_total,
@@ -338,7 +386,7 @@ $out_of_stock = $stmt->fetchColumn();
     $stmt->execute($params);
     $recent_sales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 15. Monthly Trend
+    // 16. Monthly Trend
     $trend = [];
     for ($i = 5; $i >= 0; $i--) {
         $start = date('Y-m-01', strtotime("-$i month"));
@@ -381,6 +429,228 @@ $out_of_stock = $stmt->fetchColumn();
 <!doctype html>
 <html lang="en">
 <?php $page_title = "Dashboard - " . htmlspecialchars($current_shop_name); include 'includes/head.php'; ?>
+<style>
+/* Invoice-style cards - no borders, only shadow */
+.card {
+    border: none !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    height: calc(100% - 1rem);
+    margin-bottom: 1rem;
+}
+
+.card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.card-body {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+}
+
+/* Stats card specific styles */
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.stats-card .text-muted {
+    color: rgba(255,255,255,0.8) !important;
+}
+
+/* Avatar styles from invoices.php */
+.avatar-sm {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
+.avatar-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+/* Badge styles */
+.badge.bg-opacity-10 {
+    opacity: 0.9;
+}
+
+/* Gradient backgrounds */
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #5b73e8 0%, #8b9cea 100%) !important;
+}
+
+.bg-gradient-success {
+    background: linear-gradient(135deg, #28a745 0%, #34ce57 100%) !important;
+}
+
+.bg-gradient-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%) !important;
+}
+
+.bg-gradient-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #ff6b6b 100%) !important;
+}
+
+.bg-gradient-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #3ab9d1 100%) !important;
+}
+
+.bg-gradient-purple {
+    background: linear-gradient(135deg, #6f42c1 0%, #9b6fe0 100%) !important;
+}
+
+/* Purple button */
+.btn-outline-purple {
+    color: #6f42c1;
+    border-color: #6f42c1;
+}
+
+.btn-outline-purple:hover {
+    color: #fff;
+    background-color: #6f42c1;
+    border-color: #6f42c1;
+}
+
+/* Link styling */
+a.text-decoration-none {
+    text-decoration: none !important;
+}
+
+a.text-decoration-none .card {
+    color: inherit;
+}
+
+/* Timer styles */
+.timer-segment {
+    display: inline-block;
+    text-align: center;
+    min-width: 40px;
+}
+
+.timer-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+    line-height: 1;
+}
+
+.timer-label {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.timer-box {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 5px;
+    min-width: 70px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.timer-box span {
+    display: block;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: white;
+    line-height: 1;
+}
+
+.timer-box small {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.modal .timer-box {
+    background: rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.modal .timer-box span {
+    color: #333;
+}
+
+.modal .timer-box small {
+    color: #666;
+}
+
+/* List group */
+.list-group-item:first-child {
+    border-top: 0;
+}
+
+.list-group-item:last-child {
+    border-bottom: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .timer-segment {
+        min-width: 30px;
+    }
+    
+    .timer-value {
+        font-size: 1.2rem;
+    }
+    
+    .timer-box {
+        min-width: 50px;
+        padding: 8px 3px;
+    }
+    
+    .timer-box span {
+        font-size: 1.4rem;
+    }
+    
+    .timer-box small {
+        font-size: 0.7rem;
+    }
+    
+    .avatar-sm {
+        width: 40px;
+        height: 40px;
+    }
+    
+    h3 {
+        font-size: 1.3rem !important;
+    }
+    
+    h2 {
+        font-size: 1.6rem !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .timer-countdown .d-flex {
+        flex-wrap: wrap;
+    }
+    
+    .timer-segment {
+        margin-bottom: 5px;
+    }
+    
+    .modal-dialog {
+        margin: 10px;
+    }
+    
+    .modal-body {
+        padding: 15px !important;
+    }
+    
+    .timer-box {
+        min-width: 60px;
+        margin-bottom: 10px;
+    }
+}
+</style>
+</head>
 <body data-sidebar="dark">
 <div id="layout-wrapper">
     <?php include 'includes/topbar.php'; ?>
@@ -480,10 +750,10 @@ $out_of_stock = $stmt->fetchColumn();
                 </div>
                 <?php endif; ?>
 
-                <!-- Modern Welcome Header with Timer -->
+                <!-- Modern Welcome Header -->
                 <div class="row mb-4">
                     <div class="col-12">
-                        <div class="card bg-gradient-primary border-0 shadow-sm overflow-hidden">
+                        <div class="card bg-gradient-primary text-white shadow-sm overflow-hidden">
                             <div class="card-body p-3 p-md-4">
                                 <div class="row align-items-center">
                                     <div class="col-md-<?= $show_timer_in_header ? '6' : '8' ?>">
@@ -494,8 +764,8 @@ $out_of_stock = $stmt->fetchColumn();
                                                 </div>
                                             </div>
                                             <div class="flex-grow-1 ms-3">
-                                                <h3 class="text-white mb-1">Welcome back, <?= htmlspecialchars($user_name) ?>!</h3>
-                                                <p class="text-white mb-0">
+                                                <h3 class="mb-1">Welcome back, <?= htmlspecialchars($user_name) ?>!</h3>
+                                                <p class="mb-0 opacity-75">
                                                     <i class="bx bx-building me-1"></i> <?= htmlspecialchars($current_business_name) ?>
                                                     <span class="mx-2">•</span>
                                                     <i class="bx bx-store me-1"></i> <?= htmlspecialchars($current_shop_name) ?>
@@ -503,53 +773,48 @@ $out_of_stock = $stmt->fetchColumn();
                                                     <i class="bx bx-calendar me-1"></i> <?= date('l, F j, Y') ?>
                                                     <span class="mx-2">•</span>
                                                     <i class="bx bx-time me-1"></i> <?= date('h:i A') ?>
-                                                    <?php if ($today_returns > 0): ?>
-                                                    <span class="mx-2">•</span>
-                                                    <i class="bx bx-undo me-1 text-warning"></i> Returns: ₹<?= number_format($today_returns, 0) ?>
-                                                    <?php endif; ?>
                                                 </p>
                                             </div>
                                         </div>
                                     </div>
                                     
                                     <?php if ($show_timer_in_header): ?>
-                                    <div class="col-md-<?= $show_timer_in_header ? '6' : '4' ?> mt-3 mt-md-0">
-                                        <div class="cloud-timer-container bg-white bg-opacity-10 rounded-3 p-3 border border-white border-opacity-25">
+                                    <div class="col-md-6 mt-3 mt-md-0">
+                                        <div class="bg-white bg-opacity-10 rounded-3 p-3 border border-white border-opacity-25">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div class="d-flex align-items-center">
                                                     <div class="avatar-sm rounded-circle bg-white bg-opacity-25 p-2 me-3">
-                                                        <i class="bx bx-cloud fs-4 text-white"></i>
+                                                        <i class="bx bx-cloud fs-4"></i>
                                                     </div>
                                                     <div>
-                                                        <h6 class="text-white mb-0">Cloud Expires in</h6>
-                                                        <p class="text-white mb-0 small">
+                                                        <h6 class="mb-0">Cloud Expires in</h6>
+                                                        <p class="mb-0 small opacity-75">
                                                             Plan: <?= htmlspecialchars($cloud_plan) ?> | 
                                                             Date: <?= date('d M Y', strtotime($cloud_expiry_date)) ?>
                                                         </p>
-                                                        <p class="text-white mb-0 small">
+                                                        <p class="mb-0 small opacity-75">
                                                             <i class="bx bx-time me-1"></i> Until 11:59 PM
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div class="text-end">
-                                                    <!-- Timer Display -->
                                                     <div class="timer-countdown" id="headerTimer">
                                                         <div class="d-flex justify-content-end">
                                                             <div class="timer-segment me-1">
                                                                 <span class="timer-value days"><?= str_pad($cloud_days_left, 2, '0', STR_PAD_LEFT) ?></span>
-                                                                <small class="timer-label text-white">D</small>
+                                                                <small class="timer-label">D</small>
                                                             </div>
                                                             <div class="timer-segment me-1">
                                                                 <span class="timer-value hours">00</span>
-                                                                <small class="timer-label text-white">H</small>
+                                                                <small class="timer-label">H</small>
                                                             </div>
                                                             <div class="timer-segment me-1">
                                                                 <span class="timer-value minutes">00</span>
-                                                                <small class="timer-label text-white">M</small>
+                                                                <small class="timer-label">M</small>
                                                             </div>
                                                             <div class="timer-segment">
                                                                 <span class="timer-value seconds">00</span>
-                                                                <small class="timer-label text-white">S</small>
+                                                                <small class="timer-label">S</small>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -558,19 +823,6 @@ $out_of_stock = $stmt->fetchColumn();
                                                     </a>
                                                 </div>
                                             </div>
-                                            <!-- Progress Bar -->
-                                            <?php if ($cloud_days_left <= 10): ?>
-                                            <div class="mt-2">
-                                                <div class="progress bg-white bg-opacity-25" style="height: 4px;">
-                                                    <div class="progress-bar bg-<?= $cloud_days_left <= 3 ? 'danger' : ($cloud_days_left <= 7 ? 'warning' : 'info') ?>" 
-                                                         role="progressbar" 
-                                                         style="width: <?= ((30 - $cloud_days_left) / 30) * 100 ?>%"></div>
-                                                </div>
-                                                <small class="text-white d-block mt-1 text-center">
-                                                    <?= $cloud_days_left ?> full day<?= $cloud_days_left != 1 ? 's' : '' ?> remaining
-                                                </small>
-                                            </div>
-                                            <?php endif; ?>
                                         </div>
                                     </div>
                                     <?php endif; ?>
@@ -579,184 +831,199 @@ $out_of_stock = $stmt->fetchColumn();
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-12">
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <h5 class="card-title mb-3">Quick Actions</h5>
-            <div class="d-flex flex-wrap gap-2">
-                <?php if ($is_seller || $is_admin): ?>
-                <a href="pos.php" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1">
-                    <i class="bx bx-plus fs-6"></i>
-                    <span>New Sale</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_seller || $is_admin): ?>
-                <a href="invoices.php" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
-                    <i class="bx bx-receipt fs-6"></i>
-                    <span>Invoices</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_stock_manager || $is_admin): ?>
-                <a href="stock_transfers.php" class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1">
-                    <i class="bx bx-transfer fs-6"></i>
-                    <span>Stock Transfer</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_stock_manager || $is_admin): ?>
-                <a href="products.php" class="btn btn-sm btn-outline-info d-flex align-items-center gap-1">
-                    <i class="bx bx-package fs-6"></i>
-                    <span>Products</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_seller || $is_admin): ?>
-                <a href="customers.php" class="btn btn-sm btn-outline-dark d-flex align-items-center gap-1">
-                    <i class="bx bx-user fs-6"></i>
-                    <span>Customers</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_field_executive || $is_admin): ?>
-                <a href="store_visit_form.php" class="btn btn-sm btn-outline-purple d-flex align-items-center gap-1">
-                    <i class="bx bx-car fs-6"></i>
-                    <span>Store Visit</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($is_seller || $is_admin): ?>
-                <a href="return_management.php" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
-                    <i class="bx bx-undo fs-6"></i>
-                    <span>Returns</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if ($cloud_renewal_notification): ?>
-                <a href="cloud_renewal.php" class="btn btn-sm btn-outline-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?> d-flex align-items-center gap-1">
-                    <i class="bx bx-cloud fs-6"></i>
-                    <span>Renew Cloud</span>
-                    <span class="badge bg-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?> ms-1">
-                        <?= $cloud_days_left ?>
-                    </span>
-                </a>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
-                <!-- Quick Stats Cards -->
-                <div class="row g-3 mb-4">
-                    <?php if ($is_seller || $is_admin): ?>
-                    <!-- Sales Metrics with Returns -->
-                    <div class="col-xl-3 col-md-6">
-                        <div class="card card-hover border-start border-primary border-3 shadow-sm">
+
+                <!-- Quick Actions -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow-sm">
                             <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-3">Quick Actions</h5>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <?php if ($is_seller || $is_admin): ?>
+                                    <a href="pos.php" class="btn btn-sm btn-outline-primary">
+                                        <i class="bx bx-plus me-1"></i>New Sale
+                                    </a>
+                                    <a href="invoices.php" class="btn btn-sm btn-outline-success">
+                                        <i class="bx bx-receipt me-1"></i>Invoices
+                                    </a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($is_stock_manager || $is_admin): ?>
+                                    <a href="stock_transfers.php" class="btn btn-sm btn-outline-warning">
+                                        <i class="bx bx-transfer me-1"></i>Stock Transfer
+                                    </a>
+                                    <a href="products.php" class="btn btn-sm btn-outline-info">
+                                        <i class="bx bx-package me-1"></i>Products
+                                    </a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($is_admin || $is_shop_manager): ?>
+                                    <a href="manufacturers.php" class="btn btn-sm btn-outline-purple">
+                                        <i class="bx bx-buildings me-1"></i>Suppliers
+                                    </a>
+                                    <a href="purchases.php" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bx bx-shopping-bag me-1"></i>Purchases
+                                    </a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($is_seller || $is_admin): ?>
+                                    <a href="customers.php" class="btn btn-sm btn-outline-dark">
+                                        <i class="bx bx-user me-1"></i>Customers
+                                    </a>
+                                    <a href="return_management.php" class="btn btn-sm btn-outline-danger">
+                                        <i class="bx bx-undo me-1"></i>Returns
+                                    </a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($cloud_renewal_notification): ?>
+                                    <a href="cloud_renewal.php" class="btn btn-sm btn-outline-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?>">
+                                        <i class="bx bx-cloud me-1"></i>Renew Cloud
+                                        <span class="badge bg-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?> ms-1"><?= $cloud_days_left ?></span>
+                                    </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Cards - Invoice Style -->
+                <div class="row g-3 mb-4">
+                    <!-- Today's Net Revenue -->
+                    <div class="col-xl-3 col-md-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                         <h6 class="text-muted mb-1">Today's Net Revenue</h6>
                                         <h3 class="mb-0 text-primary">₹<?= number_format($today_net_revenue, 0) ?></h3>
-                                        <small class="text-muted">
-                                            <i class="bx bx-trending-up text-success me-1"></i>
-                                            <?= $today_gross_sales ?> sales
-                                            <?php if ($today_returns > 0): ?>
-                                            <br>
-                                           
-                                            <?php endif; ?>
-                                        </small>
                                     </div>
-                                    <div class="avatar-sm flex-shrink-0">
+                                    <div class="avatar-sm">
                                         <span class="avatar-title bg-primary bg-opacity-10 rounded-circle fs-3">
                                             <i class="bx bx-rupee text-primary"></i>
                                         </span>
                                     </div>
                                 </div>
-                                <?php if ($yesterday_net_revenue > 0): ?>
-                                <div class="mt-3">
-                                    <?php 
-                                    $growth = $yesterday_net_revenue > 0 ? (($today_net_revenue - $yesterday_net_revenue) / $yesterday_net_revenue * 100) : 0;
-                                    $class = $growth >= 0 ? 'text-success' : 'text-danger';
-                                    ?>
-                                    <small class="<?= $class ?>">
-                                        <i class="bx bx-<?= $growth >= 0 ? 'up-arrow-alt' : 'down-arrow-alt' ?> me-1"></i>
-                                        <?= number_format(abs($growth), 1) ?>% from yesterday
-                                    </small>
+                                <div class="mt-auto">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1">
+                                                <i class="bx bx-trending-up me-1"></i><?= $today_gross_sales ?> sales
+                                            </span>
+                                            <?php if ($today_returns > 0): ?>
+                                            <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1 ms-1">
+                                                <i class="bx bx-undo me-1"></i>₹<?= number_format($today_returns, 0) ?>
+                                            </span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($yesterday_net_revenue > 0): ?>
+                                        <?php 
+                                        $growth = $yesterday_net_revenue > 0 ? (($today_net_revenue - $yesterday_net_revenue) / $yesterday_net_revenue * 100) : 0;
+                                        $class = $growth >= 0 ? 'success' : 'danger';
+                                        ?>
+                                        <small class="text-<?= $class ?>">
+                                            <i class="bx bx-<?= $growth >= 0 ? 'up-arrow-alt' : 'down-arrow-alt' ?>"></i>
+                                            <?= number_format(abs($growth), 1) ?>%
+                                        </small>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
-                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Monthly Net Revenue -->
                     <div class="col-xl-3 col-md-6">
-                        <div class="card card-hover border-start border-success border-3 shadow-sm">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                         <h6 class="text-muted mb-1">Monthly Net Revenue</h6>
                                         <h3 class="mb-0 text-success">₹<?= number_format($month_net_revenue, 0) ?></h3>
-                                        <small class="text-muted">
-                                            <i class="bx bx-calendar me-1"></i>
-                                            <?= $month_gross_sales ?> sales this month
-                                            <?php if ($month_returns > 0): ?>
-                                            <br>
-                                           
-                                            <?php endif; ?>
-                                        </small>
                                     </div>
-                                    <div class="avatar-sm flex-shrink-0">
+                                    <div class="avatar-sm">
                                         <span class="avatar-title bg-success bg-opacity-10 rounded-circle fs-3">
                                             <i class="bx bx-trending-up text-success"></i>
                                         </span>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-xl-3 col-md-6">
-                        <div class="card card-hover border-start border-warning border-3 shadow-sm">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-muted mb-1">Pending Invoices</h6>
-                                        <h3 class="mb-0 text-warning"><?= $pending_invoices ?></h3>
-                                        <small class="text-muted">
-                                            ₹<?= number_format($pending_invoices_amount, 0) ?> pending amount
-                                        </small>
-                                    </div>
-                                    <div class="avatar-sm flex-shrink-0">
-                                        <span class="avatar-title bg-warning bg-opacity-10 rounded-circle fs-3">
-                                            <i class="bx bx-time text-warning"></i>
-                                        </span>
+                                <div class="mt-auto">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="badge bg-success bg-opacity-10 text-success px-2 py-1">
+                                                <i class="bx bx-calendar me-1"></i><?= $month_gross_sales ?> sales
+                                            </span>
+                                            <?php if ($month_returns > 0): ?>
+                                            <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1 ms-1">
+                                                <i class="bx bx-undo me-1"></i>₹<?= number_format($month_returns, 0) ?>
+                                            </span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <small class="text-muted"><?= date('F Y') ?></small>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Pending Amount - EXACTLY like invoices.php pending stats card -->
                     <div class="col-xl-3 col-md-6">
-                        <div class="card card-hover border-start border-info border-3 shadow-sm">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="text-muted mb-1">Active Customers</h6>
-                                        <h3 class="mb-0 text-info"><?= $active_customers ?></h3>
-                                        <small class="text-muted">
-                                            <i class="bx bx-user-check me-1"></i>
-                                            Last 30 days
-                                        </small>
+                        <a href="invoices.php?status=pending" class="text-decoration-none">
+                            <div class="card shadow-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h6 class="text-muted mb-1">Pending Amount</h6>
+                                            <h3 class="mb-0 text-warning">₹<?= number_format($pending_invoices_amount, 0) ?></h3>
+                                        </div>
+                                        <div class="avatar-sm">
+                                            <span class="avatar-title bg-warning bg-opacity-10 rounded-circle fs-3">
+                                                <i class="bx bx-time text-warning"></i>
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div class="avatar-sm flex-shrink-0">
-                                        <span class="avatar-title bg-info bg-opacity-10 rounded-circle fs-3">
-                                            <i class="bx bx-user-circle text-info"></i>
+                                    <div class="mt-auto">
+                                        <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1">
+                                            <i class="bx bx-receipt me-1"></i><?= $pending_invoices_count ?> invoice<?= $pending_invoices_count != 1 ? 's' : '' ?> pending
                                         </span>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </a>
                     </div>
-                    <?php endif; ?>
+
+                    <!-- Supplier Outstanding -->
+                    <div class="col-xl-3 col-md-6">
+                        <a href="manufacturers.php?outstanding=has_outstanding" class="text-decoration-none">
+                            <div class="card shadow-sm h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h6 class="text-muted mb-1">Supplier Outstanding</h6>
+                                            <h3 class="mb-0 text-danger">₹<?= number_format($total_supplier_outstanding, 0) ?></h3>
+                                        </div>
+                                        <div class="avatar-sm">
+                                            <span class="avatar-title bg-danger bg-opacity-10 rounded-circle fs-3">
+                                                <i class="bx bx-money text-danger"></i>
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-auto">
+                                        <?php if ($total_credit > 0): ?>
+                                        <span class="badge bg-success bg-opacity-10 text-success px-2 py-1 me-1">
+                                            <i class="bx bx-up-arrow-alt me-1"></i>Credit: ₹<?= number_format($total_credit, 0) ?>
+                                        </span>
+                                        <?php endif; ?>
+                                        <?php if ($total_debit > 0): ?>
+                                        <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1">
+                                            <i class="bx bx-down-arrow-alt me-1"></i>Debit: ₹<?= number_format($total_debit, 0) ?>
+                                        </span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Stock Metrics Row -->
@@ -767,38 +1034,44 @@ $out_of_stock = $stmt->fetchColumn();
                             <div class="card-body">
                                 <h6 class="mb-3 text-muted">Stock Overview</h6>
                                 <div class="row g-3">
-                                    <div class="col-md-3">
-                                        <div class="card bg-light border-0">
+                                    <div class="col-xl-3 col-md-6">
+                                        <div class="card bg-light border-0 h-100">
                                             <div class="card-body text-center">
                                                 <h2 class="text-primary mb-1">₹<?= number_format($shop_stock_value, 0) ?></h2>
                                                 <small class="text-muted">Total Stock Value</small>
                                             </div>
                                         </div>
                                     </div>
-                                    <a href="products.php?search=&category=&hsn=&stock=low" class="col-md-3">
-                                        <div class="card bg-light border-0">
-                                            <div class="card-body text-center">
-                                                <h2 class="<?= $low_stock_items > 0 ? 'text-warning' : 'text-success' ?> mb-1"><?= $low_stock_items ?></h2>
-                                                <small class="text-muted">Low Stock Items</small>
+                                    <div class="col-xl-3 col-md-6">
+                                        <a href="products.php?stock=low" class="text-decoration-none">
+                                            <div class="card bg-light border-0 h-100">
+                                                <div class="card-body text-center">
+                                                    <h2 class="<?= $low_stock_items > 0 ? 'text-warning' : 'text-success' ?> mb-1"><?= $low_stock_items ?></h2>
+                                                    <small class="text-muted">Low Stock Items</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </a>
-                                    <a href="products.php?search=&category=&hsn=&stock=out" class="col-md-3">
-                                        <div class="card bg-light border-0">
-                                            <div class="card-body text-center">
-                                                <h2 class="<?= $out_of_stock > 0 ? 'text-danger' : 'text-success' ?> mb-1"><?= $out_of_stock ?></h2>
-                                                <small class="text-muted">Out of Stock</small>
+                                        </a>
+                                    </div>
+                                    <div class="col-xl-3 col-md-6">
+                                        <a href="products.php?stock=out" class="text-decoration-none">
+                                            <div class="card bg-light border-0 h-100">
+                                                <div class="card-body text-center">
+                                                    <h2 class="<?= $out_of_stock > 0 ? 'text-danger' : 'text-success' ?> mb-1"><?= $out_of_stock ?></h2>
+                                                    <small class="text-muted">Out of Stock</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </a>
-                                    <a href="products.php" class="col-md-3">
-                                        <div class="card bg-light border-0">
-                                            <div class="card-body text-center">
-                                                <h2 class="text-info mb-1"><?= $total_products ?></h2>
-                                                <small class="text-muted">Active Products</small>
+                                        </a>
+                                    </div>
+                                    <div class="col-xl-3 col-md-6">
+                                        <a href="products.php" class="text-decoration-none">
+                                            <div class="card bg-light border-0 h-100">
+                                                <div class="card-body text-center">
+                                                    <h2 class="text-info mb-1"><?= $total_products ?></h2>
+                                                    <small class="text-muted">Active Products</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </a>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -808,23 +1081,11 @@ $out_of_stock = $stmt->fetchColumn();
 
                 <!-- Charts and Recent Activity -->
                 <div class="row g-3 mb-4">
-                    <!-- Sales Chart (Net Revenue) -->
+                    <!-- Sales Chart -->
                     <div class="col-xl-8">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h5 class="card-title mb-0">Sales Performance (Net of Returns)</h5>
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                            Last 6 Months
-                                        </button>
-                                        <ul class="dropdown-menu">
-                                            <li><a class="dropdown-item" href="#">Last 3 Months</a></li>
-                                            <li><a class="dropdown-item" href="#">Last 6 Months</a></li>
-                                            <li><a class="dropdown-item" href="#">This Year</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
+                                <h5 class="card-title mb-3">Sales Performance (Net of Returns)</h5>
                                 <div style="position: relative; height: 250px;">
                                     <canvas id="salesChart"></canvas>
                                 </div>
@@ -832,7 +1093,9 @@ $out_of_stock = $stmt->fetchColumn();
                                 <div class="mt-3 text-center">
                                     <small class="text-muted">
                                         <i class="bx bx-info-circle me-1"></i>
-                                        Showing net revenue after deducting returns of ₹<?= number_format($month_returns, 0) ?> this month
+                                        Net: ₹<?= number_format($month_net_revenue, 0) ?> | 
+                                        Gross: ₹<?= number_format($month_gross_revenue, 0) ?> | 
+                                        Returns: ₹<?= number_format($month_returns, 0) ?>
                                     </small>
                                 </div>
                                 <?php endif; ?>
@@ -840,18 +1103,11 @@ $out_of_stock = $stmt->fetchColumn();
                         </div>
                     </div>
 
-                    <!-- Recent Sales with Returns Indicator -->
+                    <!-- Recent Sales -->
                     <div class="col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h5 class="card-title mb-0">Recent Sales</h5>
-                                    <?php if ($today_returns > 0): ?>
-                                    <span class="badge bg-warning">
-                                        <i class="bx bx-undo me-1"></i> Returns: ₹<?= number_format($today_returns, 0) ?>
-                                    </span>
-                                    <?php endif; ?>
-                                </div>
+                                <h5 class="card-title mb-3">Recent Sales</h5>
                                 <div class="list-group list-group-flush">
                                     <?php if (!empty($recent_sales)): ?>
                                         <?php foreach ($recent_sales as $sale): 
@@ -889,7 +1145,7 @@ $out_of_stock = $stmt->fetchColumn();
                                         </div>
                                         <?php endforeach; ?>
                                     <?php else: ?>
-                                        <div class="text-center py-3">
+                                        <div class="text-center py-4">
                                             <i class="bx bx-receipt fs-1 text-muted mb-2"></i>
                                             <p class="text-muted mb-0">No recent sales</p>
                                         </div>
@@ -905,75 +1161,7 @@ $out_of_stock = $stmt->fetchColumn();
                     </div>
                 </div>
 
-                <!-- Quick Actions & System Status -->
-                <div class="row g-3 mb-4">
-                   <div class="col-xl-12">
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <h5 class="card-title mb-3">System Status</h5>
-            <div class="d-flex flex-wrap gap-2">
-                <!-- Database Status -->
-                <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
-                    <span class="badge bg-success rounded-circle p-1">
-                        <i class="bx bx-server fs-6"></i>
-                    </span>
-                    <span class="fw-medium">Database</span>
-                    <span class="badge bg-success">Online</span>
-                </div>
-                
-                <!-- Cloud Status -->
-                <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
-                    <span class="badge <?= $cloud_renewal_notification ? ($cloud_days_left <= 3 ? 'bg-danger' : 'bg-warning') : 'bg-success' ?> rounded-circle p-1">
-                        <i class="bx bx-cloud fs-6"></i>
-                    </span>
-                    <span class="fw-medium">Cloud</span>
-                    <?php if ($cloud_renewal_notification): ?>
-                    <span class="badge bg-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?>">
-                        <?= $cloud_days_left ?>d
-                    </span>
-                    <?php else: ?>
-                    <span class="badge bg-success">Active</span>
-                    <?php endif; ?>
-                </div>
-                
-                <!-- Server Time -->
-                <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
-                    <span class="badge bg-info rounded-circle p-1">
-                        <i class="bx bx-time fs-6"></i>
-                    </span>
-                    <span class="fw-medium">Time</span>
-                    <small class="text-muted"><?= date('h:i A') ?></small>
-                </div>
-                
-                <!-- Memory Usage -->
-                <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
-                    <span class="badge bg-warning rounded-circle p-1">
-                        <i class="bx bx-data fs-6"></i>
-                    </span>
-                    <span class="fw-medium">Memory</span>
-                    <small class="text-muted"><?= round(memory_get_usage()/1024/1024, 2) ?> MB</small>
-                </div>
-                
-               
-                
-                <!-- Cloud Expiry -->
-                <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
-                    <span class="badge bg-dark rounded-circle p-1">
-                        <i class="bx bx-calendar fs-6"></i>
-                    </span>
-                    <span class="fw-medium">Expiry</span>
-                    <small class="text-muted">
-                        <?= $cloud_expiry_date ? date('d M Y', strtotime($cloud_expiry_date)) : 'N/A' ?>
-                    </small>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-                    
-                </div>
-
-                <!-- Additional Metrics for Admin -->
+                <!-- Financial Overview for Admin -->
                 <?php if ($is_admin): ?>
                 <div class="row g-3 mb-4">
                     <div class="col-12">
@@ -981,104 +1169,122 @@ $out_of_stock = $stmt->fetchColumn();
                             <div class="card-body">
                                 <h5 class="card-title mb-3">Financial Overview</h5>
                                 <div class="row g-3">
-                                    <div class="col-md-4">
-                                        <div class="card border-start border-danger border-3">
-                                            <div class="card-body">
-                                                <div class="d-flex justify-content-between align-items-center">
+                                    <!-- Today's Expenses -->
+                                    <div class="col-xl-4 col-md-6">
+                                        <div class="card shadow-sm h-100">
+                                            <div class="card-body d-flex flex-column">
+                                                <div class="d-flex justify-content-between align-items-start mb-2">
                                                     <div>
                                                         <h6 class="text-muted mb-1">Today's Expenses</h6>
                                                         <h3 class="mb-0 text-danger">₹<?= number_format($today_expenses, 0) ?></h3>
                                                     </div>
-                                                    <div class="avatar-sm flex-shrink-0">
+                                                    <div class="avatar-sm">
                                                         <span class="avatar-title bg-danger bg-opacity-10 rounded-circle fs-3">
                                                             <i class="bx bx-money text-danger"></i>
                                                         </span>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="col-md-4">
-                                        <div class="card border-start border-info border-3">
-                                            <div class="card-body">
-                                                <div class="d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <h6 class="text-muted mb-1">Pending Transfers</h6>
-                                                        <h3 class="mb-0 text-info"><?= $pending_transfers ?></h3>
-                                                        <small class="text-muted">stock transfers</small>
-                                                    </div>
-                                                    <div class="avatar-sm flex-shrink-0">
-                                                        <span class="avatar-title bg-info bg-opacity-10 rounded-circle fs-3">
-                                                            <i class="bx bx-transfer text-info"></i>
-                                                        </span>
-                                                    </div>
+                                                <div class="mt-auto">
+                                                    <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1">
+                                                        <i class="bx bx-calendar me-1"></i><?= date('d M Y') ?>
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <div class="col-md-4">
-                                        <div class="card border-start border-dark border-3">
-                                            <div class="card-body">
-                                                <div class="d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <h6 class="text-muted mb-1">Pending Payments</h6>
-                                                        <h3 class="mb-0"><?= $pending_payments ?></h3>
-                                                        <small class="text-muted">to suppliers</small>
+                                    <!-- Active Customers -->
+                                    <div class="col-xl-4 col-md-6">
+                                        <a href="customers.php" class="text-decoration-none">
+                                            <div class="card shadow-sm h-100">
+                                                <div class="card-body d-flex flex-column">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                                        <div>
+                                                            <h6 class="text-muted mb-1">Active Customers</h6>
+                                                            <h3 class="mb-0 text-info"><?= $active_customers ?></h3>
+                                                        </div>
+                                                        <div class="avatar-sm">
+                                                            <span class="avatar-title bg-info bg-opacity-10 rounded-circle fs-3">
+                                                                <i class="bx bx-user text-info"></i>
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div class="avatar-sm flex-shrink-0">
-                                                        <span class="avatar-title bg-dark bg-opacity-10 rounded-circle fs-3">
-                                                            <i class="bx bx-credit-card"></i>
+                                                    <div class="mt-auto">
+                                                        <span class="badge bg-info bg-opacity-10 text-info px-2 py-1">
+                                                            <i class="bx bx-time me-1"></i>Last 30 days
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </a>
+                                    </div>
+                                    
+                                    <!-- Purchase Stats - EXACTLY like purchases.php -->
+                                    <div class="col-xl-4 col-md-6">
+                                        <a href="purchases.php?status=partial,unpaid" class="text-decoration-none">
+                                            <div class="card shadow-sm h-100">
+                                                <div class="card-body d-flex flex-column">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                                        <div>
+                                                            <h6 class="text-muted mb-1">Supplier Payments</h6>
+                                                            <div class="d-flex align-items-baseline gap-2">
+                                                                <h3 class="mb-0 text-warning">₹<?= number_format($pending_payments, 0) ?></h3>
+                                                                <span class="text-muted">due</span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="avatar-sm">
+                                                            <span class="avatar-title bg-success bg-opacity-10 rounded-circle fs-3">
+                                                                <i class="bx bx-credit-card text-success"></i>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="mt-auto">
+                                                        <span class="badge bg-success bg-opacity-10 text-success px-2 py-1 me-1">
+                                                            <i class="bx bx-check-circle me-1"></i>Paid: ₹<?= number_format($total_paid_purchases, 0) ?>
+                                                        </span>
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary px-2 py-1">
+                                                            <?= $pending_purchase_orders ?> pending orders
+                                                        </span>
+                                                        <?php 
+                                                        $total_purchase_value = $pending_payments + $total_paid_purchases;
+                                                        if ($total_purchase_value > 0):
+                                                            $paid_percent = ($total_paid_purchases / $total_purchase_value) * 100;
+                                                        ?>
+                                                        <div class="progress mt-2" style="height: 4px;">
+                                                            <div class="progress-bar bg-success" style="width: <?= $paid_percent ?>%"></div>
+                                                            <div class="progress-bar bg-warning" style="width: <?= 100 - $paid_percent ?>%"></div>
+                                                        </div>
+                                                        <div class="mt-1 small d-flex justify-content-between">
+                                                            <span class="text-success"><?= number_format($paid_percent, 1) ?>% paid</span>
+                                                            <span class="text-warning"><?= number_format(100 - $paid_percent, 1) ?>% due</span>
+                                                        </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
                                     </div>
                                 </div>
+
                                 <?php if ($today_returns > 0 || $month_returns > 0): ?>
                                 <div class="row g-3 mt-3">
-                                    <div class="col-md-6">
-                                        <div class="alert alert-warning alert-dismissible fade show mb-0" role="alert">
+                                    <div class="col-md-12">
+                                        <div class="alert alert-warning mb-0">
                                             <h6 class="alert-heading">
                                                 <i class="bx bx-undo me-2"></i> Returns Summary
                                             </h6>
                                             <div class="row">
-                                                <div class="col-6">
-                                                    <small>Today: ₹<?= number_format($today_returns, 0) ?></small>
-                                                    <div class="progress mt-1" style="height: 5px;">
-                                                        <div class="progress-bar bg-warning" role="progressbar" style="width: <?= min($today_return_percentage, 100) ?>%"></div>
+                                                <div class="col-md-6">
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <span>Today:</span>
+                                                        <span class="fw-bold">₹<?= number_format($today_returns, 0) ?> (<?= number_format($today_return_percentage, 1) ?>%)</span>
                                                     </div>
                                                 </div>
-                                                <div class="col-6">
-                                                    <small>This Month: ₹<?= number_format($month_returns, 0) ?></small>
-                                                    <div class="progress mt-1" style="height: 5px;">
-                                                        <div class="progress-bar bg-warning" role="progressbar" style="width: <?= min($month_return_percentage, 100) ?>%"></div>
+                                                <div class="col-md-6">
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <span>This Month:</span>
+                                                        <span class="fw-bold">₹<?= number_format($month_returns, 0) ?> (<?= number_format($month_return_percentage, 1) ?>%)</span>
                                                     </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="alert alert-success alert-dismissible fade show mb-0" role="alert">
-                                            <h6 class="alert-heading">
-                                                <i class="bx bx-trending-up me-2"></i> Net Performance
-                                            </h6>
-                                            <div class="row">
-                                                <div class="col-6">
-                                                    <small>Today's Net: ₹<?= number_format($today_net_revenue, 0) ?></small>
-                                                    <br>
-                                                    <span class="text-success">
-                                                        <?= number_format(100 - $today_return_percentage, 1) ?>% of gross
-                                                    </span>
-                                                </div>
-                                                <div class="col-6">
-                                                    <small>Month's Net: ₹<?= number_format($month_net_revenue, 0) ?></small>
-                                                    <br>
-                                                    <span class="text-success">
-                                                        <?= number_format(100 - $month_return_percentage, 1) ?>% of gross
-                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1092,10 +1298,10 @@ $out_of_stock = $stmt->fetchColumn();
                 <?php endif; ?>
 
                 <!-- Field Executive Section -->
-                <?php if ($is_field_executive || ($is_admin && $pending_requirements > 0)): ?>
+                <?php if ($is_field_executive && $pending_requirements > 0): ?>
                 <div class="row g-3">
                     <div class="col-12">
-                        <div class="card shadow-sm border-start border-success border-3">
+                        <div class="card shadow-sm">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
@@ -1115,6 +1321,58 @@ $out_of_stock = $stmt->fetchColumn();
                 </div>
                 <?php endif; ?>
 
+                <!-- System Status -->
+                <div class="row g-3 mt-4">
+                    <div class="col-12">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">System Status</h5>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
+                                        <span class="badge bg-success rounded-circle p-1">
+                                            <i class="bx bx-server fs-6"></i>
+                                        </span>
+                                        <span class="fw-medium">Database</span>
+                                        <span class="badge bg-success">Online</span>
+                                    </div>
+                                    
+                                    <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
+                                        <span class="badge <?= $cloud_renewal_notification ? ($cloud_days_left <= 3 ? 'bg-danger' : 'bg-warning') : 'bg-success' ?> rounded-circle p-1">
+                                            <i class="bx bx-cloud fs-6"></i>
+                                        </span>
+                                        <span class="fw-medium">Cloud</span>
+                                        <?php if ($cloud_renewal_notification): ?>
+                                        <span class="badge bg-<?= $cloud_days_left <= 3 ? 'danger' : 'warning' ?>">
+                                            <?= $cloud_days_left ?>d
+                                        </span>
+                                        <?php else: ?>
+                                        <span class="badge bg-success">Active</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    
+                                    <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
+                                        <span class="badge bg-info rounded-circle p-1">
+                                            <i class="bx bx-time fs-6"></i>
+                                        </span>
+                                        <span class="fw-medium">Time</span>
+                                        <small class="text-muted"><?= date('h:i A') ?></small>
+                                    </div>
+                                    
+                                    <div class="d-flex align-items-center gap-2 bg-light rounded-pill px-3 py-2">
+                                        <span class="badge bg-dark rounded-circle p-1">
+                                            <i class="bx bx-calendar fs-6"></i>
+                                        </span>
+                                        <span class="fw-medium">Expiry</span>
+                                        <small class="text-muted">
+                                            <?= $cloud_expiry_date ? date('d M Y', strtotime($cloud_expiry_date)) : 'N/A' ?>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
         <?php include 'includes/footer.php'; ?>
@@ -1125,55 +1383,51 @@ $out_of_stock = $stmt->fetchColumn();
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-// Enhanced Chart with Net Revenue (after returns)
+// Sales Chart
 const trendMonths = <?= json_encode(array_column($trend, 'month')) ?>;
 const trendNetRevenue = <?= json_encode(array_column($trend, 'net')) ?>;
 const trendReturns = <?= json_encode(array_column($trend, 'returns')) ?>;
 
 const ctx = document.getElementById('salesChart').getContext('2d');
 
-// Create gradients
 const gradientNet = ctx.createLinearGradient(0, 0, 0, 400);
 gradientNet.addColorStop(0, 'rgba(91, 115, 232, 0.3)');
 gradientNet.addColorStop(1, 'rgba(91, 115, 232, 0.05)');
-
-const gradientReturns = ctx.createLinearGradient(0, 0, 0, 400);
-gradientReturns.addColorStop(0, 'rgba(255, 193, 7, 0.3)');
-gradientReturns.addColorStop(1, 'rgba(255, 193, 7, 0.05)');
 
 const salesChart = new Chart(ctx, {
     type: 'line',
     data: {
         labels: trendMonths,
-        datasets: [{
-            label: 'Net Revenue',
-            data: trendNetRevenue,
-            backgroundColor: gradientNet,
-            borderColor: '#5b73e8',
-            borderWidth: 3,
-            tension: 0.4,
-            fill: true,
-            pointBackgroundColor: '#5b73e8',
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 2,
-            pointRadius: 5,
-            pointHoverRadius: 7
-        },
-        {
-            label: 'Returns',
-            data: trendReturns,
-            backgroundColor: gradientReturns,
-            borderColor: '#ffc107',
-            borderWidth: 2,
-            tension: 0.4,
-            fill: true,
-            pointBackgroundColor: '#ffc107',
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            hidden: trendReturns.every(v => v === 0) // Hide if no returns
-        }]
+        datasets: [
+            {
+                label: 'Net Revenue',
+                data: trendNetRevenue,
+                backgroundColor: gradientNet,
+                borderColor: '#5b73e8',
+                borderWidth: 3,
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#5b73e8',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 5
+            },
+            {
+                label: 'Returns',
+                data: trendReturns,
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                borderColor: '#ffc107',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                tension: 0.4,
+                fill: false,
+                pointBackgroundColor: '#ffc107',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                hidden: trendReturns.every(v => v === 0)
+            }
+        ]
     },
     options: {
         responsive: true,
@@ -1188,23 +1442,9 @@ const salesChart = new Chart(ctx, {
                 }
             },
             tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                titleFont: {
-                    size: 12
-                },
-                bodyFont: {
-                    size: 13
-                },
                 callbacks: {
                     label: function(context) {
-                        let label = context.dataset.label || '';
-                        let value = context.parsed.y;
-                        if (label === 'Net Revenue') {
-                            return 'Net Revenue: ₹' + value.toLocaleString('en-IN');
-                        } else if (label === 'Returns') {
-                            return 'Returns: ₹' + value.toLocaleString('en-IN');
-                        }
-                        return label + ': ₹' + value.toLocaleString('en-IN');
+                        return context.dataset.label + ': ₹' + context.parsed.y.toLocaleString('en-IN');
                     }
                 }
             }
@@ -1212,61 +1452,24 @@ const salesChart = new Chart(ctx, {
         scales: {
             y: {
                 beginAtZero: true,
-                grid: {
-                    color: 'rgba(0, 0, 0, 0.05)',
-                    drawBorder: false
-                },
                 ticks: {
-                    font: {
-                        size: 11
-                    },
                     callback: function(value) {
                         return '₹' + (value/1000).toFixed(0) + 'K';
-                    },
-                    padding: 10
-                },
-                title: {
-                    display: true,
-                    text: 'Amount (₹)',
-                    font: {
-                        size: 12
                     }
                 }
-            },
-            x: {
-                grid: {
-                    display: false
-                },
-                ticks: {
-                    font: {
-                        size: 11
-                    },
-                    padding: 10
-                }
-            }
-        },
-        interaction: {
-            intersect: false,
-            mode: 'index'
-        },
-        elements: {
-            line: {
-                cubicInterpolationMode: 'monotone'
             }
         }
     }
 });
 
-// Cloud Timer Countdown Function with End of Day Calculation
+// Cloud Timer Countdown
 function updateCloudTimer() {
     <?php if ($show_timer_in_header && $expiry_timestamp_end_of_day): ?>
-    // Calculate time left until end of day on expiry date
-    const expiryTimestamp = <?= $expiry_timestamp_end_of_day ?> * 1000; // Convert to milliseconds
+    const expiryTimestamp = <?= $expiry_timestamp_end_of_day ?> * 1000;
     const currentTimestamp = Date.now();
     let remainingSeconds = Math.floor((expiryTimestamp - currentTimestamp) / 1000);
     
     if (remainingSeconds <= 0) {
-        // Time's up - redirect to renewal page
         window.location.href = 'cloud_renewal.php';
         return;
     }
@@ -1276,7 +1479,6 @@ function updateCloudTimer() {
     const minutes = Math.floor((remainingSeconds % (60 * 60)) / 60);
     const seconds = remainingSeconds % 60;
     
-    // Update header timer
     const headerTimer = document.getElementById('headerTimer');
     if (headerTimer) {
         headerTimer.querySelector('.days').textContent = days.toString().padStart(2, '0');
@@ -1285,49 +1487,15 @@ function updateCloudTimer() {
         headerTimer.querySelector('.seconds').textContent = seconds.toString().padStart(2, '0');
     }
     
-    // Update modal timer if exists
     const modalDays = document.getElementById('modalDaysLeft');
-    if (modalDays) {
-        modalDays.textContent = days;
-    }
-    
-    // Update modal timer display
-    const modalDaysElement = document.querySelector('.timer-box .days');
-    const modalHoursElement = document.querySelector('.timer-box .hours');
-    const modalMinutesElement = document.querySelector('.timer-box .minutes');
-    const modalSecondsElement = document.querySelector('.timer-box .seconds');
-    
-    if (modalDaysElement) modalDaysElement.textContent = days.toString().padStart(2, '0');
-    if (modalHoursElement) modalHoursElement.textContent = hours.toString().padStart(2, '0');
-    if (modalMinutesElement) modalMinutesElement.textContent = minutes.toString().padStart(2, '0');
-    if (modalSecondsElement) modalSecondsElement.textContent = seconds.toString().padStart(2, '0');
-    
-    // Update progress bar
-    const progressBar = document.querySelector('.progress-bar');
-    if (progressBar) {
-        const progressPercent = ((30 - days) / 30) * 100;
-        progressBar.style.width = `${progressPercent}%`;
-        
-        // Change color based on urgency
-        if (days <= 3) {
-            progressBar.classList.remove('bg-warning', 'bg-info');
-            progressBar.classList.add('bg-danger');
-        } else if (days <= 7) {
-            progressBar.classList.remove('bg-danger', 'bg-info');
-            progressBar.classList.add('bg-warning');
-        } else {
-            progressBar.classList.remove('bg-danger', 'bg-warning');
-            progressBar.classList.add('bg-info');
-        }
-    }
+    if (modalDays) modalDays.textContent = days;
     <?php endif; ?>
 }
 
-// Initialize timer
 updateCloudTimer();
 setInterval(updateCloudTimer, 1000);
 
-// Show 1-month modal on page load
+// Show 1-month modal
 <?php if ($show_one_month_modal): ?>
 document.addEventListener('DOMContentLoaded', function() {
     const oneMonthModal = new bootstrap.Modal(document.getElementById('oneMonthModal'));
@@ -1335,367 +1503,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 <?php endif; ?>
 
-// Add hover effect to cards
-document.querySelectorAll('.card-hover').forEach(card => {
-    card.addEventListener('mouseenter', function() {
-        this.style.transform = 'translateY(-2px)';
-        this.style.transition = 'all 0.2s ease';
-    });
-    
-    card.addEventListener('mouseleave', function() {
-        this.style.transform = 'translateY(0)';
-    });
-});
-
-// Auto-refresh dashboard every 60 seconds (optional)
+// Auto-refresh dashboard every 5 minutes
 setTimeout(function() {
     window.location.reload();
-}, 60000);
-
-// Add CSS animations for timer
-const style = document.createElement('style');
-style.textContent = `
-@keyframes pulseWarning {
-    0% {
-        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
-    }
-}
-
-@keyframes pulseDanger {
-    0% {
-        box-shadow: 0 0 0 0 rgba(249, 49, 84, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 10px rgba(249, 49, 84, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(249, 49, 84, 0);
-    }
-}
-
-@keyframes float {
-    0%, 100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-5px);
-    }
-}
-
-/* Timer Styles */
-.cloud-timer-container {
-    backdrop-filter: blur(10px);
-}
-
-.timer-segment {
-    display: inline-block;
-    text-align: center;
-    min-width: 40px;
-}
-
-.timer-value {
-    display: block;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: white;
-    line-height: 1;
-}
-
-.timer-label {
-    font-size: 0.75rem;
-    opacity: 0.8;
-}
-
-.timer-box {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 10px 5px;
-    min-width: 70px;
-    text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.timer-box span {
-    display: block;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: white;
-    line-height: 1;
-}
-
-.timer-box small {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-/* Modal Timer */
-.modal .timer-box {
-    background: rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(0, 0, 0, 0.2);
-}
-
-.modal .timer-box span {
-    color: #333;
-}
-
-.modal .timer-box small {
-    color: #666;
-}
-
-/* Mobile Responsive */
-@media (max-width: 768px) {
-    .timer-segment {
-        min-width: 30px;
-    }
-    
-    .timer-value {
-        font-size: 1.2rem;
-    }
-    
-    .timer-box {
-        min-width: 50px;
-        padding: 8px 3px;
-    }
-    
-    .timer-box span {
-        font-size: 1.4rem;
-    }
-    
-    .timer-box small {
-        font-size: 0.7rem;
-    }
-    
-    .cloud-timer-container {
-        padding: 15px !important;
-    }
-    
-    .timer-countdown .d-flex {
-        flex-wrap: wrap;
-        justify-content: center !important;
-    }
-    
-    .timer-segment {
-        margin: 0 2px;
-    }
-}
-
-@media (max-width: 576px) {
-    .cloud-timer-container {
-        text-align: center;
-    }
-    
-    .cloud-timer-container .d-flex {
-        flex-direction: column;
-        align-items: center;
-    }
-    
-    .cloud-timer-container .text-end {
-        text-align: center !important;
-        margin-top: 10px;
-    }
-    
-    .timer-countdown {
-        margin-bottom: 10px;
-    }
-    
-    .timer-segment {
-        margin: 0 3px;
-    }
-}
-`;
-document.head.appendChild(style);
+}, 300000);
 </script>
 
-<style>
-/* Custom Styles */
-.bg-gradient-primary {
-    background: linear-gradient(135deg, #5b73e8 0%, #8b9cea 100%) !important;
-}
-
-.bg-gradient-warning {
-    background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%) !important;
-}
-
-.bg-gradient-danger {
-    background: linear-gradient(135deg, #f93154 0%, #ff6b6b 100%) !important;
-}
-
-.bg-purple {
-    background-color: #6f42c1 !important;
-}
-
-.text-purple {
-    color: #6f42c1 !important;
-}
-
-.card-hover {
-    transition: all 0.3s ease;
-}
-
-.card-hover:hover {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
-}
-
-.border-start {
-    border-left-width: 4px !important;
-}
-
-.avatar-sm {
-    width: 40px;
-    height: 40px;
-}
-
-.avatar-lg {
-    width: 70px;
-    height: 70px;
-}
-
-.avatar-title {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.list-group-item:first-child {
-    border-top: 0;
-}
-
-.list-group-item:last-child {
-    border-bottom: 0;
-}
-
-/* Timer urgent styles */
-.timer-urgent {
-    animation: pulseDanger 1s infinite;
-}
-
-.timer-warning {
-    animation: pulseWarning 2s infinite;
-}
-
-/* Cloud timer specific styles */
-.cloud-timer-container .timer-value {
-    font-family: 'Courier New', monospace;
-}
-
-.timer-countdown .timer-segment {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
-    padding: 5px;
-    min-width: 45px;
-}
-
-.timer-countdown .timer-value {
-    font-size: 1.8rem;
-    font-weight: 700;
-    font-family: 'Courier New', monospace;
-}
-
-.timer-countdown .timer-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-/* Mobile responsive adjustments */
-@media (max-width: 768px) {
-    .avatar-lg {
-        width: 50px;
-        height: 50px;
-    }
-    
-    .avatar-lg i {
-        font-size: 1.5rem !important;
-    }
-    
-    .display-4 {
-        font-size: 2rem;
-    }
-    
-    .card-body {
-        padding: 1rem !important;
-    }
-    
-    h3 {
-        font-size: 1.5rem !important;
-    }
-    
-    .cloud-notification .btn {
-        margin-top: 10px;
-        width: 100%;
-    }
-    
-    /* Welcome header adjustments */
-    .welcome-header h3 {
-        font-size: 1.3rem !important;
-    }
-    
-    .welcome-header p {
-        font-size: 0.85rem !important;
-    }
-    
-    .cloud-timer-container {
-        margin-top: 15px;
-    }
-    
-    /* Timer in header mobile view */
-    .timer-countdown .d-flex {
-        justify-content: center !important;
-    }
-    
-    .timer-countdown .timer-segment {
-        min-width: 35px;
-    }
-    
-    .timer-countdown .timer-value {
-        font-size: 1.4rem;
-    }
-}
-
-@media (max-width: 576px) {
-    /* Stack timer elements vertically on very small screens */
-    .timer-countdown .d-flex {
-        flex-wrap: wrap;
-    }
-    
-    .timer-segment {
-        margin-bottom: 5px;
-    }
-    
-    /* Adjust modal for mobile */
-    .modal-dialog {
-        margin: 10px;
-    }
-    
-    .modal-body {
-        padding: 15px !important;
-    }
-    
-    .timer-box {
-        min-width: 60px;
-        margin-bottom: 10px;
-    }
-    
-    /* Cloud timer mobile */
-    .cloud-timer-container .d-flex {
-        flex-direction: column;
-    }
-    
-    .cloud-timer-container .text-end {
-        margin-top: 15px;
-        text-align: center !important;
-    }
-    
-    .cloud-timer-container .timer-countdown {
-        margin-bottom: 15px;
-    }
-}
-</style>
 </body>
 </html>
