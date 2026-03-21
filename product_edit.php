@@ -899,7 +899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        class="form-control form-control-lg text-end" 
                                                        value="<?= number_format($product['gst_type'] == 'exclusive' 
                                                            ? ($product['mrp'] - $product['gst_amount']) 
-                                                           : $product['mrp'], 2) ?>" 
+                                                           : $product['mrp'], 2, '.', '') ?>" 
                                                        id="mrpInput" required
                                                        oninput="calculateGST()">
                                             </div>
@@ -958,7 +958,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="mrp" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= number_format($product['mrp'], 2) ?>" 
+                                                       value="<?= number_format($product['mrp'], 2, '.', '') ?>" 
                                                        id="mrp" readonly>
                                             </div>
                                             <div class="form-text" id="finalMRPText">
@@ -975,7 +975,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        value="<?= $product['discount_value'] > 0 
                                                            ? ($product['discount_type'] == 'percentage' 
                                                                ? $product['discount_value'] . '%' 
-                                                               : number_format($product['discount_value'], 2)) 
+                                                               : number_format($product['discount_value'], 2, '.', '')) 
                                                            : '' ?>"
                                                        id="discount"
                                                        placeholder="e.g., 10% or 50">
@@ -999,7 +999,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="stock_price" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= number_format($product['stock_price'], 2) ?>" 
+                                                       value="<?= number_format($product['stock_price'], 2, '.', '') ?>" 
                                                        id="stockPrice" required>
                                                 <button type="button" class="btn btn-outline-secondary" onclick="clearManualStockPrice()" title="Clear manual entry">
                                                     <i class="bx bx-refresh"></i>
@@ -1016,7 +1016,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <label class="form-label"><strong>You Save</strong></label>
                                             <div class="input-group">
                                                 <input type="text" class="form-control text-end" id="youSave" readonly
-                                                       value="<?= number_format($product['mrp'] - $product['stock_price'], 2) ?>">
+                                                       value="<?= number_format($product['mrp'] - $product['stock_price'], 2, '.', '') ?>">
                                                 <span class="input-group-text">₹</span>
                                             </div>
                                             <div class="form-text" id="discountPercentageText">
@@ -1046,14 +1046,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <div class="input-group">
                                                 <input type="number" step="0.01" min="0" name="retail_price_value" 
                                                        class="form-control text-end" 
-                                                       value="<?= number_format($product['retail_price_value'] ?? 0, 2) ?>"
+                                                       value="<?= number_format($product['retail_price_value'] ?? 0, 2, '.', '') ?>"
                                                        id="retailPriceValue">
                                                 <span class="input-group-text">
                                                     <span id="retailPriceUnit"><?= ($product['retail_price_type'] ?? 'percentage') == 'percentage' ? '%' : '₹' ?></span>
                                                 </span>
                                             </div>
                                             <div class="form-text" id="retailMarkupText">
-                                                Markup: ₹<?= number_format($product['retail_price'] - $product['stock_price'], 2) ?>
+                                                Markup: ₹<?= number_format($product['retail_price'] - $product['stock_price'], 2, '.', '') ?>
                                             </div>
                                         </div>
 
@@ -1063,7 +1063,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="retail_price" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= number_format($product['retail_price'], 2) ?>" 
+                                                       value="<?= number_format($product['retail_price'], 2, '.', '') ?>" 
                                                        id="retailPrice" required>
                                                 <button type="button" class="btn btn-outline-secondary" onclick="clearManualRetailPrice()" title="Clear manual entry">
                                                     <i class="bx bx-refresh"></i>
@@ -1084,7 +1084,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">%</span>
                                             </div>
                                             <div class="form-text" id="retailProfitAmountText">
-                                                Profit: ₹<?= number_format($product['retail_price'] - $product['stock_price'], 2) ?>
+                                                Profit: ₹<?= number_format($product['retail_price'] - $product['stock_price'], 2, '.', '') ?>
                                             </div>
                                         </div>
 
@@ -1108,14 +1108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <div class="input-group">
                                                 <input type="number" step="0.01" min="0" name="wholesale_price_value" 
                                                        class="form-control text-end" 
-                                                       value="<?= number_format($product['wholesale_price_value'] ?? 0, 2) ?>"
+                                                       value="<?= number_format($product['wholesale_price_value'] ?? 0, 2, '.', '') ?>"
                                                        id="wholesalePriceValue">
                                                 <span class="input-group-text">
                                                     <span id="wholesalePriceUnit"><?= ($product['wholesale_price_type'] ?? 'percentage') == 'percentage' ? '%' : '₹' ?></span>
                                                 </span>
                                             </div>
                                             <div class="form-text" id="wholesaleMarkupText">
-                                                Markup: ₹<?= number_format($product['wholesale_price'] - $product['stock_price'], 2) ?>
+                                                Markup: ₹<?= number_format($product['wholesale_price'] - $product['stock_price'], 2, '.', '') ?>
                                             </div>
                                         </div>
 
@@ -1125,7 +1125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="wholesale_price" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= number_format($product['wholesale_price'], 2) ?>"
+                                                       value="<?= number_format($product['wholesale_price'], 2, '.', '') ?>"
                                                        id="wholesalePrice" required>
                                                 <button type="button" class="btn btn-outline-secondary" onclick="clearManualWholesalePrice()" title="Clear manual entry">
                                                     <i class="bx bx-refresh"></i>
@@ -1146,7 +1146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <span class="input-group-text">%</span>
                                             </div>
                                             <div class="form-text" id="wholesaleProfitAmountText">
-                                                Profit: ₹<?= number_format($product['wholesale_price'] - $product['stock_price'], 2) ?>
+                                                Profit: ₹<?= number_format($product['wholesale_price'] - $product['stock_price'], 2, '.', '') ?>
                                             </div>
                                         </div>
 
@@ -1165,7 +1165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <div class="col-md-4">
                                                         <label class="form-label">Current Stock</label>
                                                         <input type="text" class="form-control" readonly 
-                                                               value="<?= $product['current_stock'] ?? 0 ?> <?= $product['unit_of_measure'] ?? 'pcs' ?>">
+                                                               value="<?= number_format($product['current_stock'] ?? 0, 2) ?> <?= $product['unit_of_measure'] ?? 'pcs' ?>">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <label class="form-label">Adjustment Type</label>
@@ -1220,7 +1220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <input type="number" step="0.01" min="0"
                                                            name="referral_value"
                                                            class="form-control text-end"
-                                                           value="<?= number_format($product['referral_value'] ?? 0, 2) ?>"
+                                                           value="<?= number_format($product['referral_value'] ?? 0, 2, '.', '') ?>"
                                                            placeholder="Enter value">
                                                     <span class="input-group-text">
                                                         <span id="commissionUnit"><?= ($product['referral_type'] ?? 'percentage') == 'percentage' ? '%' : '₹' ?></span>
@@ -1901,19 +1901,22 @@ document.getElementById('retailPrice').addEventListener('input', function() {
 
 document.getElementById('wholesalePrice').addEventListener('input', function() {
     const value = parseFloat(this.value) || 0;
+
     if (value > 0) {
         manualWholesalePrice = true;
         wholesalePriceCalculationMode = 'manual';
-        document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
+
+        document.getElementById('wholesalePriceText').innerHTML =
+            'Manually entered - Press refresh to auto-calculate';
         document.getElementById('wholesalePriceText').style.color = '#0d6efd';
-        
-        calculateWholesalePrice();
     }
+
+    // ❌ DO NOT recalculate wholesale price here
+
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
 });
-
 // Form validation
 document.getElementById('editProductForm').addEventListener('submit', function(e) {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;

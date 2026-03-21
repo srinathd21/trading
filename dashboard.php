@@ -314,30 +314,35 @@ if ($current_business_id) {
     $total_purchase_orders = (int)($purchase_stats['total_orders'] ?? 0);
     $pending_purchase_orders = (int)($purchase_stats['pending_orders'] ?? 0);
 
-    // 13. Total Supplier Outstanding - EXACTLY like manufacturers.php
+    // 13. Total Supplier Outstanding - FIXED to match manufacturers.php calculation
     $manufacturer_sql = "
         SELECT 
             m.id,
+            m.name,
             m.initial_outstanding_amount,
             m.initial_outstanding_type,
-            COALESCE((SELECT SUM(total_amount - paid_amount) FROM purchases WHERE manufacturer_id = m.id AND payment_status != 'paid'), 0) as purchase_balance
+            COALESCE(SUM(p.total_amount - p.paid_amount), 0) as purchase_balance
         FROM manufacturers m
-        WHERE m.business_id = ? AND m.is_active = 1
+        LEFT JOIN purchases p ON m.id = p.manufacturer_id AND p.business_id = ?
+        WHERE m.business_id = ? 
+          AND m.is_active = 1
+        GROUP BY m.id
     ";
     $stmt = $pdo->prepare($manufacturer_sql);
-    $stmt->execute([$current_business_id]);
+    $stmt->execute([$current_business_id, $current_business_id]);
     $manufacturers = $stmt->fetchAll();
-    
+
     $total_supplier_outstanding = 0;
     $total_credit = 0;
     $total_debit = 0;
-    
+    $total_purchase_balance = 0;
+
     foreach ($manufacturers as $m) {
         $purchase_balance = (float)($m['purchase_balance'] ?? 0);
         $initial_outstanding = (float)($m['initial_outstanding_amount'] ?? 0);
         $initial_type = $m['initial_outstanding_type'] ?? 'none';
         
-        // Calculate net outstanding based on type
+        // Calculate net outstanding using same logic as manufacturers.php
         if ($initial_type === 'credit') {
             // Credit: Supplier owes us - reduces what we owe
             $net = max(0, $purchase_balance - $initial_outstanding);
@@ -349,9 +354,34 @@ if ($current_business_id) {
         } else {
             $net = $purchase_balance;
         }
+        
+        // Ensure non-negative
+        $net = max(0, $net);
         $total_supplier_outstanding += $net;
+        $total_purchase_balance += $purchase_balance;
     }
+    
+    // Add Purchase Overview stats for dashboard cards
+    $purchase_overview_sql = "
+        SELECT 
+            COALESCE(SUM(total_amount), 0) as total_purchase_amount,
+            COALESCE(SUM(paid_amount), 0) as total_paid_amount,
+            COUNT(*) as total_orders,
+            SUM(CASE WHEN payment_status != 'paid' THEN 1 ELSE 0 END) as pending_orders,
+            COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_amount - paid_amount) ELSE 0 END), 0) as pending_amount
+        FROM purchases 
+        WHERE business_id = ?
+    ";
+    $stmt = $pdo->prepare($purchase_overview_sql);
+    $stmt->execute([$current_business_id]);
+    $purchase_overview = $stmt->fetch();
 
+    $total_purchase_amount = (float)($purchase_overview['total_purchase_amount'] ?? 0);
+    $total_paid_amount = (float)($purchase_overview['total_paid_amount'] ?? 0);
+    $total_purchase_orders = (int)($purchase_overview['total_orders'] ?? 0);
+    $pending_purchase_orders = (int)($purchase_overview['pending_orders'] ?? 0);
+    $pending_purchase_amount = (float)($purchase_overview['pending_amount'] ?? 0);
+    
     // 14. Pending Stock Transfers
     $sql = "SELECT COUNT(*) FROM stock_transfers WHERE status IN ('pending', 'approved', 'in_transit') AND business_id = ?";
     $params = [$current_business_id];
@@ -966,7 +996,7 @@ a.text-decoration-none .card {
                         </div>
                     </div>
 
-                    <!-- Pending Amount - EXACTLY like invoices.php pending stats card -->
+                    <!-- Pending Amount -->
                     <div class="col-xl-3 col-md-6">
                         <a href="invoices.php?status=pending" class="text-decoration-none">
                             <div class="card shadow-sm h-100">
@@ -992,7 +1022,7 @@ a.text-decoration-none .card {
                         </a>
                     </div>
 
-                    <!-- Supplier Outstanding -->
+                    <!-- Supplier Outstanding - FIXED to match manufacturers.php -->
                     <div class="col-xl-3 col-md-6">
                         <a href="manufacturers.php?outstanding=has_outstanding" class="text-decoration-none">
                             <div class="card shadow-sm h-100">
@@ -1000,7 +1030,7 @@ a.text-decoration-none .card {
                                     <div class="d-flex justify-content-between align-items-start mb-2">
                                         <div>
                                             <h6 class="text-muted mb-1">Supplier Outstanding</h6>
-                                            <h3 class="mb-0 text-danger">₹<?= number_format($total_supplier_outstanding, 0) ?></h3>
+                                            <h3 class="mb-0 text-danger">₹<?= number_format($total_supplier_outstanding, 2) ?></h3>
                                         </div>
                                         <div class="avatar-sm">
                                             <span class="avatar-title bg-danger bg-opacity-10 rounded-circle fs-3">
@@ -1009,16 +1039,26 @@ a.text-decoration-none .card {
                                         </div>
                                     </div>
                                     <div class="mt-auto">
-                                        <?php if ($total_credit > 0): ?>
-                                        <span class="badge bg-success bg-opacity-10 text-success px-2 py-1 me-1">
-                                            <i class="bx bx-up-arrow-alt me-1"></i>Credit: ₹<?= number_format($total_credit, 0) ?>
-                                        </span>
-                                        <?php endif; ?>
-                                        <?php if ($total_debit > 0): ?>
-                                        <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1">
-                                            <i class="bx bx-down-arrow-alt me-1"></i>Debit: ₹<?= number_format($total_debit, 0) ?>
-                                        </span>
-                                        <?php endif; ?>
+                                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                                            <?php if ($total_debit > 0): ?>
+                                            <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1">
+                                                <i class="bx bx-down-arrow-alt me-1"></i>Debit: ₹<?= number_format($total_debit, 2) ?>
+                                            </span>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($total_credit > 0): ?>
+                                            <span class="badge bg-success bg-opacity-10 text-success px-2 py-1">
+                                                <i class="bx bx-up-arrow-alt me-1"></i>Credit: ₹<?= number_format($total_credit, 2) ?>
+                                            </span>
+                                            <?php endif; ?>
+                                            
+                                            <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1">
+                                                <i class="bx bx-cart me-1"></i>Pending: ₹<?= number_format($pending_purchase_amount, 2) ?>
+                                            </span>
+                                        </div>
+                                        <div class="mt-1 small text-muted">
+                                            <i class="bx bx-info-circle me-1"></i>Net Payable = Purchase Due ± Initial Outstanding
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1219,7 +1259,7 @@ a.text-decoration-none .card {
                                         </a>
                                     </div>
                                     
-                                    <!-- Purchase Stats - EXACTLY like purchases.php -->
+                                    <!-- Purchase Stats -->
                                     <div class="col-xl-4 col-md-6">
                                         <a href="purchases.php?status=partial,unpaid" class="text-decoration-none">
                                             <div class="card shadow-sm h-100">

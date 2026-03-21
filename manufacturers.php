@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Kolkata');
 session_start();
 require_once 'config/database.php';
 
+// 🔐 AUTH CHECK
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
@@ -13,12 +14,12 @@ if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager','shop_manager']))
     exit();
 }
 
-// Get current user's business and shop info
+// 📌 USER INFO
 $user_id = $_SESSION['user_id'];
-$business_id = $_SESSION['business_id'];
-$shop_id = $_SESSION['shop_id'] ?? null;
+$business_id = $_SESSION['current_business_id'];
+$shop_id = $_SESSION['current_shop_id'] ?? null;
 
-// Get available shops for the current business
+// 🏪 GET SHOPS
 $shops_stmt = $pdo->prepare("
     SELECT id, shop_name, shop_code, is_warehouse 
     FROM shops 
@@ -28,132 +29,155 @@ $shops_stmt = $pdo->prepare("
 $shops_stmt->execute([$business_id]);
 $shops = $shops_stmt->fetchAll();
 
-// Display messages
+// 📢 FLASH MESSAGES
 $success = $_SESSION['success'] ?? '';
 $error = $_SESSION['error'] ?? '';
 $form_data = $_SESSION['form_data'] ?? [];
 unset($_SESSION['success'], $_SESSION['error'], $_SESSION['form_data']);
 
-// Search and filter parameters
+// 🔍 FILTERS
 $search = trim($_GET['search'] ?? '');
 $shop_filter = $_GET['shop_filter'] ?? '';
 $status_filter = $_GET['status'] ?? 'all';
 $outstanding_filter = $_GET['outstanding'] ?? 'all';
 
+// 🧱 BASE WHERE
 $where = "WHERE m.business_id = :business_id";
 $params = ['business_id' => $business_id];
 
-if ($search) {
-    $where .= " AND (m.name LIKE :search 
-        OR m.phone LIKE :search3 
-        OR m.gstin LIKE :search4 
-        OR m.account_number LIKE :search5 
-        OR m.ifsc_code LIKE :search6 
-        OR m.upi_id LIKE :search7
+// 🔎 SEARCH FILTER
+if ($search !== '') {
+    $where .= " AND (
+        m.name LIKE :search 
+        OR m.phone LIKE :search 
+        OR m.gstin LIKE :search 
+        OR m.account_number LIKE :search 
+        OR m.ifsc_code LIKE :search 
+        OR m.upi_id LIKE :search
         OR EXISTS (
             SELECT 1 FROM manufacturer_contacts mc 
             WHERE mc.manufacturer_id = m.id 
-            AND (mc.contact_person LIKE :search2 OR mc.phone LIKE :search2 OR mc.mobile LIKE :search2 OR mc.email LIKE :search2)
+            AND (
+                mc.contact_person LIKE :search 
+                OR mc.phone LIKE :search 
+                OR mc.mobile LIKE :search 
+                OR mc.email LIKE :search
+            )
         )
     )";
-    $like = "%$search%";
-    $params['search'] = $like;
-    $params['search2'] = $like;
-    $params['search3'] = $like;
-    $params['search4'] = $like;
-    $params['search5'] = $like;
-    $params['search6'] = $like;
-    $params['search7'] = $like;
+    $params['search'] = "%$search%";
 }
 
-if ($shop_filter) {
+// 🏪 SHOP FILTER (FIXED)
+if ($shop_filter !== '') {
     $where .= " AND m.shop_id = :shop_filter";
     $params['shop_filter'] = $shop_filter;
 }
 
+// 🔄 STATUS FILTER
 if ($status_filter !== 'all') {
     $where .= " AND m.is_active = :status";
     $params['status'] = ($status_filter === 'active') ? 1 : 0;
 }
 
-// First, get all manufacturers with their basic data
-$base_sql = "
+// 📊 MAIN QUERY (❌ REMOVED GROUP BY)
+$sql = "
     SELECT m.*, 
            s.shop_name,
            s.shop_code,
+
            (SELECT COUNT(*) FROM purchases p WHERE p.manufacturer_id = m.id) as total_purchases,
-           (SELECT COALESCE(SUM(p.total_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id) as total_purchase_amount,
-           (SELECT COALESCE(SUM(p.paid_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id) as total_paid_amount,
-           (SELECT COUNT(*) FROM manufacturer_contacts mc WHERE mc.manufacturer_id = m.id) as total_contacts,
-           (SELECT contact_person FROM manufacturer_contacts mc WHERE mc.manufacturer_id = m.id AND mc.is_primary = 1 LIMIT 1) as primary_contact,
-           (SELECT phone FROM manufacturer_contacts mc WHERE mc.manufacturer_id = m.id AND mc.is_primary = 1 LIMIT 1) as primary_phone,
-           (SELECT email FROM manufacturer_contacts mc WHERE mc.manufacturer_id = m.id AND mc.is_primary = 1 LIMIT 1) as primary_email
+
+           (SELECT COALESCE(SUM(p.total_amount), 0) 
+            FROM purchases p 
+            WHERE p.manufacturer_id = m.id) as total_purchase_amount,
+
+           (SELECT COALESCE(SUM(p.paid_amount), 0) 
+            FROM purchases p 
+            WHERE p.manufacturer_id = m.id) as total_paid_amount,
+
+           (SELECT COUNT(*) FROM manufacturer_contacts mc 
+            WHERE mc.manufacturer_id = m.id) as total_contacts,
+
+           (SELECT contact_person 
+            FROM manufacturer_contacts mc 
+            WHERE mc.manufacturer_id = m.id 
+            AND mc.is_primary = 1 LIMIT 1) as primary_contact,
+
+           (SELECT phone 
+            FROM manufacturer_contacts mc 
+            WHERE mc.manufacturer_id = m.id 
+            AND mc.is_primary = 1 LIMIT 1) as primary_phone,
+
+           (SELECT email 
+            FROM manufacturer_contacts mc 
+            WHERE mc.manufacturer_id = m.id 
+            AND mc.is_primary = 1 LIMIT 1) as primary_email
+
     FROM manufacturers m
     LEFT JOIN shops s ON m.shop_id = s.id
     $where
-    GROUP BY m.id  /* Add GROUP BY to ensure unique manufacturers */
+    ORDER BY m.id DESC
 ";
 
-$stmt = $pdo->prepare($base_sql);
+$stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $manufacturers = $stmt->fetchAll();
 
-// Calculate financial data for each manufacturer
-foreach ($manufacturers as &$manufacturer) {
-    // Get purchase balance (pending amount from purchases)
+// 💰 CALCULATE BALANCE
+foreach ($manufacturers as &$m) {
+
+    // Purchase balance
     $balance_stmt = $pdo->prepare("
-        SELECT COALESCE(SUM(total_amount - paid_amount), 0) as purchase_balance
+        SELECT COALESCE(SUM(total_amount - paid_amount), 0)
         FROM purchases 
         WHERE manufacturer_id = ? AND payment_status != 'paid'
     ");
-    $balance_stmt->execute([$manufacturer['id']]);
+    $balance_stmt->execute([$m['id']]);
     $purchase_balance = $balance_stmt->fetchColumn();
-    
-    $manufacturer['purchase_balance'] = $purchase_balance;
-    
-    // Calculate net outstanding (initial outstanding + purchase balance)
-    $initial_outstanding = $manufacturer['initial_outstanding_amount'] ?? 0;
-    $initial_type = $manufacturer['initial_outstanding_type'] ?? 'none';
-    
-    // Initial outstanding affects the net balance
-    if ($initial_type === 'credit') {
-        // Credit: Supplier owes us - reduces what we owe
-        $manufacturer['net_outstanding'] = $purchase_balance - $initial_outstanding;
-    } elseif ($initial_type === 'debit') {
-        // Debit: We owe supplier - increases what we owe
-        $manufacturer['net_outstanding'] = $purchase_balance + $initial_outstanding;
+
+    $m['purchase_balance'] = $purchase_balance;
+
+    // Initial outstanding
+    $initial = $m['initial_outstanding_amount'] ?? 0;
+    $type = $m['initial_outstanding_type'] ?? 'none';
+
+    if ($type === 'credit') {
+        $m['net_outstanding'] = max(0, $purchase_balance - $initial);
+    } elseif ($type === 'debit') {
+        $m['net_outstanding'] = $purchase_balance + $initial;
     } else {
-        $manufacturer['net_outstanding'] = $purchase_balance;
+        $m['net_outstanding'] = $purchase_balance;
     }
-    
-    $manufacturer['net_outstanding'] = max(0, $manufacturer['net_outstanding']); // Ensure non-negative
 }
 
-// Create a unique array based on manufacturer ID before applying filter
-$unique_manufacturers = [];
-foreach ($manufacturers as $manufacturer) {
-    $unique_manufacturers[$manufacturer['id']] = $manufacturer;
-}
-$manufacturers = array_values($unique_manufacturers);
-
-// Apply outstanding filter after calculation
+// 🔍 OUTSTANDING FILTER (AFTER CALCULATION)
 if ($outstanding_filter !== 'all') {
-    $filtered_manufacturers = [];
-    foreach ($manufacturers as $manufacturer) {
-        if ($outstanding_filter === 'has_outstanding' && $manufacturer['net_outstanding'] > 0) {
-            $filtered_manufacturers[] = $manufacturer;
-        } elseif ($outstanding_filter === 'no_outstanding' && $manufacturer['net_outstanding'] == 0) {
-            $filtered_manufacturers[] = $manufacturer;
-        } elseif ($outstanding_filter === 'credit' && $manufacturer['initial_outstanding_type'] === 'credit') {
-            $filtered_manufacturers[] = $manufacturer;
-        } elseif ($outstanding_filter === 'debit' && $manufacturer['initial_outstanding_type'] === 'debit') {
-            $filtered_manufacturers[] = $manufacturer;
+    $manufacturers = array_filter($manufacturers, function($m) use ($outstanding_filter) {
+
+        if ($outstanding_filter === 'has_outstanding') {
+            return $m['net_outstanding'] > 0;
         }
-    }
-    $manufacturers = $filtered_manufacturers;
+
+        if ($outstanding_filter === 'no_outstanding') {
+            return $m['net_outstanding'] == 0;
+        }
+
+        if ($outstanding_filter === 'credit') {
+            return $m['initial_outstanding_type'] === 'credit';
+        }
+
+        if ($outstanding_filter === 'debit') {
+            return $m['initial_outstanding_type'] === 'debit';
+        }
+
+        return true;
+    });
+
+    $manufacturers = array_values($manufacturers);
 }
 
-// Summary statistics based on current filter
+// 📈 SUMMARY
 $total_suppliers = count($manufacturers);
 $active_suppliers = 0;
 $inactive_suppliers = 0;
@@ -164,20 +188,24 @@ $total_credit = 0;
 $total_debit = 0;
 
 foreach ($manufacturers as $m) {
+
     if ($m['is_active']) $active_suppliers++;
     else $inactive_suppliers++;
-    
-    $total_purchase_amount += ($m['total_purchase_amount'] ?? 0);
-    $total_paid_amount += ($m['total_paid_amount'] ?? 0);
+
+    $total_purchase_amount += $m['total_purchase_amount'] ?? 0;
+    $total_paid_amount += $m['total_paid_amount'] ?? 0;
     $total_outstanding += $m['net_outstanding'];
-    
+
     if ($m['initial_outstanding_type'] === 'credit') {
-        $total_credit += ($m['initial_outstanding_amount'] ?? 0);
-    } elseif ($m['initial_outstanding_type'] === 'debit') {
-        $total_debit += ($m['initial_outstanding_amount'] ?? 0);
+        $total_credit += $m['initial_outstanding_amount'] ?? 0;
+    }
+
+    if ($m['initial_outstanding_type'] === 'debit') {
+        $total_debit += $m['initial_outstanding_amount'] ?? 0;
     }
 }
 
+// 📦 TOTAL PURCHASE COUNT
 $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases'));
 ?>
 <!doctype html>
@@ -432,17 +460,17 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                         <div class="table-responsive">
                             <table id="suppliersTable" class="table table-hover align-middle w-100">
                                 <thead class="table-light">
-                                <tr>
-                                    <th>Supplier</th>
-                                    <th>Primary Contact</th>
-                                    <th>Contact Details</th>
-                                    <th>Bank & UPI</th>
-                                    <th class="text-center">Shop</th>
-                                    <th class="text-center">Purchase & Outstanding</th>
-                                    <th class="text-end">Total Amount</th>
-                                    <th class="text-center">Status</th>
-                                    <th class="text-center">Actions</th>
-                                </tr>
+                                    32
+                                        <th>Supplier</th>
+                                        <th>Primary Contact</th>
+                                        <th>Contact Details</th>
+                                        <th>Bank & UPI</th>
+                                        <th class="text-center">Shop</th>
+                                        <th class="text-center">Purchase & Outstanding</th>
+                                        <th class="text-end">Total Amount</th>
+                                        <th class="text-center">Status</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
                                 <?php if (empty($manufacturers)): ?>
@@ -598,7 +626,7 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
 
                                                     <?php if ($net_outstanding > 0): ?>
                                                         <?php
-                                                        // Get the first pending purchase for this supplier to redirect to its payment page
+                                                        // Get the first pending purchase for this supplier
                                                         $pending_purchase_stmt = $pdo->prepare("
                                                             SELECT id, purchase_number 
                                                             FROM purchases 
@@ -1007,7 +1035,7 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
     </div>
 </div>
 
-<!-- Enhanced Make Payment Modal (Integrated with purchase_payment.php) -->
+<!-- Enhanced Make Payment Modal (ALWAYS SHOWS PENDING PURCHASES CARD) -->
 <div class="modal fade" id="makePaymentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -1048,7 +1076,7 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                     </div>
                 </div>
 
-                <!-- Pending Purchases List -->
+                <!-- Pending Purchases List - ALWAYS VISIBLE -->
                 <div class="card mb-4">
                     <div class="card-header bg-light">
                         <h6 class="mb-0">
@@ -1110,21 +1138,18 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                             </select>
                         </div>
                         
-                        <!-- Reference Number -->
                         <div class="col-md-6">
                             <label class="form-label">Reference Number</label>
                             <input type="text" name="reference_no" class="form-control" 
                                    placeholder="Cheque/UPI/Transaction ID">
                         </div>
                         
-                        <!-- Notes -->
                         <div class="col-md-6">
                             <label class="form-label">Notes</label>
                             <textarea name="notes" class="form-control" rows="1" 
                                       placeholder="Additional notes..."></textarea>
                         </div>
                         
-                        <!-- Amount Input -->
                         <div class="col-12">
                             <label class="form-label fw-bold">Payment Amount</label>
                             <div class="input-group input-group-lg">
@@ -1205,9 +1230,7 @@ $(document).ready(function() {
             { orderable: false, targets: [8] },
             { searchable: false, targets: [8] }
         ],
-        // Disable DataTable's built-in search to avoid conflicts with our filter form
         searching: false,
-        // Ensure no duplicate rows
         retrieve: true,
         paging: true,
         info: true
@@ -1468,47 +1491,8 @@ $(document).ready(function() {
         $('#maxAmountHint').text('Maximum payable: ₹' + netPayable.toFixed(2));
         $('#paymentAmount').attr('max', netPayable);
 
-        // Check if only outstanding exists (no purchase balance)
-        if (purchaseBalance === 0 && outstandingAmount > 0 && outstandingType === 'debit') {
-            // Outstanding only payment - hide purchase selection section
-            $('#pendingPurchasesContent').hide();
-            $('#pendingPurchasesLoading').hide();
-            $('#purchasesTableFooter').hide();
-            $('.card:has(#pendingPurchasesContent)').hide(); // Hide the pending purchases card
-            
-            // Update modal title to indicate outstanding payment
-            $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Pay Outstanding to: ' + name);
-            
-            // Show outstanding only message
-            const outstandingMessage = `
-                <div class="alert alert-info mb-3">
-                    <i class="bx bx-info-circle me-2"></i>
-                    This supplier has a debit outstanding of <strong>₹${outstandingAmount.toFixed(2)}</strong> with no pending purchase orders.
-                    The payment will be applied directly to the outstanding balance.
-                </div>
-            `;
-            
-            // Insert message after summary card
-            $('.card.mb-4:first').after(outstandingMessage);
-            
-            // Auto-select "outstanding only" mode in the background
-            $('#paymentForm').data('payment-mode', 'outstanding-only');
-            
-        } else {
-            // Normal payment with purchases - show purchase selection
-            $('.card:has(#pendingPurchasesContent)').show();
-            $('#pendingPurchasesContent').hide();
-            $('#purchasesTableFooter').hide();
-            
-            // Remove any outstanding message if exists
-            $('.alert-info').remove();
-            
-            // Update modal title back to normal
-            $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: ' + name);
-            
-            // Load pending purchases
-            loadPendingPurchases(id);
-        }
+        // Always load pending purchases (card is always visible)
+        loadPendingPurchases(id);
         
         // Select All purchases checkbox
         $('#selectAllPurchases').prop('checked', false);
@@ -1526,10 +1510,8 @@ $(document).ready(function() {
 
         const amount = parseFloat($('#paymentAmount').val() || 0);
         const maxAmount = parseFloat($('#paymentAmount').attr('max') || 0);
-        const paymentMode = $('#paymentForm').data('payment-mode') || 'normal';
-        
-        // For outstanding-only mode, we don't need selected purchases
-        if (paymentMode !== 'outstanding-only' && selectedPurchases.length === 0) {
+
+        if (selectedPurchases.length === 0) {
             Swal.fire({
                 icon: 'error',
                 title: 'No Selection',
@@ -1573,18 +1555,10 @@ $(document).ready(function() {
             payment_method: $('select[name="payment_method"]').val(),
             amount: amount,
             reference_no: $('input[name="reference_no"]').val(),
-            notes: $('textarea[name="notes"]').val()
+            notes: $('textarea[name="notes"]').val(),
+            purchases: selectedPurchases,
+            outstanding_amount: 0 // No outstanding portion in this case
         };
-        
-        // Only add purchases if in normal mode and purchases selected
-        if (paymentMode !== 'outstanding-only' && selectedPurchases.length > 0) {
-            postData.purchases = selectedPurchases;
-            postData.outstanding_amount = 0; // No outstanding portion in this case
-        } else {
-            // Outstanding-only payment
-            postData.purchases = [];
-            postData.outstanding_amount = amount; // Entire amount goes to outstanding
-        }
 
         // Process payment via AJAX
         $.ajax({
@@ -1631,7 +1605,6 @@ $(document).ready(function() {
         $('.alert-info').remove();
         $('#pendingPurchasesContent').show();
         $('.card:has(#pendingPurchasesContent)').show();
-        $('#paymentForm').removeData('payment-mode');
         
         // Reset modal title
         $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: <span id="paymentSupplierName"></span>');
@@ -1679,12 +1652,13 @@ function loadPendingPurchases(manufacturerId) {
                     totalBalance += purchase.balance_due;
                     html += `
                         <tr>
-                            <td>
+                            <td class="text-center">
                                 <input type="checkbox" class="form-check-input purchase-checkbox" 
                                        value="${purchase.id}" data-amount="${purchase.balance_due}">
-                            </td>
+                             </td>
                             <td>
                                 <strong>${purchase.purchase_number}</strong>
+                                <br><small class="text-muted">${purchase.payment_status}</small>
                             </td>
                             <td>${purchase.purchase_date}</td>
                             <td class="text-end">₹${parseFloat(purchase.total_amount).toFixed(2)}</td>
@@ -1710,8 +1684,9 @@ function loadPendingPurchases(manufacturerId) {
                 $('#purchasesTableBody').html(`
                     <tr>
                         <td colspan="6" class="text-center py-4">
-                            <i class="bx bx-info-circle fs-4 text-muted mb-2"></i>
-                            <p class="text-muted">No pending purchases found for this supplier.</p>
+                            <i class="bx bx-info-circle fs-4 text-muted mb-2 d-block"></i>
+                            <p class="text-muted mb-0">No pending purchases found for this supplier.</p>
+                            <small class="text-muted">All purchase orders are fully paid.</small>
                         </td>
                     </tr>
                 `);
@@ -1724,7 +1699,7 @@ function loadPendingPurchases(manufacturerId) {
             $('#purchasesTableBody').html(`
                 <tr>
                     <td colspan="6" class="text-center py-4 text-danger">
-                        <i class="bx bx-error-circle fs-4 mb-2"></i>
+                        <i class="bx bx-error-circle fs-4 mb-2 d-block"></i>
                         <p>Error loading purchases. Please try again.</p>
                     </td>
                 </tr>
