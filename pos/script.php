@@ -4249,257 +4249,296 @@ document.head.appendChild(stockStyle);
     }
     let isGeneratingBill = false;
     async function generateBill() {
-        try {
-            // Prevent double-clicks
-            if (isGeneratingBill) {
-                console.log('Generate Bill already in progress, skipping...');
+    try {
+        // Prevent double-clicks
+        if (isGeneratingBill) {
+            console.log('Generate Bill already in progress, skipping...');
+            return;
+        }
+        isGeneratingBill = true;
+
+        console.log('🟢 GENERATE BILL - STARTED ====================');
+
+        // Validate cart
+        if (CART.length === 0) {
+            console.warn('❌ Generate Bill Failed: Empty cart');
+            showWarningToast('Please add items to cart first');
+            return;
+        }
+
+        // Validate customer
+        const customerName = document.getElementById('customer-name').value.trim();
+        if (!customerName) {
+            console.warn('❌ Generate Bill Failed: Customer name required');
+            showWarningModal('Customer Required', 'Customer name is required to generate bill');
+            document.getElementById('customer-name').focus();
+            document.getElementById('customer-name').select();
+            return;
+        }
+
+        // Generate fresh invoice number to avoid duplicates
+        await checkAndGenerateInvoiceNumber();
+
+        const currentInvoiceNumber = document.getElementById('invoice-number').value;
+        console.log('Using invoice number:', currentInvoiceNumber);
+
+        // Check customer credit limit if customer exists
+        if (CURRENT_CUSTOMER_ID) {
+            console.log('💰 Checking credit limit for customer ID:', CURRENT_CUSTOMER_ID);
+            const creditCheck = await checkCustomerCreditLimit();
+            if (!creditCheck.allowed) {
+                console.warn('❌ Generate Bill Failed: Credit limit exceeded', creditCheck);
+                showWarningModal('Credit Limit Exceeded', creditCheck.message);
                 return;
             }
-            isGeneratingBill = true;
+            console.log('✅ Credit check passed');
+        }
 
-            console.log('🟢 GENERATE BILL - STARTED ====================');
+        // Validate stock
+        console.log('📊 Stock Validation:');
+        for (const item of CART) {
+            const product = findProductById(item.product_id);
 
-            // Validate cart
-            if (CART.length === 0) {
-                console.warn('❌ Generate Bill Failed: Empty cart');
-                showWarningToast('Please add items to cart first');
-                return;
-            }
-
-            // Validate customer
-            const customerName = document.getElementById('customer-name').value.trim();
-            if (!customerName) {
-                console.warn('❌ Generate Bill Failed: Customer name required');
-                showWarningModal('Customer Required', 'Customer name is required to generate bill');
-                document.getElementById('customer-name').focus();
-                document.getElementById('customer-name').select();
-                return;
-            }
-
-            // Generate fresh invoice number to avoid duplicates
-            await checkAndGenerateInvoiceNumber();
-
-            const currentInvoiceNumber = document.getElementById('invoice-number').value;
-            console.log('Using invoice number:', currentInvoiceNumber);
-
-            // Check customer credit limit if customer exists
-            if (CURRENT_CUSTOMER_ID) {
-                console.log('💰 Checking credit limit for customer ID:', CURRENT_CUSTOMER_ID);
-                const creditCheck = await checkCustomerCreditLimit();
-                if (!creditCheck.allowed) {
-                    console.warn('❌ Generate Bill Failed: Credit limit exceeded', creditCheck);
-                    showWarningModal('Credit Limit Exceeded', creditCheck.message);
-                    return;
-                }
-                console.log('✅ Credit check passed');
-            }
-
-            // Validate stock
-            console.log('📊 Stock Validation:');
-            for (const item of CART) {
-                const product = findProductById(item.product_id);
-
-                if (!product) {
-                    console.warn('❌ Generate Bill Failed: Product not found for item', item);
-                    showErrorToast(`Product not found for ${item.name}`);
-                    return;
-                }
-
-                let availableStock = product.shop_stock_primary || product.shop_stock || 0;
-                let quantityToCheck = item.quantity_in_primary || item.quantity;
-
-                if (quantityToCheck > availableStock) {
-                    console.warn('❌ Generate Bill Failed: Insufficient stock for item', {
-                        item_name: item.name,
-                        requested_qty: item.quantity,
-                        requested_in_primary: quantityToCheck,
-                        available_stock: availableStock
-                    });
-
-                    let errorMessage = `Insufficient stock for ${item.name}. Available: ${availableStock} ${product.unit_of_measure}`;
-
-                    if (item.is_secondary_unit && product.secondary_unit && product.sec_unit_conversion) {
-                        const availableSecondary = Math.floor(availableStock * product.sec_unit_conversion);
-                        errorMessage = `Insufficient stock for ${item.name}. Available: ${availableStock} ${product.unit_of_measure} (≈${availableSecondary} ${product.secondary_unit})`;
-                    }
-
-                    showWarningModal('Stock Insufficient', errorMessage);
-                    return;
-                }
-            }
-            console.log('✅ All items have sufficient stock');
-
-            const totals = calculateTotals();
-            const paymentData = collectPaymentData();
-
-            // Validate payment
-            if (paymentData.totalPaid === 0) {
-                console.warn('❌ Generate Bill Failed: No payment entered');
-                showWarningToast('Please enter payment amounts');
+            if (!product) {
+                console.warn('❌ Generate Bill Failed: Product not found for item', item);
+                showErrorToast(`Product not found for ${item.name}`);
                 return;
             }
 
-            if (paymentData.totalPaid < totals.grandTotal) {
-                const pending = totals.grandTotal - paymentData.totalPaid;
-                console.warn('❌ Generate Bill Failed: Insufficient payment', {
-                    grand_total: totals.grandTotal,
-                    total_paid: paymentData.totalPaid,
-                    pending_amount: pending
+            let availableStock = product.shop_stock_primary || product.shop_stock || 0;
+            let quantityToCheck = item.quantity_in_primary || item.quantity;
+
+            if (quantityToCheck > availableStock) {
+                console.warn('❌ Generate Bill Failed: Insufficient stock for item', {
+                    item_name: item.name,
+                    requested_qty: item.quantity,
+                    requested_in_primary: quantityToCheck,
+                    available_stock: availableStock
                 });
-                showWarningModal('Insufficient Payment', `Pending amount: ₹${Math.round(pending)}`);
+
+                let errorMessage = `Insufficient stock for ${item.name}. Available: ${availableStock} ${product.unit_of_measure}`;
+
+                if (item.is_secondary_unit && product.secondary_unit && product.sec_unit_conversion) {
+                    const availableSecondary = Math.floor(availableStock * product.sec_unit_conversion);
+                    errorMessage = `Insufficient stock for ${item.name}. Available: ${availableStock} ${product.unit_of_measure} (≈${availableSecondary} ${product.secondary_unit})`;
+                }
+
+                showWarningModal('Stock Insufficient', errorMessage);
                 return;
             }
+        }
+        console.log('✅ All items have sufficient stock');
 
-            // Prepare invoice data
-            const invoiceData = {
-                customer_name: customerName,
-                customer_phone: document.getElementById('customer-contact').value || '',
-                customer_address: document.getElementById('customer-address').value || '',
-                customer_gstin: document.getElementById('customer-gstin').value || '',
-                customer_id: CURRENT_CUSTOMER_ID,
-                invoice_number: document.getElementById('invoice-number').value,
-                invoice_type: GST_TYPE,
-                date: document.getElementById('date').value,
-                price_type: GLOBAL_PRICE_TYPE,
-                referral_id: SELECTED_REFERRAL_ID,
-                points_used: POINTS_USED,
-                points_discount: totals.pointsDiscount,
-                subtotal: totals.subtotal,
-                discount: document.getElementById('additional-dis').value,
-                discount_type: document.getElementById('overall-discount-type').value,
-                overall_discount: totals.overallDiscount,
-                total_cgst: totals.totalCGST,
-                total_sgst: totals.totalSGST,
-                total_igst: totals.totalIGST,
-                total_taxable: totals.totalTaxable,
-                total_gst: totals.totalGST,
+        const totals = calculateTotals();
+        const paymentData = collectPaymentData();
+
+        // Validate payment
+        if (paymentData.totalPaid === 0) {
+            console.warn('❌ Generate Bill Failed: No payment entered');
+            showWarningToast('Please enter payment amounts');
+            return;
+        }
+
+        if (paymentData.totalPaid < totals.grandTotal) {
+            const pending = totals.grandTotal - paymentData.totalPaid;
+            console.warn('❌ Generate Bill Failed: Insufficient payment', {
                 grand_total: totals.grandTotal,
-                referral_commission: totals.totalReferralCommission,
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
-                })),
-                payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
-                payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
-            };
+                total_paid: paymentData.totalPaid,
+                pending_amount: pending
+            });
+            showWarningModal('Insufficient Payment', `Pending amount: ₹${Math.round(pending)}`);
+            return;
+        }
 
-            console.log('📤 Invoice Data to be saved:', JSON.stringify(invoiceData, null, 2));
+        // Prepare invoice data
+        const invoiceData = {
+            customer_name: customerName,
+            customer_phone: document.getElementById('customer-contact').value || '',
+            customer_address: document.getElementById('customer-address').value || '',
+            customer_gstin: document.getElementById('customer-gstin').value || '',
+            customer_id: CURRENT_CUSTOMER_ID,
+            invoice_number: document.getElementById('invoice-number').value,
+            invoice_type: GST_TYPE,
+            date: document.getElementById('date').value,
+            price_type: GLOBAL_PRICE_TYPE,
+            referral_id: SELECTED_REFERRAL_ID,
+            points_used: POINTS_USED,
+            points_discount: totals.pointsDiscount,
+            subtotal: totals.subtotal,
+            discount: document.getElementById('additional-dis').value,
+            discount_type: document.getElementById('overall-discount-type').value,
+            overall_discount: totals.overallDiscount,
+            total_cgst: totals.totalCGST,
+            total_sgst: totals.totalSGST,
+            total_igst: totals.totalIGST,
+            total_taxable: totals.totalTaxable,
+            total_gst: totals.totalGST,
+            grand_total: totals.grandTotal,
+            referral_commission: totals.totalReferralCommission,
+            shipping_details: {
+                name: SHIPPING_DETAILS.name,
+                contact: SHIPPING_DETAILS.contact,
+                gstin: SHIPPING_DETAILS.gstin,
+                address: SHIPPING_DETAILS.address,
+                vehicle_number: SHIPPING_DETAILS.vehicle_number,
+                charges: SHIPPING_DETAILS.charges
+            },
+            items: CART.map(item => ({
+                product_id: item.product_id,
+                name: item.name,
+                code: item.code,
+                quantity: item.quantity,
+                unit: item.unit,
+                price: item.price,
+                price_type: item.price_type,
+                discount_value: item.discount_value,
+                discount_type: item.discount_type,
+                total: item.price * item.quantity,
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                taxable_value: calculateItemGST(item).taxable,
+                cgst_amount: calculateItemGST(item).cgst,
+                sgst_amount: calculateItemGST(item).sgst,
+                igst_amount: calculateItemGST(item).igst,
+                stock_price: item.stock_price,
+                referral_enabled: item.referral_enabled,
+                referral_type: item.referral_type,
+                referral_value: item.referral_value,
+                referral_commission: calculateItemReferralCommission(item),
+                is_secondary_unit: item.is_secondary_unit,
+                sec_unit_conversion: item.sec_unit_conversion,
+                quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
+            })),
+            payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
+            payment_details: paymentData,
+            pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
+        };
 
-            // Show loading modal
-            showLoading('Saving invoice...');
+        console.log('📤 Invoice Data to be saved:', JSON.stringify(invoiceData, null, 2));
 
-            try {
-                console.log('🌐 Sending invoice data to server...');
+        // Show loading modal
+        showLoading('Saving invoice...');
 
-                const response = await fetchWithTimeout('api/invoices.php?action=save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(invoiceData),
-                    timeout: 15000
+        try {
+            console.log('🌐 Sending invoice data to server...');
+
+            const response = await fetchWithTimeout('api/invoices.php?action=save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(invoiceData),
+                timeout: 15000
+            });
+
+            console.log('📥 Server Response Status:', response.status, response.statusText);
+
+            if (!response.ok) {
+                console.error('❌ Server Response Error:', {
+                    status: response.status,
+                    statusText: response.statusText
                 });
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-                console.log('📥 Server Response Status:', response.status, response.statusText);
+            const data = await response.json();
+            console.log('📊 Server Response Data:', data);
 
-                if (!response.ok) {
-                    console.error('❌ Server Response Error:', {
-                        status: response.status,
-                        statusText: response.statusText
-                    });
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                console.log('📊 Server Response Data:', data);
-
-                if (data.success) {
-                    const invoiceId = data.invoice_id || invoiceData.invoice_number;
-                    console.log('✅ Invoice Saved Successfully!', {
-                        invoice_number: invoiceData.invoice_number,
-                        invoice_id: invoiceId,
-                        timestamp: new Date().toISOString()
-                    });
-
-                    hideLoading();
-
-                    showSuccessModal(
-                        'Invoice Saved Successfully!',
-                        `Invoice #${invoiceData.invoice_number} has been saved.`,
-                        function () {
-                            // Clear cart and session after successful save
-                            CART = [];
-                            clearCartFromSession();
-
-                            // Reset form
-                            resetForm();
-                        }
-                    );
-
-                } else {
-                    console.error('❌ Server returned error:', {
-                        success: data.success,
-                        message: data.message,
-                        data: data
-                    });
-                    hideLoading();
-                    throw new Error(data.message || 'Unknown server error');
-                }
-
-            } catch (fetchError) {
-                console.error('❌ Invoice Save Error:', {
-                    error: fetchError,
-                    error_message: fetchError.message,
-                    stack: fetchError.stack,
+            if (data.success) {
+                const invoiceId = data.invoice_id || invoiceData.invoice_number;
+                console.log('✅ Invoice Saved Successfully!', {
+                    invoice_number: invoiceData.invoice_number,
+                    invoice_id: invoiceId,
                     timestamp: new Date().toISOString()
                 });
+
                 hideLoading();
-                showErrorModal('Failed to Save Invoice', fetchError.message);
+
+                showSuccessModal(
+                    'Invoice Saved Successfully!',
+                    `Invoice #${invoiceData.invoice_number} has been saved.`,
+                    function () {
+                        // Clear cart and session after successful save
+                        CART = [];
+                        clearCartFromSession();
+                        
+                        // ========== ADD THIS SECTION TO CLEAR SHIPPING DATA ==========
+                        // Clear shipping details from memory
+                        SHIPPING_DETAILS = {
+                            name: '',
+                            contact: '',
+                            gstin: '',
+                            address: '',
+                            vehicle_number: '',
+                            charges: 0
+                        };
+                        
+                        // Clear shipping details from session storage
+                        sessionStorage.removeItem('pos_shipping_details');
+                        
+                        // Update shipping display to show empty state
+                        updateShippingDetailsHorizontal();
+                        
+                        // Clear any shipping charges row from total summary
+                        const shippingRow = document.getElementById('shipping-charges-row');
+                        if (shippingRow) {
+                            shippingRow.style.display = 'none';
+                        }
+                        
+                        // Also clear the shipping summary from address section if it exists
+                        const shippingSummary = document.getElementById('shippingSummary');
+                        if (shippingSummary) {
+                            shippingSummary.classList.remove('show');
+                            shippingSummary.innerHTML = '';
+                        }
+                        // ========== END OF SHIPPING CLEAR SECTION ==========
+                        
+                        // Reset form
+                        resetForm();
+                    }
+                );
+
+            } else {
+                console.error('❌ Server returned error:', {
+                    success: data.success,
+                    message: data.message,
+                    data: data
+                });
+                hideLoading();
+                throw new Error(data.message || 'Unknown server error');
             }
 
-            console.log('🟢 GENERATE BILL - COMPLETED ====================');
-
-        } catch (error) {
-            console.error('❌ Generate Bill - Unhandled Error:', {
-                error: error,
-                error_message: error.message,
-                stack: error.stack,
+        } catch (fetchError) {
+            console.error('❌ Invoice Save Error:', {
+                error: fetchError,
+                error_message: fetchError.message,
+                stack: fetchError.stack,
                 timestamp: new Date().toISOString()
             });
             hideLoading();
-            showErrorModal('Error', `Error generating bill: ${error.message}`);
-        } finally {
-            setTimeout(() => {
-                isGeneratingBill = false;
-            }, 1000);
+            showErrorModal('Failed to Save Invoice', fetchError.message);
         }
+
+        console.log('🟢 GENERATE BILL - COMPLETED ====================');
+
+    } catch (error) {
+        console.error('❌ Generate Bill - Unhandled Error:', {
+            error: error,
+            error_message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        hideLoading();
+        showErrorModal('Error', `Error generating bill: ${error.message}`);
+    } finally {
+        setTimeout(() => {
+            isGeneratingBill = false;
+        }, 1000);
     }
+}
 
     async function checkCustomerCreditLimit() {
         try {
@@ -4538,268 +4577,338 @@ document.head.appendChild(stockStyle);
     }
 
     async function printBill() {
-        try {
-            if (isGeneratingBill) {
-                console.log('Print Bill already in progress, skipping...');
-                return;
-            }
-            isGeneratingBill = true;
+    try {
+        if (isGeneratingBill) {
+            console.log('Print Bill already in progress, skipping...');
+            return;
+        }
+        isGeneratingBill = true;
 
-            console.log('🟢 PRINT BILL - STARTED ====================');
+        console.log('🟢 PRINT BILL - STARTED ====================');
 
-            if (CART.length === 0) {
-                console.warn('❌ Print Bill Failed: Empty cart');
-                showWarningToast('Please add items to cart first');
-                isGeneratingBill = false;
-                return;
-            }
-
-            const customerName = document.getElementById('customer-name').value.trim();
-            if (!customerName) {
-                console.warn('❌ Print Bill Failed: Customer name required');
-                showWarningModal('Customer Required', 'Customer name is required to print bill');
-                document.getElementById('customer-name').focus();
-                document.getElementById('customer-name').select();
-                isGeneratingBill = false;
-                return;
-            }
-
-            await checkAndGenerateInvoiceNumber();
-            const currentInvoiceNumber = document.getElementById('invoice-number').value;
-            console.log('Using invoice number for print:', currentInvoiceNumber);
-
-            // Show loading modal
-            showLoading('Preparing invoice for print...');
-
-            const totals = calculateTotals();
-            const paymentData = collectPaymentData();
-
-            const invoiceData = {
-                action: 'print',
-                customer_name: customerName,
-                customer_phone: document.getElementById('customer-contact').value || '',
-                customer_address: document.getElementById('customer-address').value || '',
-                customer_gstin: document.getElementById('customer-gstin').value || '',
-                customer_id: CURRENT_CUSTOMER_ID,
-                invoice_number: currentInvoiceNumber,
-                invoice_type: GST_TYPE,
-                date: document.getElementById('date').value,
-                price_type: GLOBAL_PRICE_TYPE,
-                referral_id: SELECTED_REFERRAL_ID,
-                points_used: POINTS_USED,
-                points_discount: totals.pointsDiscount,
-                subtotal: totals.subtotal,
-                discount: document.getElementById('additional-dis').value,
-                discount_type: document.getElementById('overall-discount-type').value,
-                overall_discount: totals.overallDiscount,
-                total_cgst: totals.totalCGST,
-                total_sgst: totals.totalSGST,
-                total_igst: totals.totalIGST,
-                total_taxable: totals.totalTaxable,
-                total_gst: totals.totalGST,
-                grand_total: totals.grandTotal,
-                referral_commission: totals.totalReferralCommission,
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
-                })),
-                payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
-                payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
-            };
-
-            console.log('📤 Sending invoice data for print...', invoiceData);
-
-            try {
-                const response = await fetchWithTimeout('api/invoices.php?action=save_for_print', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(invoiceData),
-                    timeout: 15000
-                });
-
-                console.log('📥 Print Save Response:', response.status, response.statusText);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                console.log('📊 Print Save Response Data:', data);
-
-                if (data.success) {
-                    const invoiceId = data.invoice_id;
-                    console.log('✅ Invoice Saved for Print! Invoice ID:', invoiceId);
-
-                    hideLoading();
-
-                    // Clear cart and session after successful save
-                    CART = [];
-                    clearCartFromSession();
-
-                    showSuccessModal(
-                        'Invoice Saved Successfully!',
-                        'Opening print preview...',
-                        function () {
-                            if (data.print_url) {
-                                console.log('Opening print URL:', data.print_url);
-                                const printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
-                                if (!printWindow) {
-                                    showWarningToast('Popup blocked. Please allow popups for print preview.');
-                                } else {
-                                    printWindow.focus();
-                                }
-                            } else {
-                                const defaultPrintUrl = `invoice_print.php?invoice_id=${invoiceId}`;
-                                const printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
-
-                                if (!printWindow) {
-                                    showWarningToast('Popup blocked. Please allow popups for print preview.');
-                                } else {
-                                    printWindow.focus();
-                                }
-                            }
-
-                            // Reset form after delay
-                            setTimeout(() => {
-                                resetForm();
-                            }, 500);
-                        }
-                    );
-
-                } else {
-                    console.error('❌ Print Save Error from server:', data.message);
-                    hideLoading();
-                    throw new Error(data.message || 'Unknown server error');
-                }
-
-            } catch (fetchError) {
-                console.error('❌ Print Bill Save Error:', {
-                    error: fetchError,
-                    error_message: fetchError.message,
-                    stack: fetchError.stack
-                });
-                hideLoading();
-                showErrorModal('Failed to Save Invoice', fetchError.message);
-            }
-
-            console.log('🟢 PRINT BILL - COMPLETED ====================');
-
-        } catch (error) {
-            console.error('❌ Print Bill - Unhandled Error:', error);
-            hideLoading();
-            showErrorModal('Error', `Error processing print: ${error.message}`);
-
+        if (CART.length === 0) {
+            console.warn('❌ Print Bill Failed: Empty cart');
+            showWarningToast('Please add items to cart first');
             isGeneratingBill = false;
-            const printBtn = document.getElementById('btnPrintBill');
-            if (printBtn) {
-                printBtn.disabled = false;
-                printBtn.innerHTML = '<i class="fas fa-print me-1"></i> Print Bill';
+            return;
+        }
+
+        const customerName = document.getElementById('customer-name').value.trim();
+        if (!customerName) {
+            console.warn('❌ Print Bill Failed: Customer name required');
+            showWarningModal('Customer Required', 'Customer name is required to print bill');
+            document.getElementById('customer-name').focus();
+            document.getElementById('customer-name').select();
+            isGeneratingBill = false;
+            return;
+        }
+
+        await checkAndGenerateInvoiceNumber();
+        const currentInvoiceNumber = document.getElementById('invoice-number').value;
+        console.log('Using invoice number for print:', currentInvoiceNumber);
+
+        // Show loading modal
+        showLoading('Preparing invoice for print...');
+
+        const totals = calculateTotals();
+        const paymentData = collectPaymentData();
+
+        const invoiceData = {
+            action: 'print',
+            customer_name: customerName,
+            customer_phone: document.getElementById('customer-contact').value || '',
+            customer_address: document.getElementById('customer-address').value || '',
+            customer_gstin: document.getElementById('customer-gstin').value || '',
+            customer_id: CURRENT_CUSTOMER_ID,
+            invoice_number: currentInvoiceNumber,
+            invoice_type: GST_TYPE,
+            date: document.getElementById('date').value,
+            price_type: GLOBAL_PRICE_TYPE,
+            referral_id: SELECTED_REFERRAL_ID,
+            points_used: POINTS_USED,
+            points_discount: totals.pointsDiscount,
+            subtotal: totals.subtotal,
+            discount: document.getElementById('additional-dis').value,
+            discount_type: document.getElementById('overall-discount-type').value,
+            overall_discount: totals.overallDiscount,
+            total_cgst: totals.totalCGST,
+            total_sgst: totals.totalSGST,
+            total_igst: totals.totalIGST,
+            total_taxable: totals.totalTaxable,
+            total_gst: totals.totalGST,
+            grand_total: totals.grandTotal,
+            referral_commission: totals.totalReferralCommission,
+            shipping_details: {
+                name: SHIPPING_DETAILS.name,
+                contact: SHIPPING_DETAILS.contact,
+                gstin: SHIPPING_DETAILS.gstin,
+                address: SHIPPING_DETAILS.address,
+                vehicle_number: SHIPPING_DETAILS.vehicle_number,
+                charges: SHIPPING_DETAILS.charges
+            },
+            items: CART.map(item => ({
+                product_id: item.product_id,
+                name: item.name,
+                code: item.code,
+                quantity: item.quantity,
+                unit: item.unit,
+                price: item.price,
+                price_type: item.price_type,
+                discount_value: item.discount_value,
+                discount_type: item.discount_type,
+                total: item.price * item.quantity,
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                taxable_value: calculateItemGST(item).taxable,
+                cgst_amount: calculateItemGST(item).cgst,
+                sgst_amount: calculateItemGST(item).sgst,
+                igst_amount: calculateItemGST(item).igst,
+                stock_price: item.stock_price,
+                referral_enabled: item.referral_enabled,
+                referral_type: item.referral_type,
+                referral_value: item.referral_value,
+                referral_commission: calculateItemReferralCommission(item),
+                is_secondary_unit: item.is_secondary_unit,
+                sec_unit_conversion: item.sec_unit_conversion,
+                quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
+            })),
+            payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
+            payment_details: paymentData,
+            pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
+        };
+
+        console.log('📤 Sending invoice data for print...', invoiceData);
+
+        try {
+            const response = await fetchWithTimeout('api/invoices.php?action=save_for_print', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(invoiceData),
+                timeout: 15000
+            });
+
+            console.log('📥 Print Save Response:', response.status, response.statusText);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+
+            const data = await response.json();
+            console.log('📊 Print Save Response Data:', data);
+
+            if (data.success) {
+                const invoiceId = data.invoice_id;
+                console.log('✅ Invoice Saved for Print! Invoice ID:', invoiceId);
+
+                hideLoading();
+
+                // Clear cart and session after successful save
+                CART = [];
+                clearCartFromSession();
+                
+                // ========== ADD THIS SECTION TO CLEAR SHIPPING DATA ==========
+                // Clear shipping details from memory
+                SHIPPING_DETAILS = {
+                    name: '',
+                    contact: '',
+                    gstin: '',
+                    address: '',
+                    vehicle_number: '',
+                    charges: 0
+                };
+                
+                // Clear shipping details from session storage
+                sessionStorage.removeItem('pos_shipping_details');
+                
+                // Update shipping display to show empty state
+                updateShippingDetailsHorizontal();
+                
+                // Clear any shipping charges row from total summary
+                const shippingRow = document.getElementById('shipping-charges-row');
+                if (shippingRow) {
+                    shippingRow.style.display = 'none';
+                }
+                
+                // Also clear the shipping summary from address section if it exists
+                const shippingSummary = document.getElementById('shippingSummary');
+                if (shippingSummary) {
+                    shippingSummary.classList.remove('show');
+                    shippingSummary.innerHTML = '';
+                }
+                // ========== END OF SHIPPING CLEAR SECTION ==========
+
+                showSuccessModal(
+                    'Invoice Saved Successfully!',
+                    'Opening print preview...',
+                    function () {
+                        if (data.print_url) {
+                            console.log('Opening print URL:', data.print_url);
+                            const printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
+                            if (!printWindow) {
+                                showWarningToast('Popup blocked. Please allow popups for print preview.');
+                            } else {
+                                printWindow.focus();
+                            }
+                        } else {
+                            const defaultPrintUrl = `invoice_print.php?invoice_id=${invoiceId}`;
+                            const printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
+
+                            if (!printWindow) {
+                                showWarningToast('Popup blocked. Please allow popups for print preview.');
+                            } else {
+                                printWindow.focus();
+                            }
+                        }
+
+                        // Reset form after delay
+                        setTimeout(() => {
+                            resetForm();
+                        }, 500);
+                    }
+                );
+
+            } else {
+                console.error('❌ Print Save Error from server:', data.message);
+                hideLoading();
+                throw new Error(data.message || 'Unknown server error');
+            }
+
+        } catch (fetchError) {
+            console.error('❌ Print Bill Save Error:', {
+                error: fetchError,
+                error_message: fetchError.message,
+                stack: fetchError.stack
+            });
+            hideLoading();
+            showErrorModal('Failed to Save Invoice', fetchError.message);
+        }
+
+        console.log('🟢 PRINT BILL - COMPLETED ====================');
+
+    } catch (error) {
+        console.error('❌ Print Bill - Unhandled Error:', error);
+        hideLoading();
+        showErrorModal('Error', `Error processing print: ${error.message}`);
+
+        isGeneratingBill = false;
+        const printBtn = document.getElementById('btnPrintBill');
+        if (printBtn) {
+            printBtn.disabled = false;
+            printBtn.innerHTML = '<i class="fas fa-print me-1"></i> Print Bill';
         }
     }
+}
     // ==================== FORM RESET ====================
     function resetForm() {
-        try {
-            console.log('Resetting form...');
+    try {
+        console.log('Resetting form...');
 
-            // Clear cart
-            CART = [];
-            renderCart();
+        // Clear cart
+        CART = [];
+        renderCart();
 
-            // Reset customer form
-            document.getElementById('customer-name').value = 'Walk-in Customer';
-            $('#customer-contact').val('').trigger('change');
-            document.getElementById('customer-address').value = '';
-            document.getElementById('customer-gstin').value = '';
+        // Reset customer form
+        document.getElementById('customer-name').value = 'Walk-in Customer';
+        $('#customer-contact').val('').trigger('change');
+        document.getElementById('customer-address').value = '';
+        document.getElementById('customer-gstin').value = '';
 
-            // Reset referral
-            $('#referral').val('').trigger('change');
-            SELECTED_REFERRAL_ID = null;
+        // Reset referral
+        $('#referral').val('').trigger('change');
+        SELECTED_REFERRAL_ID = null;
 
-            // Reset payment checkboxes
-            document.querySelectorAll('input[name="payment-method"]').forEach(checkbox => {
-                checkbox.checked = checkbox.value === 'cash';
-            });
+        // Reset payment checkboxes
+        document.querySelectorAll('input[name="payment-method"]').forEach(checkbox => {
+            checkbox.checked = checkbox.value === 'cash';
+        });
 
-            // Reset payment amounts
-            document.getElementById('cash-amount').value = '0';
-            document.getElementById('upi-amount').value = '0';
-            document.getElementById('bank-amount').value = '0';
-            document.getElementById('cheque-amount').value = '0';
-            document.getElementById('credit-amount').value = '0';
-            document.getElementById('upi-reference').value = '';
-            document.getElementById('bank-reference').value = '';
-            document.getElementById('cheque-number').value = '';
-            document.getElementById('credit-reference').value = '';
+        // Reset payment amounts
+        document.getElementById('cash-amount').value = '0';
+        document.getElementById('upi-amount').value = '0';
+        document.getElementById('bank-amount').value = '0';
+        document.getElementById('cheque-amount').value = '0';
+        document.getElementById('credit-amount').value = '0';
+        document.getElementById('upi-reference').value = '';
+        document.getElementById('bank-reference').value = '';
+        document.getElementById('cheque-number').value = '';
+        document.getElementById('credit-reference').value = '';
 
-            // Hide all payment cards except cash
-            document.querySelectorAll('.payment-input-card').forEach(card => {
-                card.classList.remove('active');
-            });
-            document.getElementById('cash-input-card').classList.add('active');
+        // Hide all payment cards except cash
+        document.querySelectorAll('.payment-input-card').forEach(card => {
+            card.classList.remove('active');
+        });
+        document.getElementById('cash-input-card').classList.add('active');
 
-            ACTIVE_PAYMENT_METHODS = new Set(['cash']);
+        ACTIVE_PAYMENT_METHODS = new Set(['cash']);
 
-            // Reset discount
-            document.getElementById('additional-dis').value = '0';
-            document.getElementById('discount-type').value = 'percentage';
+        // Reset discount
+        document.getElementById('additional-dis').value = '0';
+        document.getElementById('discount-type').value = 'percentage';
 
-            // Reset loyalty points
-            hideLoyaltyPoints();
+        // Reset loyalty points
+        hideLoyaltyPoints();
 
-            // Remove payment distribution display
-            const distributionContainer = document.getElementById('paymentDistribution');
-            if (distributionContainer) {
-                distributionContainer.remove();
-            }
-
-            // Generate new invoice number
-            generateInvoiceNumber();
-
-            // Update billing summary
-            updateBillingSummary();
-
-            // Clear product selection
-            clearProductSelection();
-
-            // Focus on barcode input
-            document.getElementById('barcode-input').focus();
-
-            showToast('Form reset successfully. Ready for next sale!', 'success');
-
-        } catch (error) {
-            console.error('Error resetting form:', error);
-            showToast('Error resetting form. Please refresh page.', 'danger');
+        // Remove payment distribution display
+        const distributionContainer = document.getElementById('paymentDistribution');
+        if (distributionContainer) {
+            distributionContainer.remove();
         }
+
+        // ========== ADD THIS SECTION TO CLEAR SHIPPING DETAILS ==========
+        // Clear shipping details from memory
+        SHIPPING_DETAILS = {
+            name: '',
+            contact: '',
+            gstin: '',
+            address: '',
+            vehicle_number: '',
+            charges: 0
+        };
+        
+        // Clear shipping details from session storage
+        sessionStorage.removeItem('pos_shipping_details');
+        
+        // Update shipping display to show empty state
+        updateShippingDetailsHorizontal();
+        
+        // Clear any shipping charges row from total summary
+        const shippingRow = document.getElementById('shipping-charges-row');
+        if (shippingRow) {
+            shippingRow.style.display = 'none';
+        }
+        
+        // Also clear the shipping summary from address section if it exists
+        const shippingSummary = document.getElementById('shippingSummary');
+        if (shippingSummary) {
+            shippingSummary.classList.remove('show');
+            shippingSummary.innerHTML = '';
+        }
+        // ========== END OF SHIPPING CLEAR SECTION ==========
+
+        // Generate new invoice number
+        generateInvoiceNumber();
+
+        // Update billing summary
+        updateBillingSummary();
+
+        // Clear product selection
+        clearProductSelection();
+
+        // Focus on barcode input
+        document.getElementById('barcode-input').focus();
+
+        showToast('Form reset successfully. Ready for next sale!', 'success');
+
+    } catch (error) {
+        console.error('Error resetting form:', error);
+        showToast('Error resetting form. Please refresh page.', 'danger');
     }
+}
 
     // ==================== HELPER FUNCTIONS ====================
     function escapeHtml(text) {
@@ -6536,4 +6645,373 @@ document.head.appendChild(stockStyle);
     window.cartItemIncrement = cartItemIncrement;
 
     console.log('POS System: Script loaded successfully');
+
+ // ==================== SHIPPING DETAILS FUNCTIONS ====================
+let SHIPPING_DETAILS = {
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    vehicle_number: '',
+    charges: 0
+};
+
+function initShippingModal() {
+    try {
+        const shippingBtn = document.getElementById('btnShippingDetails');
+        if (shippingBtn) {
+            shippingBtn.removeEventListener('click', showShippingModal);
+            shippingBtn.addEventListener('click', showShippingModal);
+        }
+        
+        const saveShippingBtn = document.getElementById('btnSaveShipping');
+        if (saveShippingBtn) {
+            saveShippingBtn.removeEventListener('click', saveShippingDetails);
+            saveShippingBtn.addEventListener('click', saveShippingDetails);
+        }
+        
+        // Initialize buttons in shipping section
+        initShippingSectionButtons();
+        
+        loadShippingDetailsFromSession();
+        
+        // Only create horizontal display (not the one under address)
+        createHorizontalShippingDisplay();
+        
+        // Update the horizontal display
+        updateShippingDetailsHorizontal();
+        
+    } catch (error) {
+        console.error('Error initializing shipping modal:', error);
+    }
+}
+
+function initShippingSectionButtons() {
+    try {
+        const editBtn = document.getElementById('btnEditShippingFromDiscount');
+        if (editBtn) {
+            editBtn.removeEventListener('click', showShippingModal);
+            editBtn.addEventListener('click', showShippingModal);
+        }
+        
+        const clearBtn = document.getElementById('btnClearShippingFromDiscount');
+        if (clearBtn) {
+            clearBtn.removeEventListener('click', clearShippingDetailsWithConfirm);
+            clearBtn.addEventListener('click', clearShippingDetailsWithConfirm);
+        }
+    } catch (error) {
+        console.error('Error initializing shipping section buttons:', error);
+    }
+}
+
+function showShippingModal() {
+    try {
+        document.getElementById('shipping-name').value = SHIPPING_DETAILS.name || '';
+        document.getElementById('shipping-contact').value = SHIPPING_DETAILS.contact || '';
+        document.getElementById('shipping-gstin').value = SHIPPING_DETAILS.gstin || '';
+        document.getElementById('shipping-address').value = SHIPPING_DETAILS.address || '';
+        document.getElementById('shipping-vehicle').value = SHIPPING_DETAILS.vehicle_number || '';
+        document.getElementById('shipping-charges').value = SHIPPING_DETAILS.charges || 0;
+        
+        const modal = new bootstrap.Modal(document.getElementById('shippingModal'));
+        modal.show();
+    } catch (error) {
+        console.error('Error showing shipping modal:', error);
+        if (typeof showToast === 'function') {
+            showToast('Error opening shipping details', 'danger');
+        }
+    }
+}
+
+function saveShippingDetails() {
+    try {
+        const shippingData = {
+            name: document.getElementById('shipping-name').value.trim(),
+            contact: document.getElementById('shipping-contact').value.trim(),
+            gstin: document.getElementById('shipping-gstin').value.trim().toUpperCase(),
+            address: document.getElementById('shipping-address').value.trim(),
+            vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
+            charges: parseFloat(document.getElementById('shipping-charges').value) || 0
+        };
+        
+        SHIPPING_DETAILS = shippingData;
+        saveShippingDetailsToSession();
+        
+        // Only update horizontal display (not the address section)
+        updateShippingDetailsHorizontal();
+        updateBillingSummary();
+        
+        const modal = bootstrap.Modal.getInstance(document.getElementById('shippingModal'));
+        if (modal) modal.hide();
+        
+        if (shippingData.charges > 0) {
+            if (typeof showToast === 'function') {
+                showToast(`Shipping charges ₹${shippingData.charges.toFixed(2)} added`, 'info');
+            }
+        } else if (shippingData.name) {
+            if (typeof showToast === 'function') {
+                showToast('Shipping details saved successfully', 'success');
+            }
+        }
+    } catch (error) {
+        console.error('Error saving shipping details:', error);
+        if (typeof showToast === 'function') {
+            showToast('Error saving shipping details', 'danger');
+        }
+    }
+}
+
+function saveShippingDetailsToSession() {
+    try {
+        sessionStorage.setItem('pos_shipping_details', JSON.stringify(SHIPPING_DETAILS));
+    } catch (error) {
+        console.error('Error saving shipping details to session:', error);
+    }
+}
+
+function loadShippingDetailsFromSession() {
+    try {
+        const saved = sessionStorage.getItem('pos_shipping_details');
+        if (saved) {
+            SHIPPING_DETAILS = JSON.parse(saved);
+            updateShippingDetailsHorizontal();
+        }
+    } catch (error) {
+        console.error('Error loading shipping details from session:', error);
+    }
+}
+
+function createHorizontalShippingDisplay() {
+    try {
+        // Create horizontal display container if it doesn't exist
+        let horizontalContainer = document.getElementById('shippingDetailsHorizontal');
+        if (!horizontalContainer) {
+            const shippingSection = document.getElementById('shippingInfoSection');
+            if (shippingSection) {
+                const detailsDiv = document.createElement('div');
+                detailsDiv.id = 'shippingDetailsHorizontal';
+                detailsDiv.className = 'shipping-details-horizontal';
+                shippingSection.appendChild(detailsDiv);
+            }
+        }
+    } catch (error) {
+        console.error('Error creating horizontal shipping display:', error);
+    }
+}
+
+function updateShippingDetailsHorizontal() {
+    try {
+        const container = document.getElementById('shippingDetailsHorizontal');
+        if (!container) return;
+        
+        const hasShipping = SHIPPING_DETAILS.name || SHIPPING_DETAILS.contact || 
+                           SHIPPING_DETAILS.address || SHIPPING_DETAILS.vehicle_number || 
+                           SHIPPING_DETAILS.gstin || SHIPPING_DETAILS.charges > 0;
+        
+        if (hasShipping) {
+            let html = '';
+            
+            // Receiver Name
+            if (SHIPPING_DETAILS.name) {
+                html += `<div class="shipping-badge-horizontal">
+                    <i class="fas fa-user"></i>
+                    <span class="badge-label">Receiver:</span>
+                    <span class="badge-value">${escapeHtml(SHIPPING_DETAILS.name)}</span>
+                </div>`;
+            }
+            
+            // Contact
+            if (SHIPPING_DETAILS.contact) {
+                html += `<div class="shipping-badge-horizontal">
+                    <i class="fas fa-phone"></i>
+                    <span class="badge-value">${escapeHtml(SHIPPING_DETAILS.contact)}</span>
+                </div>`;
+            }
+            
+            // Vehicle Number
+            if (SHIPPING_DETAILS.vehicle_number) {
+                html += `<div class="shipping-badge-horizontal">
+                    <i class="fas fa-truck"></i>
+                    <span class="badge-value">${escapeHtml(SHIPPING_DETAILS.vehicle_number)}</span>
+                </div>`;
+            }
+            
+            // GSTIN
+            if (SHIPPING_DETAILS.gstin) {
+                html += `<div class="shipping-badge-horizontal">
+                    <i class="fas fa-id-card"></i>
+                    <span class="badge-value">${escapeHtml(SHIPPING_DETAILS.gstin)}</span>
+                </div>`;
+            }
+            
+            // Address (shortened)
+            if (SHIPPING_DETAILS.address) {
+                const shortAddress = SHIPPING_DETAILS.address.length > 40 ? 
+                    SHIPPING_DETAILS.address.substring(0, 40) + '...' : 
+                    SHIPPING_DETAILS.address;
+                html += `<div class="shipping-badge-horizontal" title="${escapeHtml(SHIPPING_DETAILS.address)}">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span class="badge-value">${escapeHtml(shortAddress)}</span>
+                </div>`;
+            }
+            
+            // Shipping Charges (highlighted)
+            if (SHIPPING_DETAILS.charges > 0) {
+                html += `<div class="shipping-badge-horizontal shipping-charge-badge-horizontal">
+                    <i class="fas fa-rupee-sign"></i>
+                    <span class="badge-value">₹ ${SHIPPING_DETAILS.charges.toFixed(2)}</span>
+                </div>`;
+            }
+            
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `<div class="shipping-empty-state">
+                <i class="fas fa-info-circle"></i> No shipping details added
+            </div>`;
+        }
+        
+    } catch (error) {
+        console.error('Error updating shipping details horizontal:', error);
+    }
+}
+
+function clearShippingDetailsWithConfirm() {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Clear Shipping Details?',
+            text: 'Are you sure you want to remove all shipping details?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, clear it!',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                clearShippingDetails();
+                if (typeof showToast === 'function') {
+                    showToast('Shipping details cleared successfully', 'success');
+                }
+            }
+        });
+    } else {
+        if (confirm('Clear all shipping details?')) {
+            clearShippingDetails();
+        }
+    }
+}
+
+function clearShippingDetails() {
+    try {
+        SHIPPING_DETAILS = {
+            name: '',
+            contact: '',
+            gstin: '',
+            address: '',
+            vehicle_number: '',
+            charges: 0
+        };
+        saveShippingDetailsToSession();
+        updateShippingDetailsHorizontal();
+        updateBillingSummary();
+    } catch (error) {
+        console.error('Error clearing shipping details:', error);
+    }
+}
+
+// Save reference to original calculateTotals
+const originalCalculateTotals = window.calculateTotals;
+
+// Override calculateTotals to include shipping charges
+if (typeof originalCalculateTotals === 'function') {
+    window.calculateTotals = function() {
+        const totals = originalCalculateTotals();
+        const shippingCharges = SHIPPING_DETAILS.charges || 0;
+        
+        return {
+            ...totals,
+            shippingCharges: parseFloat(shippingCharges.toFixed(2)),
+            grandTotal: parseFloat((totals.grandTotal + shippingCharges).toFixed(2))
+        };
+    };
+}
+
+// Save reference to original updateBillingSummary
+const originalUpdateBillingSummary = window.updateBillingSummary;
+
+// Override updateBillingSummary to show shipping charges
+if (typeof originalUpdateBillingSummary === 'function') {
+    window.updateBillingSummary = function() {
+        originalUpdateBillingSummary();
+        
+        const totals = window.calculateTotals();
+        const shippingCharges = totals.shippingCharges || 0;
+        
+        let shippingRow = document.getElementById('shipping-charges-row');
+        const summaryBox = document.querySelector('.total-summary-box');
+        
+        if (shippingCharges > 0) {
+            if (!shippingRow && summaryBox) {
+                const grandTotalRow = document.querySelector('.total-summary-box .grand-total');
+                if (grandTotalRow) {
+                    shippingRow = document.createElement('div');
+                    shippingRow.id = 'shipping-charges-row';
+                    shippingRow.className = 'summary-row';
+                    shippingRow.innerHTML = `
+                        <span class="summary-label"><i class="fas fa-truck me-1"></i> Shipping Charges:</span>
+                        <span class="summary-value" id="shipping-charges-display">₹ 0.00</span>
+                    `;
+                    grandTotalRow.parentNode.insertBefore(shippingRow, grandTotalRow);
+                }
+            }
+            
+            if (shippingRow) {
+                const displaySpan = document.getElementById('shipping-charges-display');
+                if (displaySpan) {
+                    displaySpan.textContent = `₹ ${Math.round(shippingCharges)}`;
+                }
+                shippingRow.style.display = '';
+            }
+        } else if (shippingRow) {
+            shippingRow.style.display = 'none';
+        }
+    };
+}
+
+// Save reference to original generateBill
+const originalGenerateBill = window.generateBill;
+
+// Override generateBill to include shipping details
+if (typeof originalGenerateBill === 'function') {
+    window.generateBill = async function() {
+        try {
+            const result = await originalGenerateBill();
+            return result;
+        } catch (error) {
+            console.error('Error in modified generateBill:', error);
+            throw error;
+        }
+    };
+}
+
+// Initialize shipping on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => {
+            initShippingModal();
+        }, 500);
+    });
+} else {
+    setTimeout(() => {
+        initShippingModal();
+    }, 500);
+}
+
+// Make shipping functions available globally
+window.SHIPPING_DETAILS = SHIPPING_DETAILS;
+window.showShippingModal = showShippingModal;
+window.saveShippingDetails = saveShippingDetails;
+window.clearShippingDetails = clearShippingDetails;
+window.clearShippingDetailsWithConfirm = clearShippingDetailsWithConfirm;
+window.updateShippingDetailsHorizontal = updateShippingDetailsHorizontal;
 </script>

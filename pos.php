@@ -1172,6 +1172,310 @@
     position: absolute;
     margin-top: -5px;
 }
+/* Shipping button styling */
+#btnShippingDetails {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    transition: all 0.2s ease;
+}
+
+#btnShippingDetails:hover {
+    background-color: #138496;
+    transform: translateY(-1px);
+}
+
+#btnShippingDetails i {
+    font-size: 10px;
+}
+
+/* Shipping details summary */
+/* Replace the existing shipping-summary styles with this */
+.shipping-summary {
+    background-color: #f8f9fa;
+    border-left: 3px solid #17a2b8;
+    padding: 10px 15px;
+    margin-top: 8px;
+    border-radius: 6px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.shipping-summary.show {
+    display: flex;
+}
+
+.shipping-details-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    flex: 1;
+}
+
+.shipping-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: white;
+    border-radius: 20px;
+    border: 1px solid #e0e0e0;
+    font-size: 11px;
+    transition: all 0.2s ease;
+}
+
+.shipping-badge:hover {
+    background: #f1f3f5;
+    border-color: #17a2b8;
+    transform: translateY(-1px);
+}
+
+.shipping-badge i {
+    color: #17a2b8;
+    font-size: 11px;
+}
+
+.shipping-badge .badge-value {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.shipping-badge .badge-label {
+    color: #6c757d;
+    margin-right: 3px;
+}
+
+.shipping-charge-badge {
+    background: #e8f5e9;
+    border-color: #c8e6c9;
+}
+
+.shipping-charge-badge i {
+    color: #2e7d32;
+}
+
+.shipping-charge-badge .badge-value {
+    color: #2e7d32;
+    font-weight: 700;
+}
+
+.shipping-actions {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.btn-clear-shipping {
+    background: none;
+    border: none;
+    color: #6c757d;
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.btn-clear-shipping:hover {
+    background: #f8f9fa;
+    color: #dc3545;
+}
+
+.btn-clear-shipping#btnEditShipping:hover {
+    color: #17a2b8;
+}
+
+.btn-clear-shipping i {
+    font-size: 10px;
+}
+/* Add this to your existing CSS styles */
+.shipping-summary-horizontal {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.shipping-summary-horizontal.show {
+    display: flex;
+}
+
+.shipping-details-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+    flex: 1;
+}
+
+.shipping-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: white;
+    border-radius: 20px;
+    border: 1px solid #e0e0e0;
+    font-size: 11px;
+    transition: all 0.2s ease;
+}
+
+.shipping-badge:hover {
+    background: #f1f3f5;
+    border-color: #17a2b8;
+}
+
+.shipping-badge i {
+    color: #17a2b8;
+    font-size: 11px;
+}
+
+.shipping-badge .badge-value {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.shipping-badge .badge-label {
+    color: #6c757d;
+    margin-right: 3px;
+}
+
+.shipping-charge-badge {
+    background: #e8f5e9;
+    border-color: #c8e6c9;
+}
+
+.shipping-charge-badge i {
+    color: #2e7d32;
+}
+
+.shipping-charge-badge .badge-value {
+    color: #2e7d32;
+    font-weight: 700;
+}
+
+.btn-clear-shipping {
+    background: none;
+    border: none;
+    color: #dc3545;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-clear-shipping:hover {
+    background: #fff5f5;
+    color: #c82333;
+}
+
+.btn-clear-shipping i {
+    font-size: 10px;
+}
+/* Shipping Details Horizontal Section */
+.shipping-info-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #e9ecef;
+}
+
+.shipping-info-section h6 {
+    margin-bottom: 10px;
+    color: #495057;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.shipping-details-horizontal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    min-height: 40px;
+}
+
+.shipping-badge-horizontal {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: white;
+    border-radius: 30px;
+    border: 1px solid #e0e0e0;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.shipping-badge-horizontal:hover {
+    background: #f8f9fa;
+    border-color: #17a2b8;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.shipping-badge-horizontal i {
+    color: #17a2b8;
+    font-size: 12px;
+}
+
+.shipping-badge-horizontal .badge-label {
+    color: #6c757d;
+    font-weight: 500;
+    margin-right: 3px;
+}
+
+.shipping-badge-horizontal .badge-value {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.shipping-charge-badge-horizontal {
+    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+    border-color: #81c784;
+}
+
+.shipping-charge-badge-horizontal i {
+    color: #2e7d32;
+}
+
+.shipping-charge-badge-horizontal .badge-value {
+    color: #1b5e20;
+    font-weight: 700;
+}
+
+.shipping-empty-state {
+    color: #adb5bd;
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.shipping-empty-state i {
+    color: #adb5bd;
+}
     </style>
 </head>
 
@@ -1214,30 +1518,36 @@
                     </div>
                 </div>
                 <br>
-                <div class="customer-section">
-                    <div>
-                        <label for="customer-name"><i class="fas fa-user"></i>
-                            Customer name <span id="required-star">*</span></label>
-                        <input type="text" id="customer-name" name="customer-name" value="Walk-in Customer" required>
-                    </div>
-                    <div>
-                        <label for="customer-contact"><i class="fas fa-phone"></i>
-                            Customer contact <span id="required-star">*</span></label>
-                        <select id="customer-contact" name="customer-contact" required>
-                            <option value="">-- Select phone --</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="customer-address"><i class="fas fa-map-marker-alt"></i>
-                            Address</label>
-                        <input type="text" id="customer-address" name="customer-address">
-                    </div>
-                    <div>
-                        <label for="customer-gstin"><i class="fas fa-id-card"></i>
-                            Gstin</label>
-                        <input type="text" name="customer-gstin" id="customer-gstin">
-                    </div>
-                </div>
+                <!-- Replace the customer-section div with this updated version -->
+<div class="customer-section">
+    <div>
+        <label for="customer-name"><i class="fas fa-user"></i>
+            Customer name <span id="required-star">*</span></label>
+        <input type="text" id="customer-name" name="customer-name" value="Walk-in Customer" required>
+    </div>
+    <div>
+        <label for="customer-contact"><i class="fas fa-phone"></i>
+            Customer contact <span id="required-star">*</span></label>
+        <select id="customer-contact" name="customer-contact" required>
+            <option value="">-- Select phone --</option>
+        </select>
+    </div>
+    <div>
+        <label for="customer-address">
+            <i class="fas fa-map-marker-alt"></i>
+            Address
+            <button type="button" id="btnShippingDetails" class="btn btn-sm btn-outline-info ms-2" style="padding: 0px 8px; font-size: 10px;">
+                <i class="fas fa-truck"></i> Shipping
+            </button>
+        </label>
+        <input type="text" id="customer-address" name="customer-address">
+    </div>
+    <div>
+        <label for="customer-gstin"><i class="fas fa-id-card"></i>
+            Gstin</label>
+        <input type="text" name="customer-gstin" id="customer-gstin">
+    </div>
+</div>
             </div>
             <div class="right-container">
                 
@@ -1343,17 +1653,35 @@
         </div>
         <div class="bottom-section d-flex justify-content-between">
             <div class="bottom-left-section" style="width: 100%;">
-                <div>
-                    <h6>Additional Discount</h6>
-<div class="additional-discount">
-    <input type="number" name="additional-dis" id="additional-dis" value="0" min="0" step="0.01">
-    <!-- Make sure this has id="overall-discount-type" -->
-    <select name="overall-discount-type" id="overall-discount-type">
-        <option value="rupees">₹</option>
-        <option value="percentage">%</option>
-    </select>
-</div>
-                </div>
+ <div>
+        <h6>Additional Discount</h6>
+        <div class="additional-discount">
+            <input type="number" name="additional-dis" id="additional-dis" value="0" min="0" step="0.01">
+            <select name="overall-discount-type" id="overall-discount-type">
+                <option value="rupees">₹</option>
+                <option value="percentage">%</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- NEW: Shipping Details Section - Place this here -->
+    <div class="shipping-info-section" id="shippingInfoSection" style="margin-top: 15px;">
+        <h6>
+            <i class="fas fa-truck"></i> Shipping Details
+            <button type="button" id="btnEditShippingFromDiscount" class="btn btn-sm btn-outline-info ms-2" style="padding: 2px 8px; font-size: 10px;">
+                <i class="fas fa-edit"></i> Edit
+            </button>
+            <button type="button" id="btnClearShippingFromDiscount" class="btn btn-sm btn-outline-danger ms-1" style="padding: 2px 8px; font-size: 10px;">
+                <i class="fas fa-trash"></i> Clear
+            </button>
+        </h6>
+        <div id="shippingDetailsHorizontal" class="shipping-details-horizontal">
+            <!-- Shipping details will appear here horizontally -->
+            <div class="shipping-empty-state text-muted" style="font-size: 11px; padding: 8px;">
+                <i class="fas fa-info-circle"></i> No shipping details added
+            </div>
+        </div>
+    </div>
                 <div>
                     <h6>Payment Methods</h6>
                     <div class="payment-details">
@@ -1646,6 +1974,82 @@
             </div>
         </div>
     </div>
+
+    <!-- Shipping Details Modal -->
+<div class="modal fade" id="shippingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-truck me-2"></i> Shipping Details
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="shippingForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="shipping-name" class="form-label">
+                                <i class="fas fa-user me-1"></i> Receiver Name
+                            </label>
+                            <input type="text" class="form-control" id="shipping-name" 
+                                   placeholder="Enter receiver name">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="shipping-contact" class="form-label">
+                                <i class="fas fa-phone me-1"></i> Contact Number
+                            </label>
+                            <input type="text" class="form-control" id="shipping-contact" 
+                                   placeholder="Enter contact number">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="shipping-gstin" class="form-label">
+                                <i class="fas fa-id-card me-1"></i> GSTIN (if any)
+                            </label>
+                            <input type="text" class="form-control" id="shipping-gstin" 
+                                   placeholder="Enter GSTIN">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="shipping-vehicle" class="form-label">
+                                <i class="fas fa-truck me-1"></i> Vehicle Number
+                            </label>
+                            <input type="text" class="form-control" id="shipping-vehicle" 
+                                   placeholder="Enter vehicle number">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="shipping-address" class="form-label">
+                            <i class="fas fa-map-marker-alt me-1"></i> Shipping Address
+                        </label>
+                        <textarea class="form-control" id="shipping-address" rows="3" 
+                                  placeholder="Enter complete shipping address"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="shipping-charges" class="form-label">
+                            <i class="fas fa-rupee-sign me-1"></i> Shipping Charges
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">₹</span>
+                            <input type="number" class="form-control" id="shipping-charges" 
+                                   value="0" min="0" step="0.01" placeholder="Enter shipping charges">
+                        </div>
+                        <small class="text-muted">Shipping charges will be added to the grand total</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-info" id="btnSaveShipping">
+                    <i class="fas fa-save me-1"></i> Save Shipping Details
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

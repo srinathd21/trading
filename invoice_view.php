@@ -155,6 +155,14 @@ $status_class = ['paid' => 'success', 'partial' => 'warning', 'unpaid' => 'dange
 
 // Get overall discount from invoice
 $overall_discount = $invoice['overall_discount'] ?? 0;
+
+// Get shipping details
+$shipping_name = $invoice['shipping_name'] ?? '';
+$shipping_contact = $invoice['shipping_contact'] ?? '';
+$shipping_gstin = $invoice['shipping_gstin'] ?? '';
+$shipping_address = $invoice['shipping_address'] ?? '';
+$shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
+$shipping_charges = $invoice['shipping_charges'] ?? 0;
 ?>
 <!doctype html>
 <html lang="en">
@@ -294,6 +302,93 @@ $overall_discount = $invoice['overall_discount'] ?? 0;
                     </div>
                 </div>
 
+                <!-- Shipping Details Card -->
+                <?php if (!empty($shipping_name) || !empty($shipping_contact) || !empty($shipping_address) || !empty($shipping_vehicle_number) || $shipping_charges > 0): ?>
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-info bg-opacity-10 border-bottom border-info">
+                        <h5 class="mb-0">
+                            <i class="bx bx-truck me-2 text-info"></i> 
+                            Shipping Details
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <?php if (!empty($shipping_name)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-user fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Receiver Name</small>
+                                        <strong><?= htmlspecialchars($shipping_name) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($shipping_contact)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-phone fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Contact Number</small>
+                                        <strong><?= htmlspecialchars($shipping_contact) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($shipping_vehicle_number)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-truck fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Vehicle Number</small>
+                                        <strong><?= htmlspecialchars($shipping_vehicle_number) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($shipping_gstin)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-id-card fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Shipping GSTIN</small>
+                                        <strong><?= htmlspecialchars($shipping_gstin) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($shipping_address)): ?>
+                            <div class="col-md-12">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-map fs-4 text-info"></i>
+                                    <div class="flex-grow-1">
+                                        <small class="text-muted d-block">Shipping Address</small>
+                                        <strong><?= nl2br(htmlspecialchars($shipping_address)) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if ($shipping_charges > 0): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-success bg-opacity-10 rounded border border-success">
+                                    <i class="bx bx-rupee fs-4 text-success"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Shipping Charges</small>
+                                        <strong class="text-success fs-5">₹<?= number_format($shipping_charges, 2) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Payment History Card -->
                 <?php if (!empty($payment_history)): ?>
                 <div class="card shadow-sm mb-4">
@@ -407,6 +502,12 @@ $overall_discount = $invoice['overall_discount'] ?? 0;
                                         <strong class="text-warning">₹<?= number_format($invoice['cheque_amount'], 2) ?></strong>
                                     </div>
                                     <?php endif; ?>
+                                    <?php if($shipping_charges > 0): ?>
+                                    <div class="d-flex justify-content-between py-1 border-top mt-1 pt-1">
+                                        <span>Shipping Charges</span>
+                                        <strong class="text-secondary">₹<?= number_format($shipping_charges, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
                                     <?php if(($invoice['change_given'] ?? 0) > 0): ?>
                                     <div class="d-flex justify-content-between py-1">
                                         <span>Change Given</span>
@@ -422,6 +523,12 @@ $overall_discount = $invoice['overall_discount'] ?? 0;
                                         <span>Invoice Total:</span>
                                         <strong>₹<?= number_format($invoice['total'], 2) ?></strong>
                                     </div>
+                                    <?php if($shipping_charges > 0): ?>
+                                    <div class="d-flex justify-content-between py-2 text-secondary">
+                                        <span>Including Shipping:</span>
+                                        <strong>₹<?= number_format($invoice['total'] - $shipping_charges, 2) ?> + ₹<?= number_format($shipping_charges, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
                                     <?php if($total_payments > 0): ?>
                                     <div class="d-flex justify-content-between py-2 text-success">
                                         <span>Additional Payments:</span>
@@ -538,6 +645,12 @@ $overall_discount = $invoice['overall_discount'] ?? 0;
                                         <td class="text-end text-danger">-₹<?= number_format($overall_discount, 2) ?></td>
                                     </tr>
                                     <?php endif; ?>
+                                    <?php if ($shipping_charges > 0): ?>
+                                    <tr class="table-info fw-bold">
+                                        <td colspan="9" class="text-end">Shipping Charges:</td>
+                                        <td class="text-end text-info">+₹<?= number_format($shipping_charges, 2) ?></td>
+                                    </tr>
+                                    <?php endif; ?>
                                     <tr class="table-light fw-bold">
                                         <td colspan="9" class="text-end">Original Invoice Total:</td>
                                         <td class="text-end text-primary">₹<?= number_format($invoice['total'], 2) ?></td>
@@ -574,12 +687,27 @@ $overall_discount = $invoice['overall_discount'] ?? 0;
 }
 .table-danger { background-color: rgba(248, 215, 218, 0.3) !important; }
 .table-warning { background-color: rgba(255, 243, 205, 0.3) !important; }
+.table-info { background-color: rgba(13, 202, 240, 0.1) !important; }
 .avatar-sm {
     width: 48px;
     height: 48px;
 }
 .badge.bg-opacity-10 {
     opacity: 0.9;
+}
+.bg-info.bg-opacity-10 {
+    background-color: rgba(13, 202, 240, 0.1) !important;
+}
+.border-bottom.border-info {
+    border-bottom-color: #0dcaf0 !important;
+    border-bottom-width: 2px !important;
+}
+.bg-light.rounded {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.bg-light.rounded:hover {
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 </style>
 <script>

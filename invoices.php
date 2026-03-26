@@ -416,16 +416,17 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 25%;">Invoice Details</th>
-                                        <th class="text-center" style="width: 20%;">Customer</th>
-                                        <th class="text-center" style="width: 10%;">Items</th>
-                                        <th class="text-end" style="width: 25%;">Amount Details</th>
+                                        <th class="text-center" style="width: 15%;">Customer</th>
+                                        <th class="text-center" style="width: 8%;">Items</th>
+                                        <th class="text-center" style="width: 12%;">E-Way Bill</th>
+                                        <th class="text-end" style="width: 20%;">Amount Details</th>
                                         <th class="text-center" style="width: 20%;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if (empty($invoices)): ?>
                                     <tr>
-                                        <td colspan="5" class="text-center py-5">
+                                        <td colspan="6" class="text-center py-5">
                                             <div class="empty-state">
                                                 <i class="bx bx-receipt fs-1 text-muted mb-3"></i>
                                                 <h5>No invoices found</h5>
@@ -479,6 +480,11 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         
                                         // Check if customer has phone number for WhatsApp
                                         $has_whatsapp = !empty($inv['customer_phone']);
+                                        
+                                        // Get e-way bill details
+                                        $eway_bill_number = $inv['eway_bill_number'] ?? '';
+                                        $eway_bill_date = $inv['eway_bill_date'] ?? '';
+                                        $has_eway = !empty($eway_bill_number);
                                     ?>
                                     <tr class="invoice-row" data-id="<?= $inv['id'] ?>" data-customer-id="<?= $inv['customer_id'] ?? 0 ?>">
                                         <td>
@@ -531,6 +537,30 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                             </small>
                                             <?php endif; ?>
                                         </td>
+                                        <td class="text-center">
+                                            <?php if ($has_eway): ?>
+                                            <div class="d-flex flex-column">
+                                                <span class="badge bg-success bg-opacity-10 text-success px-3 py-2">
+                                                    <i class="bx bx-barcode me-1"></i> <?= htmlspecialchars($eway_bill_number) ?>
+                                                </span>
+                                                <small class="text-muted mt-1">
+                                                    <?= date('d M Y', strtotime($eway_bill_date)) ?>
+                                                </small>
+                                            </div>
+                                            <?php else: ?>
+                                            <button type="button" 
+                                                    class="btn btn-sm btn-outline-primary generate-eway-btn"
+                                                    data-invoice-id="<?= $inv['id'] ?>"
+                                                    data-invoice-number="<?= htmlspecialchars($inv['invoice_number']) ?>"
+                                                    data-total="<?= $total ?>"
+                                                    data-customer-name="<?= htmlspecialchars($inv['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                    data-customer-gstin="<?= $inv['customer_gstin'] ?? '' ?>"
+                                                    data-shipping-address="<?= htmlspecialchars($inv['shipping_address'] ?? '') ?>"
+                                                    data-shipping-vehicle="<?= htmlspecialchars($inv['shipping_vehicle_number'] ?? '') ?>">
+                                                <i class="bx bx-qr me-1"></i> Generate E-Way Bill
+                                            </button>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end">
                                             <div class="mb-2">
                                                 <strong class="text-primary fs-5">₹<?= number_format($total, 2) ?></strong>
@@ -552,6 +582,10 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         <td class="text-center">
                                             <div class="btn-group-vertical btn-group-sm" style="width: 100%;" role="group">
                                                 <div class="btn-group btn-group-sm mb-1" role="group">
+                                                    <a href="invoice_edit.php?invoice_id=<?= $inv['id'] ?>" 
+                                                       class="btn btn-outline-warning btn-sm" title="Edit Invoice">
+                                                        <i class="bx bx-edit"></i>
+                                                    </a>
                                                     <a href="invoice_print.php?invoice_id=<?= $inv['id'] ?>" target="_blank"
                                                        class="btn btn-outline-success btn-sm" title="Print Invoice">
                                                         <i class="bx bx-printer"></i>
@@ -737,6 +771,106 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
     </div>
 </div>
 <?php endif; ?>
+
+<!-- E-Way Bill Modal -->
+<div class="modal fade" id="ewayBillModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bx bx-barcode me-2"></i> Generate E-Way Bill
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bx bx-info-circle me-2"></i>
+                    <strong>Note:</strong> E-Way Bill is required for goods movement exceeding ₹50,000 or as per GST rules.
+                </div>
+                
+                <form id="ewayBillForm">
+                    <input type="hidden" name="invoice_id" id="ewayInvoiceId">
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Invoice Number</label>
+                            <input type="text" id="ewayInvoiceNumber" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Invoice Total</label>
+                            <input type="text" id="ewayInvoiceTotal" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Customer Name</label>
+                            <input type="text" id="ewayCustomerName" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Customer GSTIN</label>
+                            <input type="text" id="ewayCustomerGstin" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Shipping Address</label>
+                            <textarea id="ewayShippingAddress" class="form-control" rows="2" readonly></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vehicle Number</label>
+                            <input type="text" id="ewayVehicleNumber" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Transport Mode</label>
+                            <select id="ewayTransportMode" class="form-select">
+                                <option value="Road">Road</option>
+                                <option value="Rail">Rail</option>
+                                <option value="Air">Air</option>
+                                <option value="Ship">Ship</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Transport Document Number</label>
+                            <input type="text" id="ewayDocNumber" class="form-control" placeholder="LR No. / GR No.">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Transport Date</label>
+                            <input type="date" id="ewayDocDate" class="form-control" value="<?= date('Y-m-d') ?>">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">E-Way Bill Number (if already generated)</label>
+                            <input type="text" id="ewayBillNumber" class="form-control" placeholder="Enter existing E-Way Bill Number">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input type="checkbox" id="downloadJsonCheckbox" class="form-check-input" value="1">
+                                <label class="form-check-label" for="downloadJsonCheckbox">
+                                    Download JSON data for E-Way Bill portal
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                
+                <div class="mt-4" id="ewayJsonData" style="display: none;">
+                    <hr>
+                    <label class="form-label fw-bold">E-Way Bill JSON Data</label>
+                    <div class="bg-light p-3 rounded">
+                        <pre id="ewayJsonPreview" style="font-size: 11px; max-height: 300px; overflow: auto;"></pre>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-success mt-2" id="copyJsonBtn">
+                        <i class="bx bx-copy me-1"></i> Copy JSON
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveEwayBillBtn">
+                    <i class="bx bx-save me-1"></i> Save E-Way Bill
+                </button>
+                <button type="button" class="btn btn-success" id="generateJsonBtn">
+                    <i class="bx bx-download me-1"></i> Generate JSON
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Return Items Modal (from invoice row) -->
 <div class="modal fade" id="returnModal" tabindex="-1" aria-labelledby="returnModalLabel" aria-hidden="true">
@@ -930,6 +1064,192 @@ $(document).ready(function() {
         $('#filterForm').submit();
     });
 
+    // ==================== E-WAY BILL FUNCTIONS ====================
+    $('#invoicesTable tbody').on('click', '.generate-eway-btn', function(e) {
+        e.preventDefault();
+        
+        const invoiceId = $(this).data('invoice-id');
+        const invoiceNumber = $(this).data('invoice-number');
+        const total = $(this).data('total');
+        const customerName = $(this).data('customer-name');
+        const customerGstin = $(this).data('customer-gstin');
+        const shippingAddress = $(this).data('shipping-address');
+        const vehicleNumber = $(this).data('shipping-vehicle');
+        
+        // Set values in modal
+        $('#ewayInvoiceId').val(invoiceId);
+        $('#ewayInvoiceNumber').val(invoiceNumber);
+        $('#ewayInvoiceTotal').val('₹' + new Intl.NumberFormat('en-IN').format(total));
+        $('#ewayCustomerName').val(customerName);
+        $('#ewayCustomerGstin').val(customerGstin);
+        $('#ewayShippingAddress').val(shippingAddress || 'Not provided');
+        $('#ewayVehicleNumber').val(vehicleNumber || 'Not specified');
+        
+        // Reset form
+        $('#ewayBillNumber').val('');
+        $('#ewayTransportMode').val('Road');
+        $('#ewayDocNumber').val('');
+        $('#ewayDocDate').val(new Date().toISOString().split('T')[0]);
+        $('#downloadJsonCheckbox').prop('checked', false);
+        $('#ewayJsonData').hide();
+        $('#ewayJsonPreview').empty();
+        
+        const ewayModal = new bootstrap.Modal(document.getElementById('ewayBillModal'));
+        ewayModal.show();
+    });
+    
+    // Generate JSON data for E-Way Bill
+    $('#generateJsonBtn').click(function() {
+        const invoiceId = $('#ewayInvoiceId').val();
+        const invoiceNumber = $('#ewayInvoiceNumber').val();
+        const total = parseFloat($('#ewayInvoiceTotal').val().replace('₹', '').replace(/,/g, ''));
+        const customerName = $('#ewayCustomerName').val();
+        const customerGstin = $('#ewayCustomerGstin').val();
+        const shippingAddress = $('#ewayShippingAddress').val();
+        const vehicleNumber = $('#ewayVehicleNumber').val();
+        const transportMode = $('#ewayTransportMode').val();
+        const docNumber = $('#ewayDocNumber').val();
+        const docDate = $('#ewayDocDate').val();
+        
+        // Get current date and time
+        const now = new Date();
+        const currentDate = now.toISOString().split('T')[0];
+        const currentTime = now.toTimeString().split(' ')[0];
+        
+        // Build JSON data structure for E-Way Bill
+        const ewayData = {
+            version: "1.0",
+            invoice_details: {
+                invoice_number: invoiceNumber,
+                invoice_date: $('#ewayDocDate').val(),
+                invoice_value: total,
+                invoice_type: "Tax Invoice"
+            },
+            transporter_details: {
+                transport_mode: transportMode,
+                transport_document_number: docNumber || "N/A",
+                transport_document_date: docDate,
+                vehicle_number: vehicleNumber || "N/A"
+            },
+            consignor_details: {
+                name: "<?= htmlspecialchars($business_name) ?>",
+                gstin: "<?= htmlspecialchars($business_settings['gstin'] ?? '') ?>",
+                address: "<?= htmlspecialchars($business_settings['address'] ?? '') ?>"
+            },
+            consignee_details: {
+                name: customerName,
+                gstin: customerGstin || "Not Registered",
+                address: shippingAddress || "Not Provided"
+            },
+            item_details: [],
+            total_invoice_value: total,
+            generated_on: currentDate + " " + currentTime,
+            generated_by: "POS System"
+        };
+        
+        // Show JSON data
+        $('#ewayJsonPreview').text(JSON.stringify(ewayData, null, 2));
+        $('#ewayJsonData').show();
+        
+        // Scroll to JSON data
+        $('#ewayJsonData')[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        showToast('JSON data generated successfully', 'success');
+    });
+    
+    // Copy JSON to clipboard
+    $('#copyJsonBtn').click(function() {
+        const jsonText = $('#ewayJsonPreview').text();
+        navigator.clipboard.writeText(jsonText).then(function() {
+            showToast('JSON copied to clipboard', 'success');
+        }).catch(function() {
+            // Fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = jsonText;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('JSON copied to clipboard', 'success');
+        });
+    });
+    
+    // Save E-Way Bill
+    $('#saveEwayBillBtn').click(function() {
+        const invoiceId = $('#ewayInvoiceId').val();
+        const ewayBillNumber = $('#ewayBillNumber').val().trim();
+        const ewayDocNumber = $('#ewayDocNumber').val().trim();
+        const ewayDocDate = $('#ewayDocDate').val();
+        const ewayTransportMode = $('#ewayTransportMode').val();
+        const downloadJson = $('#downloadJsonCheckbox').is(':checked');
+        
+        if (!ewayBillNumber && !ewayDocNumber) {
+            showToast('Please enter either E-Way Bill Number or Transport Document Number', 'warning');
+            return;
+        }
+        
+        Swal.fire({
+            title: 'Save E-Way Bill?',
+            text: 'Are you sure you want to save this E-Way Bill information?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, save it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Save via AJAX
+                $.ajax({
+                    url: 'save_eway_bill.php',
+                    method: 'POST',
+                    data: {
+                        invoice_id: invoiceId,
+                        eway_bill_number: ewayBillNumber,
+                        eway_doc_number: ewayDocNumber,
+                        eway_doc_date: ewayDocDate,
+                        eway_transport_mode: ewayTransportMode
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            // If download JSON is checked
+                            if (downloadJson) {
+                                const jsonText = $('#ewayJsonPreview').text();
+                                if (jsonText) {
+                                    const blob = new Blob([jsonText], { type: 'application/json' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `ewaybill_${invoiceId}_${new Date().toISOString().slice(0,19)}.json`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(url);
+                                }
+                            }
+                            
+                            showToast('E-Way Bill saved successfully', 'success');
+                            
+                            // Close modal
+                            bootstrap.Modal.getInstance(document.getElementById('ewayBillModal')).hide();
+                            
+                            // Reload page to show updated data
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1500);
+                        } else {
+                            showToast(response.message || 'Error saving E-Way Bill', 'error');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error:', error);
+                        showToast('Error saving E-Way Bill', 'error');
+                    }
+                });
+            }
+        });
+    });
+
     // ==================== WHATSAPP BUTTON HANDLER ====================
     $('#invoicesTable tbody').on('click', '.whatsapp-btn', function(e) {
         e.preventDefault();
@@ -1096,7 +1416,7 @@ $(document).ready(function() {
                 for_return: 1
             },
             beforeSend: function() {
-                $('#quickItemsTableBody').html('<tr><td colspan="6" class="text-center">Loading items...</td></tr>');
+                $('#quickItemsTableBody').html('运转<td colspan="6" class="text-center">Loading items...</td></tr>');
                 $('#quickReturnItemsSection').show();
             },
             success: function(response) {
@@ -1699,4 +2019,4 @@ $('#returnForm').submit(function(e) {
 }
 </style>
 </body>
-</html>
+</html> 

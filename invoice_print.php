@@ -22,14 +22,16 @@ if (isset($_GET['invoice_id'])) {
     exit();
 }
 
-// Fetch invoice with shop details
+// Fetch invoice with shop details and shipping details
 $stmt = $pdo->prepare("
     SELECT i.*,
            c.name as customer_name, c.phone as customer_phone, c.gstin as customer_gstin,
            c.address as customer_address,
            u.full_name as seller_name,
            s.shop_name, s.address as shop_address, s.phone as shop_phone, s.gstin as shop_gstin,
-           s.id as shop_id
+           s.id as shop_id,
+           i.shipping_name, i.shipping_contact, i.shipping_gstin, i.shipping_address,
+           i.shipping_vehicle_number, i.shipping_charges
     FROM invoices i
     LEFT JOIN customers c ON i.customer_id = c.id
     LEFT JOIN users u ON i.seller_id = u.id
@@ -42,6 +44,14 @@ $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$invoice) {
     die("Invoice not found or access denied");
 }
+
+// Get shipping details
+$shipping_name = $invoice['shipping_name'] ?? '';
+$shipping_contact = $invoice['shipping_contact'] ?? '';
+$shipping_gstin = $invoice['shipping_gstin'] ?? '';
+$shipping_address = $invoice['shipping_address'] ?? '';
+$shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
+$shipping_charges = $invoice['shipping_charges'] ?? 0;
 
 // Get shop_id from invoice
 $shop_id = $invoice['shop_id'] ?? null;
@@ -213,6 +223,7 @@ class InvoicePDF extends FPDF {
     public $company = [];
     public $invoice = [];
     public $customer = [];
+    public $shipping = [];
     public $totals = [];
     public $account = [];
     public $col_w = [];
@@ -341,10 +352,64 @@ class InvoicePDF extends FPDF {
         }
         $bill_info[] = 'Address : '.$this->customer['address'];
         
-        foreach($bill_info as $line) {
+        // Ship To details (use shipping details if available, otherwise use bill to)
+        $has_shipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
+        
+        if ($has_shipping) {
+            $ship_info = [];
+            if (!empty($this->shipping['name'])) {
+                $ship_info[] = 'Name : '.$this->shipping['name'];
+            }
+            if (!empty($this->shipping['contact'])) {
+                $ship_info[] = 'Mobile : '.$this->shipping['contact'];
+            }
+            if (!empty($this->shipping['gstin']) && $this->is_gst_invoice) {
+                $ship_info[] = 'GSTIN : '.$this->shipping['gstin'];
+            }
+            if (!empty($this->shipping['vehicle_number'])) {
+                $ship_info[] = 'Vehicle No : '.$this->shipping['vehicle_number'];
+            }
+            if (!empty($this->shipping['address'])) {
+                $ship_info[] = 'Address : '.$this->shipping['address'];
+            }
+        } else {
+            $ship_info = $bill_info;
+        }
+        
+        // Print Bill To and Ship To side by side
+        $bill_y_start = $this->GetY();
+        
+        // Print Bill To (left side)
+        $this->SetX($this->lm);
+        foreach ($bill_info as $line) {
             $this->SetX($this->lm);
             $this->Cell($colW, 5, pdf_text_simple($line), 0, 0, 'L');
-            $this->Cell($colW, 5, pdf_text_simple($line), 0, 1, 'L');
+            $this->Cell($colW, 5, '', 0, 1, 'L');
+        }
+        
+        $bill_y_end = $this->GetY();
+        $this->SetY($bill_y_start);
+        
+        // Print Ship To (right side)
+        $this->SetX($this->lm + $colW);
+        foreach ($ship_info as $line) {
+            $this->SetX($this->lm + $colW);
+            $this->Cell($colW, 5, pdf_text_simple($line), 0, 0, 'L');
+            $this->Cell(0, 5, '', 0, 1, 'L');
+        }
+        
+        $this->SetY(max($bill_y_end, $this->GetY()));
+        
+        // Show shipping charges if applicable
+        if ($this->shipping['charges'] > 0) {
+            $this->Ln(2);
+            $this->SetFont('Arial','',9);
+            $this->SetX($this->lm);
+            $this->Cell($colW, 5, '', 0, 0, 'L');
+            $this->SetX($this->lm + $colW);
+            $this->SetTextColor(0, 100, 0);
+            $this->Cell($colW, 5, pdf_text_simple('Shipping Charges: Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+            $this->SetTextColor(0, 0, 0);
         }
         
         $this->Ln(2);
@@ -623,6 +688,14 @@ class InvoicePDF extends FPDF {
                 $y = $this->GetY();
             }
             
+            // Add Shipping Charges if they exist
+            if ($this->shipping['charges'] > 0) {
+                $this->SetX($rightX);
+                $this->Cell(40, 6, pdf_text_simple('Shipping Charges'), 0, 0, 'L');
+                $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+                $y = $this->GetY();
+            }
+            
             // Add Overall Discount if exists
             if (isset($t['overall_discount']) && $t['overall_discount'] > 0) {
                 $this->SetX($rightX);
@@ -645,6 +718,14 @@ class InvoicePDF extends FPDF {
             $this->Cell(40, 6, pdf_text_simple('Subtotal'), 0, 0, 'L');
             $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['subtotal'])), 0, 1, 'R');
             $y = $this->GetY();
+            
+            // Add Shipping Charges if they exist
+            if ($this->shipping['charges'] > 0) {
+                $this->SetX($rightX);
+                $this->Cell(40, 6, pdf_text_simple('Shipping Charges'), 0, 0, 'L');
+                $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+                $y = $this->GetY();
+            }
             
             // Add Overall Discount if exists
             if (isset($t['overall_discount']) && $t['overall_discount'] > 0) {
@@ -797,6 +878,16 @@ $pdf->customer = [
     'phone'   => $customer_phone,
     'gstin'   => $customer_gstin,
     'address' => $customer_address
+];
+
+// Set shipping info
+$pdf->shipping = [
+    'name'           => $shipping_name,
+    'contact'        => $shipping_contact,
+    'gstin'          => $shipping_gstin,
+    'address'        => $shipping_address,
+    'vehicle_number' => $shipping_vehicle_number,
+    'charges'        => $shipping_charges
 ];
 
 // Set totals - INCLUDING OVERALL DISCOUNT

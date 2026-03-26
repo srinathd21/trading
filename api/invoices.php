@@ -521,6 +521,15 @@ $credit_amount = (float)($payment_details['credit'] ?? 0);
 $total_paid = $cash_amount + $upi_amount + $bank_amount + $cheque_amount + $credit_amount;
 $change_given = max(0, $total_paid - $total);
 
+// Get shipping details from the request
+$shipping_details = $data['shipping_details'] ?? [];
+$shipping_name = trim($shipping_details['name'] ?? '');
+$shipping_contact = trim($shipping_details['contact'] ?? '');
+$shipping_gstin = trim($shipping_details['gstin'] ?? '');
+$shipping_address = trim($shipping_details['address'] ?? '');
+$shipping_vehicle_number = trim($shipping_details['vehicle_number'] ?? '');
+$shipping_charges = (float)($shipping_details['charges'] ?? 0);
+
 // Calculate pending amount - use credit amount if credit payment exists
 if ($credit_amount > 0) {
     $pending_amount = $credit_amount; // Insert credit amount as pending amount
@@ -558,7 +567,8 @@ debug_log("Payment summary", [
 $referral_id = !empty($data['referral_id']) ? (int)$data['referral_id'] : null;
 $total_referral_commission = (float)($data['referral_commission'] ?? 0);
 debug_log("Referral info", ['referral_id' => $referral_id, 'commission' => $total_referral_commission]);
-
+// Add shipping charges to grand total if not already included
+$total_with_shipping = $total + $shipping_charges;
 /* =========================
    INSERT INVOICE
 ========================= */
@@ -572,6 +582,8 @@ $stmt = $pdo->prepare("
         payment_method, seller_id, shop_id, business_id,
         referral_id, referral_commission_amount,
         points_redeemed, points_discount_amount,
+        shipping_name, shipping_contact, shipping_gstin, shipping_address,
+        shipping_vehicle_number, shipping_charges,
         created_at, gst_type
     ) VALUES (
         ?, ?, ?, ?, ?,
@@ -581,6 +593,8 @@ $stmt = $pdo->prepare("
         ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
         ?, ?,
         NOW(), ?
     )
@@ -599,10 +613,10 @@ $stmt->execute([
     $discount,
     $discount_type,
     $overall_discount,
-    $total,
+    $total_with_shipping, // Use total with shipping
     $total_paid,
     $change_given,
-    $pending_amount, // Now contains credit amount when credit payment is used
+    $pending_amount,
     $total_paid,
     $payment_status,
     $cash_amount,
@@ -620,6 +634,12 @@ $stmt->execute([
     $total_referral_commission,
     $points_used,
     $points_discount,
+    $shipping_name ?: null,
+    $shipping_contact ?: null,
+    $shipping_gstin ?: null,
+    $shipping_address ?: null,
+    $shipping_vehicle_number ?: null,
+    $shipping_charges,
     $gst_type
 ]);
        
