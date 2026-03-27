@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($action == 'add_customer' || $action == 'edit_customer') {
         $name = trim($_POST['name'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
+        $alt_phone = trim($_POST['alt_phone'] ?? ''); // New field
         $email = trim($_POST['email'] ?? '');
         $address = trim($_POST['address'] ?? '');
         $gstin = trim($_POST['gstin'] ?? '');
@@ -48,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         try {
             if ($action == 'add_customer') {
-                $sql = "INSERT INTO customers (business_id, name, phone, email, address, gstin, customer_type, referral_id, 
+                $sql = "INSERT INTO customers (business_id, name, phone, alt_phone, email, address, gstin, customer_type, referral_id, 
                         credit_limit, outstanding_type, outstanding_amount, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$business_id, $name, $phone, $email, $address, $gstin, $customer_type, $referral_id, 
+                $stmt->execute([$business_id, $name, $phone, $alt_phone, $email, $address, $gstin, $customer_type, $referral_id, 
                               $credit_limit, $outstanding_type, $outstanding_amount]);
                 
                 $_SESSION['success'] = "Customer added successfully!";
@@ -62,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $sql = "UPDATE customers SET 
                         name = ?, 
                         phone = ?, 
+                        alt_phone = ?,
                         email = ?, 
                         address = ?, 
                         gstin = ?, 
@@ -72,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         outstanding_amount = ?
                         WHERE id = ? AND business_id = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$name, $phone, $email, $address, $gstin, $customer_type, $referral_id, 
+                $stmt->execute([$name, $phone, $alt_phone, $email, $address, $gstin, $customer_type, $referral_id, 
                               $credit_limit, $outstanding_type, $outstanding_amount, $customer_id, $business_id]);
                 
                 $_SESSION['success'] = "Customer updated successfully!";
@@ -170,6 +172,7 @@ if ($customer_type && in_array($customer_type, ['retail', 'wholesale'])) {
     $params[] = $customer_type;
 }
 
+// Main query with credit/outstanding and points calculation
 // Main query with credit/outstanding and points calculation
 $sql = "
     SELECT c.*,
@@ -596,25 +599,34 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                             </div>
                                         </td>
                                         <td class="text-center">
-                                            <?php if ($c['phone']): ?>
-                                            <div class="mb-2">
-                                                <a href="tel:<?= htmlspecialchars($c['phone']) ?>"
-                                                   class="text-decoration-none d-flex align-items-center justify-content-center">
-                                                    <i class="bx bx-phone text-primary me-2"></i>
-                                                    <?= htmlspecialchars($c['phone']) ?>
-                                                </a>
-                                            </div>
-                                            <?php endif; ?>
-                                            <?php if ($c['email']): ?>
-                                            <div>
-                                                <a href="mailto:<?= htmlspecialchars($c['email']) ?>"
-                                                   class="text-decoration-none d-flex align-items-center justify-content-center">
-                                                    <i class="bx bx-envelope text-info me-2"></i>
-                                                    <?= htmlspecialchars($c['email']) ?>
-                                                </a>
-                                            </div>
-                                            <?php endif; ?>
-                                        </td>
+    <?php if ($c['phone']): ?>
+    <div class="mb-2">
+        <a href="tel:<?= htmlspecialchars($c['phone']) ?>"
+           class="text-decoration-none d-flex align-items-center justify-content-center">
+            <i class="bx bx-phone text-primary me-2"></i>
+            <?= htmlspecialchars($c['phone']) ?>
+        </a>
+    </div>
+    <?php endif; ?>
+    <?php if ($c['alt_phone']): ?>
+    <div class="mb-2">
+        <a href="tel:<?= htmlspecialchars($c['alt_phone']) ?>"
+           class="text-decoration-none d-flex align-items-center justify-content-center">
+            <i class="bx bx-phone-call text-secondary me-2"></i>
+            <small><?= htmlspecialchars($c['alt_phone']) ?></small>
+        </a>
+    </div>
+    <?php endif; ?>
+    <?php if ($c['email']): ?>
+    <div>
+        <a href="mailto:<?= htmlspecialchars($c['email']) ?>"
+           class="text-decoration-none d-flex align-items-center justify-content-center">
+            <i class="bx bx-envelope text-info me-2"></i>
+            <?= htmlspecialchars($c['email']) ?>
+        </a>
+    </div>
+    <?php endif; ?>
+</td>
                                         <td class="text-center">
                                             <div class="mb-2">
                                                 <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-3 py-2 fs-6">
@@ -811,6 +823,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
 </div>
 
 <!-- Add/Edit Customer Modal -->
+<!-- Add/Edit Customer Modal -->
 <div class="modal fade" id="addCustomerModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -845,8 +858,9 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label class="form-label">Email Address</label>
-                                <input type="email" name="email" id="custEmail" class="form-control">
+                                <label class="form-label">Alternative Phone Number</label>
+                                <input type="text" name="alt_phone" id="custAltPhone" class="form-control" maxlength="15">
+                                <small class="text-muted">Optional secondary contact number</small>
                             </div>
                         </div>
                     </div>
@@ -854,6 +868,12 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
+                                <label class="form-label">Email Address</label>
+                                <input type="email" name="email" id="custEmail" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3" id="customerTypeWrapper">
                                 <label class="form-label">Customer Type</label>
                                 <select name="customer_type" id="custType" class="form-select">
                                     <option value="retail">Retail Customer</option>
@@ -861,15 +881,15 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                 </select>
                             </div>
                         </div>
+                    </div>
+                    
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">GSTIN Number</label>
                                 <input type="text" name="gstin" id="custGstin" class="form-control text-uppercase" maxlength="15" placeholder="22ABCDE1234F1Z5">
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Credit Limit (₹)</label>
@@ -881,6 +901,9 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                 <small class="text-muted">Set 0 or leave empty for no credit limit</small>
                             </div>
                         </div>
+                    </div>
+                    
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Initial Outstanding Type</label>
@@ -890,10 +913,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                 </select>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-12">
+                        <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Initial Outstanding Amount (₹)</label>
                                 <div class="input-group">
@@ -965,11 +985,17 @@ $(document).ready(function() {
     
     $('[data-bs-toggle="tooltip"]').tooltip();
 
-    // Edit customer button
+    var businessId = <?= json_encode($business_id) ?>;
+    if (businessId == 28) {
+        $('#customerTypeWrapper').hide();
+    }
+    
+    // Edit customer button - add alt_phone
     $(document).on('click', '.edit-customer-btn', function () {
         $('#editId').val($(this).data('id'));
         $('#custName').val($(this).data('name'));
         $('#custPhone').val($(this).data('phone'));
+        $('#custAltPhone').val($(this).data('alt_phone') || ''); // Add this line
         $('#custEmail').val($(this).data('email'));
         $('#custAddress').val($(this).data('address'));
         $('#custGstin').val($(this).data('gstin'));
@@ -1029,7 +1055,6 @@ $(document).ready(function() {
         });
     });
 
-    // Reset form when add modal is closed
     $('#addCustomerModal').on('hidden.bs.modal', function () {
         $('#modalTitle').text('Add New Customer');
         $('#submitBtnText').text('Save Customer');
@@ -1040,6 +1065,16 @@ $(document).ready(function() {
         $('#custReferral').val('');
         $('#custOutstandingType').val('credit');
         $('#custOutstandingAmount').val('0');
+        $('#custAltPhone').val(''); // Clear alt phone on reset
+    });
+
+    // Phone number formatting for both fields
+    $('#custPhone, #custAltPhone').on('input', function() {
+        let phone = $(this).val().replace(/\D/g, '');
+        if (phone.length > 15) {
+            phone = phone.substring(0, 15);
+        }
+        $(this).val(phone);
     });
 
     // Auto-search with debounce

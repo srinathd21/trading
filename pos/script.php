@@ -24,6 +24,8 @@
     let CURRENT_PRODUCT = null;
     let CURRENT_UNIT_IS_SECONDARY = false;
     let IS_CART_LOADED = false;
+    let CREDIT_DUE_DATE = null;
+let CREDIT_DUE_DAYS = 30;
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', function () {
         console.log('POS System: Initializing...');
@@ -41,6 +43,17 @@
             console.error('POS System: Initialization failed:', error);
             showToast('System initialization failed. Please refresh the page.', 'danger');
         }
+        // Add due date change listener
+    const creditDueDateInput = document.getElementById('credit-due-date');
+    if (creditDueDateInput) {
+        creditDueDateInput.addEventListener('change', function() {
+            CREDIT_DUE_DATE = this.value;
+            updatePaymentSummary();
+        });
+    }
+    
+    // Load default credit period from settings
+    loadCreditSettings();
     });
     const style = document.createElement('style');
     style.textContent = `
@@ -136,6 +149,119 @@
             toast.addEventListener('mouseleave', Swal.resumeTimer)
         }
     });
+    // Add this function to load credit settings
+async function loadCreditSettings() {
+    try {
+        const response = await fetchWithTimeout('api/settings.php?action=get_credit_settings', {
+            timeout: 5000
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.credit_period_days) {
+                CREDIT_DUE_DAYS = parseInt(data.credit_period_days);
+                
+                // Update due date placeholder
+                const dueDateInput = document.getElementById('credit-due-date');
+                if (dueDateInput) {
+                    const defaultDueDate = new Date();
+                    defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+                    dueDateInput.placeholder = `Due: ${defaultDueDate.toISOString().split('T')[0]}`;
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load credit settings:', error);
+    }
+}
+
+// Modify the payment-input-card for credit to include due date
+// Add this to the credit-input-card HTML section:
+// Replace the existing credit-input-card with this updated version
+function updateCreditPaymentCard() {
+    const creditCard = document.getElementById('credit-input-card');
+    if (!creditCard) return;
+    
+    // Check if due date field already exists
+    if (!document.getElementById('credit-due-date')) {
+        const dueDateHTML = `
+            <div class="due-date-field mt-2">
+                <label for="credit-due-date" class="form-label" style="font-size: 11px;">
+                    <i class="fas fa-calendar-alt me-1"></i> Due Date
+                </label>
+                <input type="date" id="credit-due-date" name="credit-due-date" 
+                       class="form-control form-control-sm"
+                       style="font-size: 11px;">
+                <small class="text-muted" style="font-size: 9px;">
+                    Payment due date for credit transaction
+                </small>
+            </div>
+        `;
+        
+        // Insert after credit reference field
+        const creditReference = document.getElementById('credit-reference');
+        if (creditReference && creditReference.parentNode) {
+            creditReference.parentNode.insertAdjacentHTML('beforeend', dueDateHTML);
+            
+            // Set default due date
+            const dueDateInput = document.getElementById('credit-due-date');
+            if (dueDateInput) {
+                const defaultDueDate = new Date();
+                defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+                dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+                CREDIT_DUE_DATE = dueDateInput.value;
+            }
+            
+            // Add change event listener
+            dueDateInput.addEventListener('change', function() {
+                CREDIT_DUE_DATE = this.value;
+                updatePaymentSummary();
+                showCreditDueDateWarning();
+            });
+        }
+    }
+}
+
+// Add function to show credit due date warning
+function showCreditDueDateWarning() {
+    const creditAmount = parseFloat(document.getElementById('credit-amount').value) || 0;
+    const dueDate = document.getElementById('credit-due-date')?.value;
+    
+    if (creditAmount > 0 && dueDate) {
+        const today = new Date();
+        const due = new Date(dueDate);
+        const daysUntilDue = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+        
+        let warningHTML = '';
+        if (daysUntilDue < 0) {
+            warningHTML = `
+                <div class="credit-due-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Overdue!</strong> Payment due date has passed.
+                </div>
+            `;
+        } else if (daysUntilDue <= 7) {
+            warningHTML = `
+                <div class="credit-due-warning">
+                    <i class="fas fa-clock"></i>
+                    <strong>Due in ${daysUntilDue} days!</strong> Payment is due soon.
+                </div>
+            `;
+        }
+        
+        // Remove existing warning and add new one
+        const existingWarning = document.querySelector('#credit-input-card .credit-due-warning');
+        if (existingWarning) existingWarning.remove();
+        
+        if (warningHTML) {
+            const creditCard = document.getElementById('credit-input-card');
+            const dueDateField = document.querySelector('#credit-input-card .due-date-field');
+            if (dueDateField) {
+                dueDateField.insertAdjacentHTML('afterend', warningHTML);
+            }
+        }
+    }
+}
 
     // Success Toast
     function showSuccessToast(message) {
@@ -3459,85 +3585,108 @@ document.head.appendChild(stockStyle);
 
     // ==================== PAYMENT FUNCTIONS ====================
     function handlePaymentMethodCheckbox(event) {
-        try {
-            const method = event.target.value;
-            const isChecked = event.target.checked;
-            const cardId = `${method}-input-card`;
-            const cardElement = document.getElementById(cardId);
+    try {
+        const method = event.target.value;
+        const isChecked = event.target.checked;
+        const cardId = `${method}-input-card`;
+        const cardElement = document.getElementById(cardId);
 
-            if (isChecked) {
-                ACTIVE_PAYMENT_METHODS.add(method);
-                if (cardElement) {
-                    cardElement.classList.add('active');
+        if (isChecked) {
+            ACTIVE_PAYMENT_METHODS.add(method);
+            if (cardElement) {
+                cardElement.classList.add('active');
+                
+                // If credit method is selected, initialize due date field
+                if (method === 'credit') {
                     setTimeout(() => {
-                        const amountInput = cardElement.querySelector('input[type="number"]');
-                        if (amountInput) {
-                            amountInput.focus();
-                            amountInput.select();
-                        }
+                        updateCreditPaymentCard();
                     }, 10);
                 }
-            } else {
-                ACTIVE_PAYMENT_METHODS.delete(method);
-                if (cardElement) {
-                    cardElement.classList.remove('active');
+                
+                setTimeout(() => {
                     const amountInput = cardElement.querySelector('input[type="number"]');
                     if (amountInput) {
-                        amountInput.value = '0';
+                        amountInput.focus();
+                        amountInput.select();
                     }
+                }, 10);
+            }
+        } else {
+            ACTIVE_PAYMENT_METHODS.delete(method);
+            if (cardElement) {
+                cardElement.classList.remove('active');
+                const amountInput = cardElement.querySelector('input[type="number"]');
+                if (amountInput) {
+                    amountInput.value = '0';
+                }
+                
+                // Clear credit due date warning if credit is deselected
+                if (method === 'credit') {
+                    const warning = document.querySelector('#credit-input-card .credit-due-warning');
+                    if (warning) warning.remove();
                 }
             }
-
-            updatePaymentSummary();
-
-        } catch (error) {
-            console.error('Error handling payment method checkbox:', error);
-            showToast('Error updating payment method. Please try again.', 'danger');
         }
+
+        updatePaymentSummary();
+
+    } catch (error) {
+        console.error('Error handling payment method checkbox:', error);
+        showToast('Error updating payment method. Please try again.', 'danger');
     }
+}
 
     function updatePaymentSummary() {
-        try {
-            const totals = calculateTotals();
-            const grandTotal = totals.grandTotal;
+    try {
+        const totals = calculateTotals();
+        const grandTotal = totals.grandTotal;
 
-            // Get payment amounts
-            const cashAmount = ACTIVE_PAYMENT_METHODS.has('cash') ? parseFloat(document.getElementById('cash-amount').value) || 0 : 0;
-            const upiAmount = ACTIVE_PAYMENT_METHODS.has('upi') ? parseFloat(document.getElementById('upi-amount').value) || 0 : 0;
-            const bankAmount = ACTIVE_PAYMENT_METHODS.has('bank') ? parseFloat(document.getElementById('bank-amount').value) || 0 : 0;
-            const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
-            const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
+        // Get payment amounts
+        const cashAmount = ACTIVE_PAYMENT_METHODS.has('cash') ? parseFloat(document.getElementById('cash-amount').value) || 0 : 0;
+        const upiAmount = ACTIVE_PAYMENT_METHODS.has('upi') ? parseFloat(document.getElementById('upi-amount').value) || 0 : 0;
+        const bankAmount = ACTIVE_PAYMENT_METHODS.has('bank') ? parseFloat(document.getElementById('bank-amount').value) || 0 : 0;
+        const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
+        const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
+        
+        // Get credit due date if available
+        const creditDueDate = document.getElementById('credit-due-date')?.value || null;
 
-            const totalPaid = cashAmount + upiAmount + bankAmount + chequeAmount + creditAmount;
-            const changeGiven = totalPaid > grandTotal ? totalPaid - grandTotal : 0;
-            const pendingAmount = totalPaid < grandTotal ? grandTotal - totalPaid : 0;
+        const totalPaid = cashAmount + upiAmount + bankAmount + chequeAmount + creditAmount;
+        const changeGiven = totalPaid > grandTotal ? totalPaid - grandTotal : 0;
+        const pendingAmount = totalPaid < grandTotal ? grandTotal - totalPaid : 0;
 
-            // Update displays
-            document.getElementById('total-paid').value = `₹ ${Math.round(totalPaid)}`;
-            document.getElementById('change-given').value = `₹ ${Math.round(changeGiven)}`;
-            document.getElementById('pending-amount').value = `₹ ${Math.round(pendingAmount)}`;
+        // Update displays
+        document.getElementById('total-paid').value = `₹ ${Math.round(totalPaid)}`;
+        document.getElementById('change-given').value = `₹ ${Math.round(changeGiven)}`;
+        document.getElementById('pending-amount').value = `₹ ${Math.round(pendingAmount)}`;
 
-            // Show payment distribution
-            showPaymentDistribution({
-                cash: cashAmount,
-                upi: upiAmount,
-                bank: bankAmount,
-                cheque: chequeAmount,
-                credit: creditAmount,
-                totalPaid: totalPaid,
-                grandTotal: grandTotal,
-                change: changeGiven,
-                pending: pendingAmount
-            });
+        // Show payment distribution with due date for credit
+        showPaymentDistribution({
+            cash: cashAmount,
+            upi: upiAmount,
+            bank: bankAmount,
+            cheque: chequeAmount,
+            credit: creditAmount,
+            credit_due_date: creditDueDate,
+            totalPaid: totalPaid,
+            grandTotal: grandTotal,
+            change: changeGiven,
+            pending: pendingAmount
+        });
 
-            // Update generate bill button state
-            updateGenerateBillButton(pendingAmount, totalPaid);
-
-        } catch (error) {
-            console.error('Error updating payment summary:', error);
-            showToast('Error updating payment summary. Please check amounts.', 'danger');
+        // Update generate bill button state
+        updateGenerateBillButton(pendingAmount, totalPaid);
+        
+        // Show credit due date warning if applicable
+        if (creditAmount > 0) {
+            showCreditDueDateWarning();
         }
+
+    } catch (error) {
+        console.error('Error updating payment summary:', error);
+        showToast('Error updating payment summary. Please check amounts.', 'danger');
     }
+}
 
     function updateGenerateBillButton(pendingAmount, totalPaid) {
         try {
@@ -3566,59 +3715,90 @@ document.head.appendChild(stockStyle);
     }
 
     function showPaymentDistribution(paymentData) {
-        try {
-            let distributionHTML = `
+    try {
+        let distributionHTML = `
             <div class="amount-distribution">
                 <h6><i class="fas fa-money-bill-wave me-1"></i> Payment Distribution</h6>
         `;
 
-            // Show active payment methods
-            if (paymentData.cash > 0) {
-                distributionHTML += `
+        // Show active payment methods
+        if (paymentData.cash > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-money-bill-wave me-1"></i> Cash:</span>
                     <span>₹ ${Math.round(paymentData.cash)}</span>
                 </div>
             `;
-            }
+        }
 
-            if (paymentData.upi > 0) {
-                distributionHTML += `
+        if (paymentData.upi > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-mobile-alt me-1"></i> UPI:</span>
                     <span>₹ ${Math.round(paymentData.upi)}</span>
                 </div>
             `;
-            }
+        }
 
-            if (paymentData.bank > 0) {
-                distributionHTML += `
+        if (paymentData.bank > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-university me-1"></i> Bank:</span>
                     <span>₹ ${Math.round(paymentData.bank)}</span>
                 </div>
             `;
-            }
+        }
 
-            if (paymentData.cheque > 0) {
-                distributionHTML += `
+        if (paymentData.cheque > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-money-check me-1"></i> Cheque:</span>
                     <span>₹ ${Math.round(paymentData.cheque)}</span>
                 </div>
             `;
-            }
+        }
 
-            if (paymentData.credit > 0) {
-                distributionHTML += `
+        if (paymentData.credit > 0) {
+            // Calculate days until due
+            let dueDateInfo = '';
+            if (paymentData.credit_due_date) {
+                const today = new Date();
+                const dueDate = new Date(paymentData.credit_due_date);
+                const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                
+                let dueDateClass = '';
+                let dueDateIcon = '<i class="fas fa-calendar-alt me-1"></i>';
+                
+                if (daysUntilDue < 0) {
+                    dueDateClass = 'overdue-badge';
+                    dueDateIcon = '<i class="fas fa-exclamation-triangle me-1"></i>';
+                    dueDateInfo = `<span class="due-date-badge overdue-badge" style="margin-left: 10px;">
+                        ${dueDateIcon} OVERDUE by ${Math.abs(daysUntilDue)} days
+                    </span>`;
+                } else if (daysUntilDue <= 7) {
+                    dueDateClass = 'text-warning';
+                    dueDateInfo = `<span class="due-date-badge" style="margin-left: 10px; background-color: #ffc107;">
+                        <i class="fas fa-clock me-1"></i> Due in ${daysUntilDue} days
+                    </span>`;
+                } else {
+                    dueDateInfo = `<span class="due-date-badge" style="margin-left: 10px;">
+                        <i class="fas fa-calendar-check me-1"></i> Due: ${paymentData.credit_due_date}
+                    </span>`;
+                }
+            }
+            
+            distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-credit-card me-1"></i> Credit:</span>
-                    <span>₹ ${Math.round(paymentData.credit)}</span>
+                    <span>
+                        ₹ ${Math.round(paymentData.credit)}
+                        ${dueDateInfo}
+                    </span>
                 </div>
             `;
-            }
+        }
 
-            distributionHTML += `
+        distributionHTML += `
                 <hr style="margin: 5px 0;">
                 <div class="amount-distribution-row" style="font-weight: bold;">
                     <span>Total Paid:</span>
@@ -3630,42 +3810,42 @@ document.head.appendChild(stockStyle);
                 </div>
         `;
 
-            if (paymentData.change > 0) {
-                distributionHTML += `
+        if (paymentData.change > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row" style="color: #28a745;">
                     <span><i class="fas fa-hand-holding-usd me-1"></i> Change to Give:</span>
                     <span>₹ ${Math.round(paymentData.change)}</span>
                 </div>
             `;
-            }
+        }
 
-            if (paymentData.pending > 0) {
-                distributionHTML += `
+        if (paymentData.pending > 0) {
+            distributionHTML += `
                 <div class="amount-distribution-row" style="color: #fd7e14;">
                     <span><i class="fas fa-exclamation-triangle me-1"></i> Pending Amount:</span>
                     <span>₹ ${Math.round(paymentData.pending)}</span>
                 </div>
             `;
-            }
-
-            distributionHTML += `</div>`;
-
-            // Update or create distribution display
-            let distributionContainer = document.getElementById('paymentDistribution');
-            if (!distributionContainer) {
-                distributionContainer = document.createElement('div');
-                distributionContainer.id = 'paymentDistribution';
-                const paymentGrid = document.querySelector('.payment-inputs-grid');
-                if (paymentGrid) {
-                    paymentGrid.after(distributionContainer);
-                }
-            }
-            distributionContainer.innerHTML = distributionHTML;
-
-        } catch (error) {
-            console.error('Error showing payment distribution:', error);
         }
+
+        distributionHTML += `</div>`;
+
+        // Update or create distribution display
+        let distributionContainer = document.getElementById('paymentDistribution');
+        if (!distributionContainer) {
+            distributionContainer = document.createElement('div');
+            distributionContainer.id = 'paymentDistribution';
+            const paymentGrid = document.querySelector('.payment-inputs-grid');
+            if (paymentGrid) {
+                paymentGrid.after(distributionContainer);
+            }
+        }
+        distributionContainer.innerHTML = distributionHTML;
+
+    } catch (error) {
+        console.error('Error showing payment distribution:', error);
     }
+}
 
     function autoFillRemainingAmount() {
         try {
@@ -3725,41 +3905,49 @@ document.head.appendChild(stockStyle);
     }
 
     function collectPaymentData() {
-        try {
-            const cashAmount = ACTIVE_PAYMENT_METHODS.has('cash') ? parseFloat(document.getElementById('cash-amount').value) || 0 : 0;
-            const upiAmount = ACTIVE_PAYMENT_METHODS.has('upi') ? parseFloat(document.getElementById('upi-amount').value) || 0 : 0;
-            const bankAmount = ACTIVE_PAYMENT_METHODS.has('bank') ? parseFloat(document.getElementById('bank-amount').value) || 0 : 0;
-            const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
-            const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
-
-            return {
-                cash: cashAmount,
-                upi: upiAmount,
-                bank: bankAmount,
-                cheque: chequeAmount,
-                credit: creditAmount,
-                totalPaid: cashAmount + upiAmount + bankAmount + chequeAmount + creditAmount,
-                upi_reference: document.getElementById('upi-reference').value || '',
-                bank_reference: document.getElementById('bank-reference').value || '',
-                cheque_number: document.getElementById('cheque-number').value || '',
-                credit_reference: document.getElementById('credit-reference').value || ''
-            };
-        } catch (error) {
-            console.error('Error collecting payment data:', error);
-            return {
-                cash: 0,
-                upi: 0,
-                bank: 0,
-                cheque: 0,
-                credit: 0,
-                totalPaid: 0,
-                upi_reference: '',
-                bank_reference: '',
-                cheque_number: '',
-                credit_reference: ''
-            };
+    try {
+        const cashAmount = ACTIVE_PAYMENT_METHODS.has('cash') ? parseFloat(document.getElementById('cash-amount').value) || 0 : 0;
+        const upiAmount = ACTIVE_PAYMENT_METHODS.has('upi') ? parseFloat(document.getElementById('upi-amount').value) || 0 : 0;
+        const bankAmount = ACTIVE_PAYMENT_METHODS.has('bank') ? parseFloat(document.getElementById('bank-amount').value) || 0 : 0;
+        const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
+        const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
+        
+        // Get credit due date if credit payment is selected
+        let creditDueDate = null;
+        if (ACTIVE_PAYMENT_METHODS.has('credit') && creditAmount > 0) {
+            creditDueDate = document.getElementById('credit-due-date')?.value || null;
         }
+
+        return {
+            cash: cashAmount,
+            upi: upiAmount,
+            bank: bankAmount,
+            cheque: chequeAmount,
+            credit: creditAmount,
+            totalPaid: cashAmount + upiAmount + bankAmount + chequeAmount + creditAmount,
+            upi_reference: document.getElementById('upi-reference').value || '',
+            bank_reference: document.getElementById('bank-reference').value || '',
+            cheque_number: document.getElementById('cheque-number').value || '',
+            credit_reference: document.getElementById('credit-reference').value || '',
+            credit_due_date: creditDueDate
+        };
+    } catch (error) {
+        console.error('Error collecting payment data:', error);
+        return {
+            cash: 0,
+            upi: 0,
+            bank: 0,
+            cheque: 0,
+            credit: 0,
+            totalPaid: 0,
+            upi_reference: '',
+            bank_reference: '',
+            cheque_number: '',
+            credit_reference: '',
+            credit_due_date: null
+        };
     }
+}
 
     // ==================== LOYALTY POINTS FUNCTIONS ====================
     function handleCustomerSelection() {
@@ -4837,6 +5025,15 @@ document.head.appendChild(stockStyle);
         document.getElementById('bank-reference').value = '';
         document.getElementById('cheque-number').value = '';
         document.getElementById('credit-reference').value = '';
+        
+        // Reset credit due date
+        const dueDateInput = document.getElementById('credit-due-date');
+        if (dueDateInput) {
+            const defaultDueDate = new Date();
+            defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+            dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+            CREDIT_DUE_DATE = dueDateInput.value;
+        }
 
         // Hide all payment cards except cash
         document.querySelectorAll('.payment-input-card').forEach(card => {
@@ -4859,8 +5056,7 @@ document.head.appendChild(stockStyle);
             distributionContainer.remove();
         }
 
-        // ========== ADD THIS SECTION TO CLEAR SHIPPING DETAILS ==========
-        // Clear shipping details from memory
+        // Clear shipping details
         SHIPPING_DETAILS = {
             name: '',
             contact: '',
@@ -4870,25 +5066,19 @@ document.head.appendChild(stockStyle);
             charges: 0
         };
         
-        // Clear shipping details from session storage
         sessionStorage.removeItem('pos_shipping_details');
-        
-        // Update shipping display to show empty state
         updateShippingDetailsHorizontal();
         
-        // Clear any shipping charges row from total summary
         const shippingRow = document.getElementById('shipping-charges-row');
         if (shippingRow) {
             shippingRow.style.display = 'none';
         }
         
-        // Also clear the shipping summary from address section if it exists
         const shippingSummary = document.getElementById('shippingSummary');
         if (shippingSummary) {
             shippingSummary.classList.remove('show');
             shippingSummary.innerHTML = '';
         }
-        // ========== END OF SHIPPING CLEAR SECTION ==========
 
         // Generate new invoice number
         generateInvoiceNumber();

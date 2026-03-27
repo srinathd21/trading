@@ -1477,6 +1477,58 @@
     color: #adb5bd;
 }
     </style>
+    <!-- Add this CSS style for the due date field -->
+<style>
+    .due-date-field {
+        margin-top: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .due-date-field input {
+        font-size: 12px;
+        padding: 6px 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        width: 100%;
+    }
+    
+    .due-date-field input:focus {
+        border-color: #ffc107;
+        box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+    }
+    
+    .due-date-badge {
+        background-color: #ffc107;
+        color: #856404;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: 10px;
+    }
+    
+    .credit-due-warning {
+        border-left: 3px solid #ffc107;
+        background-color: #fff3cd;
+        padding: 8px 12px;
+        margin-top: 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+    
+    .credit-due-warning i {
+        color: #856404;
+        margin-right: 5px;
+    }
+    
+    .overdue-badge {
+        background-color: #dc3545;
+        color: white;
+    }
+</style>
 </head>
 
 <body>
@@ -1744,8 +1796,12 @@
                         <h6><i class="fas fa-credit-card"></i> Credit Payment</h6>
                         <label for="credit-amount">Amount (₹)</label>
                         <input type="number" id="credit-amount" name="credit-amount" value="0" min="0" step="0.01" placeholder="Enter amount">
-                        <label for="credit-reference" class="mt-2">Reference</label>
-                        <input type="text" id="credit-reference" name="credit-reference" placeholder="Credit Note/Reference">
+                        <div class="creadit-inputs">
+                            <div>
+                                <label for="credit-reference" class="mt-2">Reference</label>
+                            <input type="text" id="credit-reference" name="credit-reference" placeholder="Credit Note/Reference">
+                            </div>
+                        </div>
                     </div>
                 </div>
                 

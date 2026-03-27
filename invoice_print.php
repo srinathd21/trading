@@ -218,6 +218,12 @@ function pdf_text_simple($s) {
     return $s;
 }
 
+function wrap_text_for_pdf($text, $width, $pdf) {
+    if (empty($text)) return [];
+    $pdf->SetFont('Arial', '', 9);
+    return $pdf->MultiCell($width, 5, pdf_text_simple($text), 0, 'L');
+}
+
 // ========== PDF Class (modified for non-GST invoices) ==========
 class InvoicePDF extends FPDF {
     public $company = [];
@@ -291,7 +297,10 @@ class InvoicePDF extends FPDF {
         
         $this->SetFont('Arial','',9);
         $this->SetX($this->lm + $logo_offset);
-        $this->MultiCell(0, 4.2, pdf_text_simple($this->company['address']), 0, 'L');
+        
+        // Wrap company address
+        $address_width = 100;
+        $this->MultiCell($address_width, 4.5, pdf_text_simple($this->company['address']), 0, 'L');
         
         $this->SetX($this->lm + $logo_offset);
         if (!empty($this->company['phone'])) {
@@ -341,64 +350,67 @@ class InvoicePDF extends FPDF {
         $this->Cell($colW, 6, pdf_text_simple('Ship To'), 0, 1, 'L');
         
         $this->SetFont('Arial','',9);
-        $bill_info = [
-            'Name : '.$this->customer['name'],
-            'Mobile : '.$this->customer['phone'],
-        ];
         
-        // Only add GSTIN for GST invoices
-        if ($this->is_gst_invoice) {
-            $bill_info[] = 'GSTIN : '.$this->customer['gstin'];
+        // Bill To details with proper wrapping
+        $bill_y_start = $this->GetY();
+        
+        // Bill To (left side)
+        $this->SetX($this->lm);
+        $this->MultiCell($colW - 2, 5, pdf_text_simple('Name: ' . $this->customer['name']), 0, 'L');
+        $this->SetX($this->lm);
+        $this->MultiCell($colW - 2, 5, pdf_text_simple('Mobile: ' . $this->customer['phone']), 0, 'L');
+        
+        if ($this->is_gst_invoice && !empty($this->customer['gstin'])) {
+            $this->SetX($this->lm);
+            $this->MultiCell($colW - 2, 5, pdf_text_simple('GSTIN: ' . $this->customer['gstin']), 0, 'L');
         }
-        $bill_info[] = 'Address : '.$this->customer['address'];
         
-        // Ship To details (use shipping details if available, otherwise use bill to)
+        $this->SetX($this->lm);
+        $this->MultiCell($colW - 2, 5, pdf_text_simple('Address: ' . $this->customer['address']), 0, 'L');
+        
+        $bill_y_end = $this->GetY();
+        
+        // Ship To details (right side)
+        $this->SetY($bill_y_start);
         $has_shipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
         
         if ($has_shipping) {
-            $ship_info = [];
             if (!empty($this->shipping['name'])) {
-                $ship_info[] = 'Name : '.$this->shipping['name'];
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('Name: ' . $this->shipping['name']), 0, 'L');
             }
             if (!empty($this->shipping['contact'])) {
-                $ship_info[] = 'Mobile : '.$this->shipping['contact'];
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('Mobile: ' . $this->shipping['contact']), 0, 'L');
             }
-            if (!empty($this->shipping['gstin']) && $this->is_gst_invoice) {
-                $ship_info[] = 'GSTIN : '.$this->shipping['gstin'];
+            if ($this->is_gst_invoice && !empty($this->shipping['gstin'])) {
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('GSTIN: ' . $this->shipping['gstin']), 0, 'L');
             }
             if (!empty($this->shipping['vehicle_number'])) {
-                $ship_info[] = 'Vehicle No : '.$this->shipping['vehicle_number'];
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('Vehicle No: ' . $this->shipping['vehicle_number']), 0, 'L');
             }
             if (!empty($this->shipping['address'])) {
-                $ship_info[] = 'Address : '.$this->shipping['address'];
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('Address: ' . $this->shipping['address']), 0, 'L');
             }
         } else {
-            $ship_info = $bill_info;
-        }
-        
-        // Print Bill To and Ship To side by side
-        $bill_y_start = $this->GetY();
-        
-        // Print Bill To (left side)
-        $this->SetX($this->lm);
-        foreach ($bill_info as $line) {
-            $this->SetX($this->lm);
-            $this->Cell($colW, 5, pdf_text_simple($line), 0, 0, 'L');
-            $this->Cell($colW, 5, '', 0, 1, 'L');
-        }
-        
-        $bill_y_end = $this->GetY();
-        $this->SetY($bill_y_start);
-        
-        // Print Ship To (right side)
-        $this->SetX($this->lm + $colW);
-        foreach ($ship_info as $line) {
+            // Copy bill to details to ship to
             $this->SetX($this->lm + $colW);
-            $this->Cell($colW, 5, pdf_text_simple($line), 0, 0, 'L');
-            $this->Cell(0, 5, '', 0, 1, 'L');
+            $this->MultiCell($colW - 2, 5, pdf_text_simple('Name: ' . $this->customer['name']), 0, 'L');
+            $this->SetX($this->lm + $colW);
+            $this->MultiCell($colW - 2, 5, pdf_text_simple('Mobile: ' . $this->customer['phone']), 0, 'L');
+            if ($this->is_gst_invoice && !empty($this->customer['gstin'])) {
+                $this->SetX($this->lm + $colW);
+                $this->MultiCell($colW - 2, 5, pdf_text_simple('GSTIN: ' . $this->customer['gstin']), 0, 'L');
+            }
+            $this->SetX($this->lm + $colW);
+            $this->MultiCell($colW - 2, 5, pdf_text_simple('Address: ' . $this->customer['address']), 0, 'L');
         }
         
-        $this->SetY(max($bill_y_end, $this->GetY()));
+        $ship_y_end = $this->GetY();
+        $this->SetY(max($bill_y_end, $ship_y_end));
         
         // Show shipping charges if applicable
         if ($this->shipping['charges'] > 0) {
