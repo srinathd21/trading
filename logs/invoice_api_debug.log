@@ -62353,3 +62353,1371 @@
     "attempts": 0,
     "final_seq": 2
 }
+[2026-03-28 06:59:31] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 06:59:32] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 06:59:32] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 06:59:33] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:35] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:35] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:36] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:36] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:41] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:41] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:41] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:41] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:57] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:57] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:00:58] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:00:58] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:01:29] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:01:29] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:01:30] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:01:30] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:01:43] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:01:43] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:01:44] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:01:44] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:19] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:19] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:20] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:20] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:34] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:34] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:35] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:35] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:37] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:37] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:38] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:38] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:55] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:55] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:05:56] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:05:56] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:06:13] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:06:13] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:06:14] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:06:14] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:12] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:13] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:13] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:13] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:13] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:14] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:14] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:14] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:14] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:14] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:15] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:15] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:15] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:15] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:16] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:16] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:16] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:16] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:17] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:17] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:37] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:37] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:39] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:39] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:40] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:40] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:52] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:52] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:07:52] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:07:52] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:01] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:01] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:01] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:01] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:04] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:04] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:04] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:04] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:46] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:46] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:46] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:47] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:57] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:57] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:08:58] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:08:58] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:09:31] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:09:31] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:09:31] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:09:32] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:09:36] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:09:37] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:09:38] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:09:38] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:24] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:24] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:24] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:25] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:28] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:28] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:29] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:29] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:33] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:33] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:33] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:33] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:33] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:34] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:34] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:34] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:34] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:35] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:10:35] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:10:35] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:11:29] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:11:29] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:11:30] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:11:30] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:11:37] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:11:37] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:11:38] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:11:38] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:32] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:32] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:33] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:33] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:33] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:33] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:34] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:34] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:34] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:34] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:35] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:35] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:46] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:46] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:12:47] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:12:47] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:39] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:39] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:40] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:42] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:42] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:42] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:42] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:47] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:47] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:48] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:48] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:48] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:48] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:48] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:49] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:58] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:58] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:58] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:59] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:14:59] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:14:59] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:15:00] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:15:00] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:15:01] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:15:01] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:15:01] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:15:01] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:15:29] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:15:30] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:15:30] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:15:31] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:11] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:11] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:11] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:11] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:27] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:27] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:28] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:28] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:39] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:16:40] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:16:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:18] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:19] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:19] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:19] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:19] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:19] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:20] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:20] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:20] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:20] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:21] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:21] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:28] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:28] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:28] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:28] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:31] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:31] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:32] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:32] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:43] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:43] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:43] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:43] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:53] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:53] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:17:54] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:17:55] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:18:17] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:18:17] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:18:17] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:18:17] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:19:01] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:19:02] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:19:02] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:19:03] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:23:45] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:23:45] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:23:46] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:23:46] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}

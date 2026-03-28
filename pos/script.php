@@ -174,7 +174,60 @@ async function loadCreditSettings() {
         console.warn('Could not load credit settings:', error);
     }
 }
+// Add this function to handle due days selection
+function setupDueDaysListener() {
+    const dueDaysSelect = document.getElementById('due_days');
+    const dueDateInput = document.getElementById('credit-due-date');
+    
+    if (dueDaysSelect && dueDateInput) {
+        // Remove any existing event listener to avoid duplicates
+        dueDaysSelect.removeEventListener('change', handleDueDaysChange);
+        // Add the event listener
+        dueDaysSelect.addEventListener('change', handleDueDaysChange);
+        
+        // Also set initial due date if dropdown has a value
+        if (dueDaysSelect.value) {
+            updateDueDateFromDays(parseInt(dueDaysSelect.value), dueDateInput);
+        }
+    }
+}
 
+// Handle due days dropdown change
+function handleDueDaysChange(event) {
+    const days = parseInt(event.target.value);
+    const dueDateInput = document.getElementById('credit-due-date');
+    
+    if (days && dueDateInput) {
+        updateDueDateFromDays(days, dueDateInput);
+        
+        // Show a toast notification
+        if (typeof showToast === 'function') {
+            showToast(`Due date set to ${dueDateInput.value} (${days} days from today)`, 'info');
+        }
+        
+        // Trigger change event on due date input
+        const changeEvent = new Event('change', { bubbles: true });
+        dueDateInput.dispatchEvent(changeEvent);
+    }
+}
+
+// Calculate due date based on days
+function updateDueDateFromDays(days, dueDateInput) {
+    if (!days || !dueDateInput) return;
+    
+    const today = new Date();
+    const dueDate = new Date();
+    dueDate.setDate(today.getDate() + days);
+    
+    // Format as YYYY-MM-DD for date input
+    const formattedDate = dueDate.toISOString().split('T')[0];
+    dueDateInput.value = formattedDate;
+    
+    // Update the global variable
+    if (typeof CREDIT_DUE_DATE !== 'undefined') {
+        window.CREDIT_DUE_DATE = formattedDate;
+    }
+}
 // Modify the payment-input-card for credit to include due date
 // Add this to the credit-input-card HTML section:
 // Replace the existing credit-input-card with this updated version
@@ -206,22 +259,74 @@ function updateCreditPaymentCard() {
             // Set default due date
             const dueDateInput = document.getElementById('credit-due-date');
             if (dueDateInput) {
-                const defaultDueDate = new Date();
-                defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
-                dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
-                CREDIT_DUE_DATE = dueDateInput.value;
+                // Check if due days dropdown has a value
+                const dueDaysSelect = document.getElementById('due_days');
+                if (dueDaysSelect && dueDaysSelect.value) {
+                    updateDueDateFromDays(parseInt(dueDaysSelect.value), dueDateInput);
+                } else {
+                    const defaultDueDate = new Date();
+                    defaultDueDate.setDate(defaultDueDate.getDate() + (typeof CREDIT_DUE_DAYS !== 'undefined' ? CREDIT_DUE_DAYS : 30));
+                    dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+                }
+                
+                if (typeof CREDIT_DUE_DATE !== 'undefined') {
+                    window.CREDIT_DUE_DATE = dueDateInput.value;
+                }
             }
             
             // Add change event listener
             dueDateInput.addEventListener('change', function() {
-                CREDIT_DUE_DATE = this.value;
+                if (typeof CREDIT_DUE_DATE !== 'undefined') {
+                    window.CREDIT_DUE_DATE = this.value;
+                }
                 updatePaymentSummary();
                 showCreditDueDateWarning();
             });
         }
     }
+    
+    // Also ensure due days dropdown listener is set up
+    setupDueDaysListener();
+}
+function resetFormWithDueDays() {
+    // Call the original resetForm if it exists
+    if (typeof originalResetForm === 'function') {
+        originalResetForm();
+    } else if (typeof resetForm === 'function') {
+        resetForm();
+    }
+    
+    // Reset due days dropdown
+    const dueDaysSelect = document.getElementById('due_days');
+    if (dueDaysSelect) {
+        dueDaysSelect.value = '';
+    }
+    
+    // Reset credit due date to default
+    const dueDateInput = document.getElementById('credit-due-date');
+    if (dueDateInput && typeof CREDIT_DUE_DAYS !== 'undefined') {
+        const defaultDueDate = new Date();
+        defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+        dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+        if (typeof CREDIT_DUE_DATE !== 'undefined') {
+            window.CREDIT_DUE_DATE = dueDateInput.value;
+        }
+    }
 }
 
+// Save reference to original resetForm if it exists
+if (typeof resetForm !== 'undefined') {
+    window.originalResetForm = resetForm;
+    window.resetForm = resetFormWithDueDays;
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a bit for the credit payment card to be created
+    setTimeout(() => {
+        setupDueDaysListener();
+    }, 500);
+});
 // Add function to show credit due date warning
 function showCreditDueDateWarning() {
     const creditAmount = parseFloat(document.getElementById('credit-amount').value) || 0;
