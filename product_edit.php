@@ -1087,7 +1087,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
 
                                         <div class="col-md-3">
-                                            <label class="form-label"><strong>Retail Price <span class="text-danger">*</span></strong></label>
+                                            <label class="form-label"><strong>Sale Price / Retail Price <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="retail_price" 
