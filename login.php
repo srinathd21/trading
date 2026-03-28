@@ -9,13 +9,61 @@ if (isset($_SESSION['user_id'])) {
     exit();
 }
 
+// Check for remember me cookie
+if (isset($_COOKIE['remember_token'])) {
+    $token = $_COOKIE['remember_token'];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, full_name, role, is_active, shop_id, business_id, remember_token_expires
+            FROM users 
+            WHERE remember_token = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$token]);
+        $user = $stmt->fetch();
+        
+        if ($user && strtotime($user['remember_token_expires']) > time()) {
+            // Token is valid, log the user in
+            $_SESSION['user_id'] = (int)$user['id'];
+            $_SESSION['full_name'] = $user['full_name'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['business_id'] = (int)$user['business_id'];
+            $_SESSION['current_business_id'] = (int)$user['business_id'];
+            $_SESSION['current_shop_id'] = (int)$user['shop_id'];
+            $_SESSION['login_time'] = time();
+            
+            $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")
+                ->execute([$user['id']]);
+            
+            // Check user role and redirect accordingly
+            if ($user['role'] === 'admin') {
+                header("Location: select_shop.php");
+                exit();
+            } elseif ($user['shop_id']) {
+                $shop = $pdo->prepare("SELECT shop_name FROM shops WHERE id = ? AND is_active = 1")
+                           ->execute([$user['shop_id']]) ?
+                           $pdo->query("SELECT shop_name FROM shops WHERE id = {$user['shop_id']}")->fetch() : null;
+                if ($shop) {
+                    $_SESSION['current_shop_id'] = $user['shop_id'];
+                    $_SESSION['current_shop_name'] = $shop['shop_name'];
+                    header("Location: dashboard.php");
+                    exit();
+                }
+            }
+        }
+    } catch (Exception $e) {
+        // Token validation failed, clear cookie
+        setcookie('remember_token', '', time() - 3600, '/');
+    }
+}
+
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Check if it's a login request or password reset request
     if (isset($_POST['reset_email'])) {
-        // Handle password reset request
+        // Handle password reset request (existing code)
         $email = trim($_POST['reset_email'] ?? '');
         
         if ($email === '') {
@@ -30,16 +78,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($user) {
                     // Generate reset token
                     $reset_token = bin2hex(random_bytes(32));
-                    $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour')); // Token valid for 1 hour
+                    $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
                     
-                    // Store token in database
                     $stmt = $pdo->prepare("UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?");
                     $stmt->execute([$reset_token, $expires_at, $user['id']]);
                     
-                    // Create reset link
                     $reset_link = "https://ecommer.in/billing/trading/reset_password.php?token=" . $reset_token;
                     
-                    // Prepare email
                     $to = $user['email'];
                     $subject = "Password Reset Request - Ecommer";
                     $message = "
@@ -88,7 +133,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $headers .= "From: Ecommer <noreply@ecommer.in>" . "\r\n";
                     $headers .= "X-Mailer: PHP/" . phpversion();
                     
-                    // Send email
                     if (mail($to, $subject, $message, $headers)) {
                         $success = "Password reset link has been sent to your email.";
                     } else {
@@ -102,9 +146,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } else {
-        // Handle login request (existing code)
+        // Handle login request
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
+        $remember_me = isset($_POST['remember_me']) ? true : false;
         
         if ($username === '' || $password === '') {
             $error = "Please enter both username and password.";
@@ -123,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($user['is_active'] != 1) {
                         $error = "Account deactivated.";
                     } else {
+                        // Set session
                         $_SESSION['user_id'] = (int)$user['id'];
                         $_SESSION['full_name'] = $user['full_name'];
                         $_SESSION['role'] = $user['role'];
@@ -131,16 +177,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['current_shop_id'] = (int)$user['shop_id'];
                         $_SESSION['login_time'] = time();
                         
+                        // Handle remember me
+                        if ($remember_me) {
+                            // Generate a secure random token
+                            $remember_token = bin2hex(random_bytes(32));
+                            $expires_at = date('Y-m-d H:i:s', strtotime('+60 days'));
+                            
+                            // Store token in database
+                            $stmt = $pdo->prepare("UPDATE users SET remember_token = ?, remember_token_expires = ? WHERE id = ?");
+                            $stmt->execute([$remember_token, $expires_at, $user['id']]);
+                            
+                            // Set cookie for 60 days (60 * 24 * 60 * 60 seconds)
+                            setcookie('remember_token', $remember_token, time() + (60 * 24 * 60 * 60), '/', '', true, true);
+                        }
+                        
                         $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")
                             ->execute([$user['id']]);
                         
                         // Check user role and redirect accordingly
                         if ($user['role'] === 'admin') {
-                            // Admin can access all businesses - go to shop selector
                             header("Location: select_shop.php");
                             exit();
                         } elseif ($user['shop_id']) {
-                            // Normal user - auto select their shop
                             $shop = $pdo->prepare("SELECT shop_name FROM shops WHERE id = ? AND is_active = 1")
                                        ->execute([$user['shop_id']]) ?
                                        $pdo->query("SELECT shop_name FROM shops WHERE id = {$user['shop_id']}")->fetch() : null;
@@ -298,6 +356,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         .password-toggle:hover {
             color: var(--primary-color);
+        }
+        
+        .remember-me {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .remember-me input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--primary-color);
+        }
+        
+        .remember-me label {
+            margin: 0;
+            color: var(--gray-text);
+            cursor: pointer;
+            font-weight: 500;
         }
         
         .btn-login {
@@ -535,6 +614,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     </div>
                     
+                    <div class="remember-me">
+                        <input type="checkbox" name="remember_me" id="remember_me" value="1">
+                        <label for="remember_me">
+                            <i class="fas fa-check-circle me-1"></i> Remember me for 60 days
+                        </label>
+                    </div>
+                    
                     <button type="submit" class="btn btn-login" id="loginBtn">
                         <span id="btnText">Sign In</span>
                         <span id="loading" style="display:none;">
@@ -655,6 +741,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 errorAlert.remove();
             }
         });
+        
+        // Check if remember me cookie exists and pre-check the box
+        // This is just for UI consistency, the actual cookie check is done on server
+        const hasRememberCookie = document.cookie.split(';').some(cookie => cookie.trim().startsWith('remember_token='));
+        if (hasRememberCookie) {
+            document.getElementById('remember_me').checked = true;
+        }
     </script>
 </body>
 </html>
