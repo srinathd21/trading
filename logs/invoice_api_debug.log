@@ -63721,3 +63721,27 @@
     "attempts": 0,
     "final_seq": 2
 }
+[2026-03-28 07:27:39] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:27:39] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-03-28 07:27:40] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202603"
+}
+[2026-03-28 07:27:40] Generated invoice number | {
+    "invoice_number": "INV202603-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
