@@ -25,6 +25,10 @@ if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager','stock_manager', 
     exit();
 }
 
+// Check if wholesale price should be hidden (hide for business_id = 28)
+$hide_wholesale = ($current_business_id == 28);
+$mrp_required = ($current_business_id != 28);
+
 // Get product ID
 $product_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -106,7 +110,7 @@ try {
     $error = "Failed to load data: " . $e->getMessage();
 }
 
-// Thumbnail function (same as add page)
+// Thumbnail function
 function createThumbnail($source_path, $dest_path, $max_width = 200, $max_height = 200) {
     try {
         $image_info = getimagesize($source_path);
@@ -228,6 +232,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $wholesale_price_value = (float)($_POST['wholesale_price_value'] ?? 0);
         $wholesale_price = (float)($_POST['wholesale_price'] ?? 0);
         
+        // For business_id = 28, if wholesale price is not provided, set it to retail price or stock price
+        if ($hide_wholesale && $wholesale_price == 0) {
+            $wholesale_price = $retail_price > 0 ? $retail_price : $stock_price;
+        }
+        
         $min_stock_level = (int)($_POST['min_stock_level'] ?? 10);
         $image_alt_text = trim($_POST['image_alt_text'] ?? '');
         $referral_enabled = isset($_POST['referral_enabled']) ? 1 : 0;
@@ -306,10 +315,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($error)) {
             $errors = [];
             if (empty($product_name)) $errors[] = "Product name required.";
-            if ($mrp_input <= 0) $errors[] = "MRP is required and must be greater than 0.";
+            
+            // MRP validation - only required if not business_id 28
+            if ($mrp_required && $mrp_input <= 0) {
+                $errors[] = "MRP is required and must be greater than 0.";
+            }
+            
             if ($stock_price <= 0) $errors[] = "Stock price must be greater than 0.";
             if ($retail_price <= 0) $errors[] = "Retail price must be greater than 0.";
-            if ($wholesale_price <= 0) $errors[] = "Wholesale price must be greater than 0.";
+            
+            // Only validate wholesale price if not hidden
+            if (!$hide_wholesale && $wholesale_price <= 0) {
+                $errors[] = "Wholesale price must be greater than 0.";
+            }
+            
             if ($mrp < 0) $errors[] = "MRP cannot be negative.";
             
             // GST validation
@@ -318,21 +337,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Price hierarchy validation
-            if ($stock_price > 0 && $wholesale_price > 0 && $wholesale_price < $stock_price) {
-                $errors[] = "Wholesale price must be equal to or greater than Stock Price.";
-            }
-            
             if ($stock_price > 0 && $retail_price > 0 && $retail_price <= $stock_price) {
                 $errors[] = "Retail price must be greater than Stock Price.";
             }
             
-            if ($wholesale_price > 0 && $retail_price > 0 && $wholesale_price > $retail_price) {
+            if (!$hide_wholesale && $stock_price > 0 && $wholesale_price > 0 && $wholesale_price < $stock_price) {
+                $errors[] = "Wholesale price must be equal to or greater than Stock Price.";
+            }
+            
+            if (!$hide_wholesale && $wholesale_price > 0 && $retail_price > 0 && $wholesale_price > $retail_price) {
                 $errors[] = "Wholesale price should be less than or equal to Retail Price.";
             }
             
+            // MRP validation
             if ($mrp > 0) {
                 if ($retail_price > $mrp) $errors[] = "Retail price cannot be higher than MRP.";
-                if ($wholesale_price > $mrp) $errors[] = "Wholesale price cannot be higher than MRP.";
+                if (!$hide_wholesale && $wholesale_price > $mrp) $errors[] = "Wholesale price cannot be higher than MRP.";
                 if ($stock_price > $mrp) $errors[] = "Stock price cannot be higher than MRP.";
             }
 
@@ -341,7 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($discount_type === 'fixed' && $discount_value > $mrp && $mrp > 0) $errors[] = "Discount amount cannot exceed MRP.";
 
             if ($retail_price_value < 0) $errors[] = "Retail markup cannot be negative.";
-            if ($wholesale_price_value < 0) $errors[] = "Wholesale markup cannot be negative.";
+            if (!$hide_wholesale && $wholesale_price_value < 0) $errors[] = "Wholesale markup cannot be negative.";
 
             if ($referral_enabled && $referral_value <= 0) $errors[] = "Referral value must be > 0.";
             if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $errors[] = "Referral % cannot exceed 100.";
@@ -579,6 +599,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="page-title-box d-flex align-items-center justify-content-between">
                             <h4 class="mb-0">
                                 <i class="bx bx-edit me-2"></i> Edit Product: <?= htmlspecialchars($product['product_name']) ?>
+                                <?php if ($hide_wholesale): ?>
+                                <span class="badge bg-info ms-2">Wholesale Price Hidden</span>
+                                <?php endif; ?>
+                                <?php if (!$mrp_required): ?>
+                                <span class="badge bg-warning ms-2">MRP Optional</span>
+                                <?php endif; ?>
                             </h4>
                             <div>
                                 <a href="products.php" class="btn btn-outline-secondary me-2">
@@ -892,7 +918,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
 
                                         <div class="col-md-4">
-                                            <label class="form-label"><strong>Enter MRP <span class="text-danger">*</span></strong></label>
+                                            <label class="form-label"><strong>Enter MRP <?php if ($mrp_required): ?><span class="text-danger">*</span><?php endif; ?></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="mrp_input" 
@@ -900,13 +926,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        value="<?= number_format($product['gst_type'] == 'exclusive' 
                                                            ? ($product['mrp'] - $product['gst_amount']) 
                                                            : $product['mrp'], 2, '.', '') ?>" 
-                                                       id="mrpInput" required
+                                                       id="mrpInput" <?= $mrp_required ? 'required' : '' ?>
                                                        oninput="calculateGST()">
                                             </div>
                                             <div class="form-text" id="mrpHelpText">
                                                 <?= ($product['gst_type'] ?? 'inclusive') == 'exclusive' 
                                                     ? 'Enter price without GST' 
                                                     : 'Enter price including GST' ?>
+                                                <?php if (!$mrp_required): ?>
+                                                <span class="text-warning"> (Optional)</span>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
 
@@ -1088,10 +1117,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </div>
                                         </div>
 
-                                        <!-- Wholesale Price Section -->
+                                        <!-- Wholesale Price Section - Hidden for business_id = 28 -->
+                                        <?php if (!$hide_wholesale): ?>
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-building-house me-1"></i> Wholesale Price (For Customers)
+                                                <span class="text-danger ms-2">* Required</span>
                                             </h6>
                                         </div>
 
@@ -1149,6 +1180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 Profit: ₹<?= number_format($product['wholesale_price'] - $product['stock_price'], 2, '.', '') ?>
                                             </div>
                                         </div>
+                                        <?php endif; ?>
 
                                         <!-- Other Fields -->
                                         <div class="col-md-3">
@@ -1265,6 +1297,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Price Hierarchy:</strong> Stock Price ≤ Wholesale Price ≤ Retail Price ≤ MRP</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin:</strong> ((Selling Price - Cost Price) / Selling Price) × 100</li>
                                         <li><i class="bx bx-check text-success me-1"></i> <strong>Stock Adjustment:</strong> Add or remove stock without affecting pricing</li>
+                                        <?php if ($hide_wholesale): ?>
+                                        <li class="mt-2 text-info"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> Wholesale price is hidden for this business.</li>
+                                        <?php endif; ?>
+                                        <?php if (!$mrp_required): ?>
+                                        <li class="mt-2 text-warning"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> MRP is optional for this business.</li>
+                                        <?php endif; ?>
                                     </ul>
                                 </div>
                             </div>
@@ -1293,6 +1331,11 @@ let stockPriceCalculationMode = '<?= $product['discount_value'] > 0 ? 'auto' : '
 let retailPriceCalculationMode = '<?= ($product['retail_price_value'] ?? 0) > 0 ? 'auto' : 'manual' ?>';
 let wholesalePriceCalculationMode = '<?= ($product['wholesale_price_value'] ?? 0) > 0 ? 'auto' : 'manual' ?>';
 
+// Business ID for conditional wholesale price
+const currentBusinessId = <?= $current_business_id ?>;
+const hideWholesale = <?= $hide_wholesale ? 'true' : 'false' ?>;
+const mrpRequired = <?= $mrp_required ? 'true' : 'false' ?>;
+
 // GST Calculation Variables
 let gstRate = <?= $product['gst_id'] ? ($gst_rate_percentage ?? 0) : 0 ?>;
 let gstType = '<?= $product['gst_type'] ?? 'inclusive' ?>';
@@ -1310,7 +1353,7 @@ document.addEventListener('DOMContentLoaded', function() {
         retailPriceCalculationMode = 'manual';
     }
     
-    if (parseFloat(document.getElementById('wholesalePrice').value) > 0 && <?= $product['wholesale_price_value'] ?? 0 ?> == 0) {
+    if (!hideWholesale && parseFloat(document.getElementById('wholesalePrice').value) > 0 && <?= $product['wholesale_price_value'] ?? 0 ?> == 0) {
         manualWholesalePrice = true;
         wholesalePriceCalculationMode = 'manual';
     }
@@ -1537,7 +1580,7 @@ function calculateStockPrice() {
     }
     
     calculateRetailPrice();
-    calculateWholesalePrice();
+    if (!hideWholesale) calculateWholesalePrice();
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
@@ -1607,6 +1650,8 @@ function calculateRetailPrice() {
 
 // Calculate Wholesale Price based on Stock Price and Wholesale Markup
 function calculateWholesalePrice() {
+    if (hideWholesale) return;
+    
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const wholesalePriceType = document.getElementById('wholesalePriceType').value;
     const wholesalePriceValue = parseFloat(document.getElementById('wholesalePriceValue').value) || 0;
@@ -1659,7 +1704,11 @@ function calculateWholesalePrice() {
         } else {
             document.getElementById('wholesalePriceValue').value = '0';
             wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
-            wholesalePriceInput.value = stockPrice.toFixed(2);
+            if (currentWholesalePrice < stockPrice && currentWholesalePrice > 0) {
+                wholesalePriceInput.value = stockPrice.toFixed(2);
+                wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
+                alert('Wholesale price cannot be less than stock price. It has been reset.');
+            }
             manualWholesalePrice = false;
         }
         
@@ -1676,7 +1725,7 @@ function calculateWholesalePrice() {
 function calculateProfitMargins() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailProfitMarginInput = document.getElementById('retailProfitMargin');
     const retailProfitAmountText = document.getElementById('retailProfitAmountText');
     const wholesaleProfitMarginInput = document.getElementById('wholesaleProfitMargin');
@@ -1707,7 +1756,7 @@ function calculateProfitMargins() {
         retailProfitAmountText.innerHTML = 'Profit: ₹0.00';
     }
     
-    if (stockPrice > 0 && wholesalePrice > 0) {
+    if (!hideWholesale && stockPrice > 0 && wholesalePrice > 0) {
         const wholesaleProfit = wholesalePrice - stockPrice;
         const wholesaleProfitMargin = wholesalePrice > 0 ? (wholesaleProfit / wholesalePrice) * 100 : 0;
         
@@ -1727,7 +1776,7 @@ function calculateProfitMargins() {
             wholesaleProfitMarginInput.style.color = '#dc3545';
             wholesaleProfitAmountText.style.color = '#dc3545';
         }
-    } else {
+    } else if (!hideWholesale) {
         wholesaleProfitMarginInput.value = '';
         wholesaleProfitAmountText.innerHTML = 'Profit: ₹0.00';
     }
@@ -1740,7 +1789,7 @@ function calculateSecondaryPrices() {
     const extraType = document.getElementById('secUnitPriceType').value;
     const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
@@ -1755,7 +1804,7 @@ function calculateSecondaryPrices() {
         previewBox.style.display = 'block';
 
         let retailBasePricePerUnit = retailPrice / conversion;
-        let wholesaleBasePricePerUnit = wholesalePrice / conversion;
+        let wholesaleBasePricePerUnit = !hideWholesale ? (wholesalePrice / conversion) : 0;
 
         let retailExtraPerUnit = 0;
         let wholesaleExtraPerUnit = 0;
@@ -1769,7 +1818,7 @@ function calculateSecondaryPrices() {
         }
 
         let retailPerUnit = retailBasePricePerUnit + retailExtraPerUnit;
-        let wholesalePerUnit = wholesaleBasePricePerUnit + wholesaleExtraPerUnit;
+        let wholesalePerUnit = !hideWholesale ? (wholesaleBasePricePerUnit + wholesaleExtraPerUnit) : 0;
 
         document.getElementById('secRetailPricePerUnit').textContent = `₹${retailPerUnit.toFixed(2)}`;
         document.getElementById('secRetailBasePrice').textContent = `₹${retailBasePricePerUnit.toFixed(2)}`;
@@ -1777,11 +1826,13 @@ function calculateSecondaryPrices() {
             ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
             : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
 
-        document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
-        document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
-        document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
-            ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
-            : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+        if (!hideWholesale) {
+            document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
+            document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
+            document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
+                ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
+                : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+        }
 
         if (conversion === 0) {
             alert('Conversion rate cannot be 0');
@@ -1802,28 +1853,18 @@ function calculateSecondaryPrices() {
 // Validate price hierarchy
 function validatePriceHierarchy() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
     const mrp = parseFloat(document.getElementById('mrp').value) || 0;
     
     document.getElementById('stockPriceText').style.color = '';
-    document.getElementById('wholesalePriceText').style.color = '';
+    if (!hideWholesale) document.getElementById('wholesalePriceText').style.color = '';
     document.getElementById('retailPriceText').style.color = '';
     
-    if (stockPrice > 0 && wholesalePrice > 0 && retailPrice > 0) {
-        if (wholesalePrice < stockPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
+    if (stockPrice > 0 && retailPrice > 0) {
         if (retailPrice <= stockPrice) {
             document.getElementById('retailPriceText').innerHTML = '<span class="text-danger">Error: Must be > Stock Price</span>';
             document.getElementById('retailPriceText').style.color = '#dc3545';
-        }
-        
-        if (wholesalePrice > retailPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ Retail Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
         }
         
         if (mrp > 0) {
@@ -1832,15 +1873,28 @@ function validatePriceHierarchy() {
                 document.getElementById('retailPriceText').style.color = '#dc3545';
             }
             
-            if (wholesalePrice > mrp) {
-                document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
-                document.getElementById('wholesalePriceText').style.color = '#dc3545';
-            }
-            
             if (stockPrice > mrp) {
                 document.getElementById('stockPriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
                 document.getElementById('stockPriceText').style.color = '#dc3545';
             }
+        }
+    }
+    
+    // Wholesale validation only if not hidden
+    if (!hideWholesale) {
+        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
+        }
+        
+        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Should be ≤ Retail Price</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
+        }
+        
+        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
         }
     }
 }
@@ -1878,7 +1932,7 @@ document.getElementById('stockPrice').addEventListener('input', function() {
         calculateStockPrice();
     }
     calculateRetailPrice();
-    calculateWholesalePrice();
+    if (!hideWholesale) calculateWholesalePrice();
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
@@ -1899,28 +1953,28 @@ document.getElementById('retailPrice').addEventListener('input', function() {
     validatePriceHierarchy();
 });
 
-document.getElementById('wholesalePrice').addEventListener('input', function() {
-    const value = parseFloat(this.value) || 0;
+if (!hideWholesale) {
+    document.getElementById('wholesalePrice').addEventListener('input', function() {
+        const value = parseFloat(this.value) || 0;
+        
+        if (value > 0) {
+            manualWholesalePrice = true;
+            wholesalePriceCalculationMode = 'manual';
+            document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
+            document.getElementById('wholesalePriceText').style.color = '#0d6efd';
+            calculateWholesalePrice();
+        }
+        
+        calculateProfitMargins();
+        calculateSecondaryPrices();
+        validatePriceHierarchy();
+    });
+}
 
-    if (value > 0) {
-        manualWholesalePrice = true;
-        wholesalePriceCalculationMode = 'manual';
-
-        document.getElementById('wholesalePriceText').innerHTML =
-            'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('wholesalePriceText').style.color = '#0d6efd';
-    }
-
-    // ❌ DO NOT recalculate wholesale price here
-
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-});
 // Form validation
 document.getElementById('editProductForm').addEventListener('submit', function(e) {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
     const mrp = parseFloat(document.getElementById('mrp').value) || 0;
     const mrpInput = parseFloat(document.getElementById('mrpInput').value) || 0;
@@ -1933,7 +1987,8 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
     
     let errors = [];
     
-    if (mrpInput <= 0) {
+    // MRP validation - only if required
+    if (mrpRequired && mrpInput <= 0) {
         errors.push('MRP is required and must be greater than 0.');
     }
     
@@ -1941,29 +1996,22 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
         errors.push('Stock price is required and must be greater than 0.');
     }
     
-    if (wholesalePrice <= 0) {
-        errors.push('Wholesale price is required and must be greater than 0.');
-    }
-    
     if (retailPrice <= 0) {
         errors.push('Retail price is required and must be greater than 0.');
+    }
+    
+    // Only validate wholesale price if not hidden
+    if (!hideWholesale && wholesalePrice <= 0) {
+        errors.push('Wholesale price is required and must be greater than 0.');
     }
     
     if (gstType === 'exclusive' && gstSelect.value === '') {
         errors.push('Please select GST rate when product is GST Exclusive.');
     }
     
-    if (stockPrice > 0 && wholesalePrice > 0 && retailPrice > 0) {
-        if (wholesalePrice < stockPrice) {
-            errors.push('Wholesale price must be equal to or greater than Stock Price.');
-        }
-        
+    if (stockPrice > 0 && retailPrice > 0) {
         if (retailPrice <= stockPrice) {
             errors.push('Retail price must be greater than Stock Price.');
-        }
-        
-        if (wholesalePrice > retailPrice) {
-            errors.push('Wholesale price should be less than or equal to Retail Price.');
         }
         
         if (mrp > 0) {
@@ -1971,13 +2019,24 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
                 errors.push('Retail price cannot be higher than MRP.');
             }
             
-            if (wholesalePrice > mrp) {
-                errors.push('Wholesale price cannot be higher than MRP.');
-            }
-            
             if (stockPrice > mrp) {
                 errors.push('Stock price cannot be higher than MRP.');
             }
+        }
+    }
+    
+    // Wholesale validation only if not hidden
+    if (!hideWholesale) {
+        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
+            errors.push('Wholesale price must be equal to or greater than Stock Price.');
+        }
+        
+        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
+            errors.push('Wholesale price should be less than or equal to Retail Price.');
+        }
+        
+        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
+            errors.push('Wholesale price cannot be higher than MRP.');
         }
     }
     
@@ -2164,21 +2223,23 @@ document.getElementById('retailPriceType').addEventListener('change', function()
     updateRetailPriceUnit();
 });
 
-document.getElementById('wholesalePriceValue').addEventListener('input', function() {
-    if (manualWholesalePrice) {
-        manualWholesalePrice = false;
-        wholesalePriceCalculationMode = 'auto';
-    }
-    calculateWholesalePrice();
-});
+if (!hideWholesale) {
+    document.getElementById('wholesalePriceValue').addEventListener('input', function() {
+        if (manualWholesalePrice) {
+            manualWholesalePrice = false;
+            wholesalePriceCalculationMode = 'auto';
+        }
+        calculateWholesalePrice();
+    });
 
-document.getElementById('wholesalePriceType').addEventListener('change', function() {
-    if (manualWholesalePrice) {
-        manualWholesalePrice = false;
-        wholesalePriceCalculationMode = 'auto';
-    }
-    updateWholesalePriceUnit();
-});
+    document.getElementById('wholesalePriceType').addEventListener('change', function() {
+        if (manualWholesalePrice) {
+            manualWholesalePrice = false;
+            wholesalePriceCalculationMode = 'auto';
+        }
+        updateWholesalePriceUnit();
+    });
+}
 
 document.getElementById('secUnitPriceType').addEventListener('change', updateSecUnitExtraUnit);
 document.getElementById('secUnitConversion').addEventListener('input', calculateSecondaryPrices);

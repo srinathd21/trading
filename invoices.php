@@ -28,7 +28,8 @@ $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 $customer_id_filter = (int)($_GET['customer_id'] ?? 0);
 $search = trim($_GET['search'] ?? '');
-$status_filter = $_GET['status'] ?? 'all'; // New status filter: all, pending, paid, partial
+$status_filter = $_GET['status'] ?? 'all'; // Status filter: all, pending, paid, partial
+$due_date_filter = $_GET['due_date_filter'] ?? 'all'; // New: due date filter: all, due_soon, overdue, no_due
 
 // Build WHERE clause
 $where = "WHERE i.business_id = ? AND DATE(i.created_at) BETWEEN ? AND ?";
@@ -51,6 +52,24 @@ if ($status_filter === 'pending') {
     $where .= " AND i.pending_amount = 0 AND i.total > 0";
 } elseif ($status_filter === 'partial') {
     $where .= " AND i.pending_amount > 0 AND i.paid_amount > 0 AND i.pending_amount < i.total";
+}
+
+// Add due date filter
+$today = date('Y-m-d');
+if ($due_date_filter === 'due_soon') {
+    // Due within next 7 days
+    $where .= " AND i.credit_due_date IS NOT NULL 
+                AND i.credit_due_date >= CURDATE() 
+                AND i.credit_due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+                AND i.pending_amount > 0";
+} elseif ($due_date_filter === 'overdue') {
+    // Overdue
+    $where .= " AND i.credit_due_date IS NOT NULL 
+                AND i.credit_due_date < CURDATE() 
+                AND i.pending_amount > 0";
+} elseif ($due_date_filter === 'no_due') {
+    // No due date set
+    $where .= " AND (i.credit_due_date IS NULL OR i.pending_amount = 0)";
 }
 
 if ($search) {
@@ -224,7 +243,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                 </div>
                 <?php unset($_SESSION['whatsapp_error']); endif; ?>
 
-                <!-- Enhanced Filter Card with Status Filter -->
+                <!-- Enhanced Filter Card with Due Date Filter -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-body">
                         <h5 class="card-title mb-4">
@@ -241,7 +260,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                     <input type="date" name="end_date" class="form-control" value="<?= $end_date ?>">
                                 </div>
                                 <div class="col-lg-2 col-md-6">
-                                    <label class="form-label">Status</label>
+                                    <label class="form-label">Payment Status</label>
                                     <select name="status" class="form-select">
                                         <option value="all" <?= $status_filter == 'all' ? 'selected' : '' ?>>All Invoices</option>
                                         <option value="pending" <?= $status_filter == 'pending' ? 'selected' : '' ?>>Pending Only</option>
@@ -249,7 +268,16 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         <option value="partial" <?= $status_filter == 'partial' ? 'selected' : '' ?>>Partial Only</option>
                                     </select>
                                 </div>
-                                <div class="col-lg-3 col-md-6">
+                                <div class="col-lg-2 col-md-6">
+                                    <label class="form-label">Due Date Status</label>
+                                    <select name="due_date_filter" class="form-select">
+                                        <option value="all" <?= $due_date_filter == 'all' ? 'selected' : '' ?>>All Due Dates</option>
+                                        <option value="due_soon" <?= $due_date_filter == 'due_soon' ? 'selected' : '' ?>>Due Soon (7 days)</option>
+                                        <option value="overdue" <?= $due_date_filter == 'overdue' ? 'selected' : '' ?>>Overdue</option>
+                                        <option value="no_due" <?= $due_date_filter == 'no_due' ? 'selected' : '' ?>>No Due Date</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-2 col-md-6">
                                     <label class="form-label">Customer</label>
                                     <select name="customer_id" class="form-select">
                                         <option value="">All Customers</option>
@@ -260,7 +288,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <div class="col-lg-2 col-md-6">
+                                <div class="col-lg-2 col-md-12">
                                     <label class="form-label">Search</label>
                                     <div class="input-group">
                                         <span class="input-group-text">
@@ -271,14 +299,16 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                                value="<?= htmlspecialchars($search) ?>">
                                     </div>
                                 </div>
-                                <div class="col-lg-1 col-md-12">
-                                    <div class="d-grid gap-2">
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <div class="d-flex gap-2">
                                         <button type="submit" class="btn btn-primary">
-                                            <i class="bx bx-filter me-1"></i> Apply
+                                            <i class="bx bx-filter me-1"></i> Apply Filters
                                         </button>
-                                        <?php if ($start_date != date('Y-m-01') || $end_date != date('Y-m-d') || $customer_id_filter || $search || $status_filter != 'all'): ?>
+                                        <?php if ($start_date != date('Y-m-01') || $end_date != date('Y-m-d') || $customer_id_filter || $search || $status_filter != 'all' || $due_date_filter != 'all'): ?>
                                         <a href="invoices.php" class="btn btn-outline-secondary">
-                                            <i class="bx bx-reset"></i>
+                                            <i class="bx bx-reset me-1"></i> Clear All
                                         </a>
                                         <?php endif; ?>
                                     </div>
@@ -304,11 +334,6 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         </span>
                                     </div>
                                 </div>
-                                <?php if ($status_filter != 'all'): ?>
-                                <div class="mt-2">
-                                    <span class="badge bg-info">Filtered: <?= ucfirst($status_filter) ?></span>
-                                </div>
-                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -366,7 +391,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                 </div>
 
                 <!-- Active Filters Display -->
-                <?php if ($status_filter != 'all' || $customer_id_filter || $search): ?>
+                <?php if ($status_filter != 'all' || $due_date_filter != 'all' || $customer_id_filter || $search || $start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
                 <div class="row mb-3">
                     <div class="col-12">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -375,6 +400,12 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                             <span class="badge bg-primary">
                                 Status: <?= ucfirst($status_filter) ?>
                                 <a href="?<?= http_build_query(array_merge($_GET, ['status' => 'all'])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($due_date_filter != 'all'): ?>
+                            <span class="badge bg-info">
+                                Due Date: <?= $due_date_filter == 'due_soon' ? 'Due Soon' : ($due_date_filter == 'overdue' ? 'Overdue' : 'No Due Date') ?>
+                                <a href="?<?= http_build_query(array_merge($_GET, ['due_date_filter' => 'all'])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
                             </span>
                             <?php endif; ?>
                             <?php if ($customer_id_filter): 
@@ -386,13 +417,13 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                     }
                                 }
                             ?>
-                            <span class="badge bg-info">
+                            <span class="badge bg-secondary">
                                 Customer: <?= htmlspecialchars($customer_name) ?>
                                 <a href="?<?= http_build_query(array_merge($_GET, ['customer_id' => ''])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
                             </span>
                             <?php endif; ?>
                             <?php if ($search): ?>
-                            <span class="badge bg-secondary">
+                            <span class="badge bg-dark">
                                 Search: "<?= htmlspecialchars($search) ?>"
                                 <a href="?<?= http_build_query(array_merge($_GET, ['search' => ''])) ?>" class="text-white ms-1" style="text-decoration: none;">×</a>
                             </span>
@@ -415,23 +446,24 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                             <table id="invoicesTable" class="table table-hover align-middle w-100">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 25%;">Invoice Details</th>
-                                        <th class="text-center" style="width: 15%;">Customer</th>
-                                        <th class="text-center" style="width: 8%;">Items</th>
-                                        <th class="text-center" style="width: 12%;">E-Way Bill</th>
-                                        <th class="text-end" style="width: 20%;">Amount Details</th>
-                                        <th class="text-center" style="width: 20%;">Actions</th>
+                                        <th style="width: 22%;">Invoice Details</th>
+                                        <th class="text-center" style="width: 12%;">Customer</th>
+                                        <th class="text-center" style="width: 6%;">Items</th>
+                                        <th class="text-center" style="width: 10%;">Due Date</th>
+                                        <th class="text-center" style="width: 10%;">E-Way Bill</th>
+                                        <th class="text-end" style="width: 18%;">Amount Details</th>
+                                        <th class="text-center" style="width: 22%;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if (empty($invoices)): ?>
                                     <tr>
-                                        <td colspan="6" class="text-center py-5">
+                                        <td colspan="7" class="text-center py-5">
                                             <div class="empty-state">
                                                 <i class="bx bx-receipt fs-1 text-muted mb-3"></i>
                                                 <h5>No invoices found</h5>
                                                 <p class="text-muted">
-                                                    <?php if ($search || $customer_id_filter || $status_filter != 'all' || $start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
+                                                    <?php if ($search || $customer_id_filter || $status_filter != 'all' || $due_date_filter != 'all' || $start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
                                                         Try adjusting your filters or <a href="invoices.php">clear all filters</a>
                                                     <?php else: ?>
                                                         Start by creating your first invoice
@@ -445,6 +477,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                     </tr>
                                     <?php else: ?>
                                     <?php 
+                                    $today = new DateTime();
                                     foreach ($invoices as $i => $inv):
                                         $total = (float)($inv['total'] ?? 0);
                                         $pending = (float)($inv['pending_amount'] ?? 0);
@@ -485,6 +518,41 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         $eway_bill_number = $inv['eway_bill_number'] ?? '';
                                         $eway_bill_date = $inv['eway_bill_date'] ?? '';
                                         $has_eway = !empty($eway_bill_number);
+                                        
+                                        // ==================== DUE DATE CALCULATION ====================
+                                        $credit_due_date = $inv['credit_due_date'] ?? null;
+                                        $due_date_status = '';
+                                        $due_date_class = '';
+                                        $due_date_text = '';
+                                        $days_until_due = null;
+                                        
+                                        if ($credit_due_date && $pending > 0) {
+                                            $due_date = new DateTime($credit_due_date);
+                                            $interval = $today->diff($due_date);
+                                            $days_until_due = $due_date < $today ? -$interval->days : $interval->days;
+                                            
+                                            if ($due_date < $today) {
+                                                $due_date_status = 'overdue';
+                                                $due_date_class = 'danger';
+                                                $due_date_text = 'Overdue';
+                                            } elseif ($days_until_due <= 7) {
+                                                $due_date_status = 'due_soon';
+                                                $due_date_class = 'warning';
+                                                $due_date_text = 'Due Soon';
+                                            } else {
+                                                $due_date_status = 'upcoming';
+                                                $due_date_class = 'info';
+                                                $due_date_text = 'Upcoming';
+                                            }
+                                        } elseif ($pending == 0) {
+                                            $due_date_status = 'paid';
+                                            $due_date_class = 'success';
+                                            $due_date_text = 'Paid';
+                                        } else {
+                                            $due_date_status = 'no_due';
+                                            $due_date_class = 'secondary';
+                                            $due_date_text = 'No Due Date';
+                                        }
                                     ?>
                                     <tr class="invoice-row" data-id="<?= $inv['id'] ?>" data-customer-id="<?= $inv['customer_id'] ?? 0 ?>">
                                         <td>
@@ -535,6 +603,32 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                             <small class="text-danger mt-1 d-block">
                                                 <i class="bx bx-undo"></i> <?= $returned_item_count ?> returned
                                             </small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-center">
+                                            <?php if ($credit_due_date): ?>
+                                            <div class="d-flex flex-column align-items-center">
+                                                <span class="badge bg-<?= $due_date_class ?> bg-opacity-10 text-<?= $due_date_class ?> px-3 py-2 mb-1">
+                                                    <i class="bx bx-calendar me-1"></i> <?= date('d M Y', strtotime($credit_due_date)) ?>
+                                                </span>
+                                                <span class="badge bg-<?= $due_date_class ?>">
+                                                    <i class="bx bx-<?= $due_date_status == 'overdue' ? 'x-circle' : ($due_date_status == 'due_soon' ? 'time-five' : 'check-circle') ?> me-1"></i>
+                                                    <?= $due_date_text ?>
+                                                </span>
+                                                <?php if ($days_until_due !== null && $due_date_status != 'paid'): ?>
+                                                <small class="text-muted mt-1">
+                                                    <?php if ($days_until_due < 0): ?>
+                                                        Overdue by <?= abs($days_until_due) ?> days
+                                                    <?php else: ?>
+                                                        Due in <?= $days_until_due ?> days
+                                                    <?php endif; ?>
+                                                </small>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php else: ?>
+                                            <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                                                <i class="bx bx-calendar-x me-1"></i> No due date
+                                            </span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
@@ -1030,6 +1124,178 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
 <?php include('includes/rightbar.php') ?>
 <?php include('includes/scripts.php') ?>
 
+<style>
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+.empty-state i {
+    font-size: 4rem;
+    opacity: 0.5;
+}
+.avatar-sm {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+.badge.bg-opacity-10 {
+    opacity: 0.9;
+}
+.table th {
+    font-weight: 600;
+    background-color: #f8f9fa;
+    vertical-align: middle;
+}
+.btn-group .btn {
+    padding: 0.375rem 0.75rem;
+}
+.card-hover {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.card-hover:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15) !important;
+}
+.border-start {
+    border-left-width: 4px !important;
+}
+.invoice-row .d-flex {
+    min-width: 0;
+}
+.invoice-row .flex-grow-1 {
+    min-width: 0;
+}
+.return-qty-input {
+    max-width: 100px;
+    margin: 0 auto;
+}
+.table-danger {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+}
+.table-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+.btn-group-vertical .btn-group {
+    width: 100%;
+}
+.btn-group-vertical .btn-group .btn {
+    flex: 1;
+}
+.whatsapp-btn {
+    border-color: #25D366;
+    color: #25D366;
+}
+.whatsapp-btn:hover {
+    background-color: #25D366;
+    color: white;
+}
+.whatsapp-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+/* Active filters styling */
+.badge a:hover {
+    opacity: 0.8;
+}
+/* Due date styling */
+.badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+.badge.bg-warning {
+    background-color: #ffc107 !important;
+}
+
+.badge.bg-success {
+    background-color: #198754 !important;
+}
+@media (max-width: 992px) {
+    .page-title-box .d-flex {
+        flex-direction: column;
+        align-items: stretch !important;
+        text-align: center;
+    }
+    .page-title-box .d-flex > div:last-child {
+        margin-top: 1rem;
+    }
+}
+@media (max-width: 576px) {
+    .btn-group {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+    .btn-group .btn {
+        width: 100%;
+        margin-bottom: 4px;
+    }
+}
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.custom-toast {
+    min-width: 300px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    margin-bottom: 10px;
+    overflow: hidden;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast-success {
+    border-left: 4px solid #28a745;
+}
+
+.toast-error {
+    border-left: 4px solid #dc3545;
+}
+
+.toast-warning {
+    border-left: 4px solid #ffc107;
+}
+
+.toast-header {
+    padding: 12px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #eee;
+}
+
+.toast-body {
+    padding: 12px 15px;
+    color: #666;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #999;
+}
+
+.toast-close:hover {
+    color: #333;
+}
+</style>
+
 <script>
 $(document).ready(function() {
     // Initialize DataTable
@@ -1061,6 +1327,11 @@ $(document).ready(function() {
 
     // Auto-submit on status change (optional)
     $('select[name="status"]').on('change', function() {
+        $('#filterForm').submit();
+    });
+    
+    // Auto-submit on due date filter change
+    $('select[name="due_date_filter"]').on('change', function() {
         $('#filterForm').submit();
     });
 
@@ -1416,7 +1687,7 @@ $(document).ready(function() {
                 for_return: 1
             },
             beforeSend: function() {
-                $('#quickItemsTableBody').html('运转<td colspan="6" class="text-center">Loading items...</td></tr>');
+                $('#quickItemsTableBody').html('<tr><td colspan="6" class="text-center">Loading items...</td></tr>');
                 $('#quickReturnItemsSection').show();
             },
             success: function(response) {
@@ -1857,166 +2128,5 @@ $('#returnForm').submit(function(e) {
     }
 });
 </script>
-
-<style>
-.empty-state {
-    text-align: center;
-    padding: 3rem 1rem;
-}
-.empty-state i {
-    font-size: 4rem;
-    opacity: 0.5;
-}
-.avatar-sm {
-    width: 48px;
-    height: 48px;
-    flex-shrink: 0;
-}
-.badge.bg-opacity-10 {
-    opacity: 0.9;
-}
-.table th {
-    font-weight: 600;
-    background-color: #f8f9fa;
-    vertical-align: middle;
-}
-.btn-group .btn {
-    padding: 0.375rem 0.75rem;
-}
-.card-hover {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.card-hover:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 5px 20px rgba(0,0,0,0.15) !important;
-}
-.border-start {
-    border-left-width: 4px !important;
-}
-.invoice-row .d-flex {
-    min-width: 0;
-}
-.invoice-row .flex-grow-1 {
-    min-width: 0;
-}
-.return-qty-input {
-    max-width: 100px;
-    margin: 0 auto;
-}
-.table-danger {
-    background-color: rgba(220, 53, 69, 0.1) !important;
-}
-.table-warning {
-    background-color: rgba(255, 193, 7, 0.1) !important;
-}
-.btn-group-vertical .btn-group {
-    width: 100%;
-}
-.btn-group-vertical .btn-group .btn {
-    flex: 1;
-}
-.whatsapp-btn {
-    border-color: #25D366;
-    color: #25D366;
-}
-.whatsapp-btn:hover {
-    background-color: #25D366;
-    color: white;
-}
-.whatsapp-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-/* Active filters styling */
-.badge a:hover {
-    opacity: 0.8;
-}
-@media (max-width: 992px) {
-    .page-title-box .d-flex {
-        flex-direction: column;
-        align-items: stretch !important;
-        text-align: center;
-    }
-    .page-title-box .d-flex > div:last-child {
-        margin-top: 1rem;
-    }
-}
-@media (max-width: 576px) {
-    .btn-group {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-    }
-    .btn-group .btn {
-        width: 100%;
-        margin-bottom: 4px;
-    }
-}
-/* Toast Notifications */
-.toast-container {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-}
-
-.custom-toast {
-    min-width: 300px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
-    margin-bottom: 10px;
-    overflow: hidden;
-    animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-.toast-success {
-    border-left: 4px solid #28a745;
-}
-
-.toast-error {
-    border-left: 4px solid #dc3545;
-}
-
-.toast-warning {
-    border-left: 4px solid #ffc107;
-}
-
-.toast-header {
-    padding: 12px 15px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid #eee;
-}
-
-.toast-body {
-    padding: 12px 15px;
-    color: #666;
-}
-
-.toast-close {
-    background: none;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    color: #999;
-}
-
-.toast-close:hover {
-    color: #333;
-}
-</style>
 </body>
-</html> 
+</html>

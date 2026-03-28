@@ -107,6 +107,10 @@ function createThumbnail($source_path, $dest_path, $max_width = 200, $max_height
     }
 }
 
+// Check if wholesale price is required (hide for business_id = 28)
+$hide_wholesale = ($current_business_id == 28);
+$mrp_required = ($current_business_id != 28);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || !validate_csrf_token($_POST['csrf_token'])) {
         $error = "Invalid request.";
@@ -120,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit = $_POST['unit'] ?? 'pcs';
         
         // GST fields
-        $gst_type = $_POST['gst_type'] ?? 'inclusive'; // 'inclusive' or 'exclusive'
+        $gst_type = $_POST['gst_type'] ?? 'inclusive';
         $gst_id = !empty($_POST['gst_id']) ? (int)$_POST['gst_id'] : null;
 
         // Secondary unit fields
@@ -131,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // MRP and GST Calculation
         $mrp_input = (float)($_POST['mrp_input'] ?? 0);
-        $mrp = 0; // This will be calculated based on GST type
+        $mrp = 0;
         
         // Fetch GST rates if selected
         $gst_rate_percentage = 0;
@@ -146,22 +150,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hsn_code = $gst_row['hsn_code'] ?? '';
                 $gst_rate_percentage = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
                 
-                // Calculate GST amount and MRP based on GST type
                 if ($mrp_input > 0) {
                     if ($gst_type === 'exclusive') {
-                        // MRP = Input MRP + GST
                         $gst_amount = $mrp_input * ($gst_rate_percentage / 100);
                         $mrp = $mrp_input + $gst_amount;
                     } else {
-                        // GST Inclusive: MRP = Input MRP, GST amount is included in MRP
                         $mrp = $mrp_input;
-                        // GST amount = (MRP * GST%) / (100 + GST%)
                         $gst_amount = ($mrp * $gst_rate_percentage) / (100 + $gst_rate_percentage);
                     }
                 }
             }
         } else {
-            // No GST selected
             $mrp = $mrp_input;
         }
         
@@ -185,9 +184,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $retail_price_value = (float)($_POST['retail_price_value'] ?? 0);
         $retail_price = (float)($_POST['retail_price'] ?? 0);
         
+        // Wholesale price - handle as optional/hidden for business_id = 28
         $wholesale_price_type = $_POST['wholesale_price_type'] ?? 'percentage';
         $wholesale_price_value = (float)($_POST['wholesale_price_value'] ?? 0);
         $wholesale_price = (float)($_POST['wholesale_price'] ?? 0);
+        
+        // For business_id = 28, if wholesale price is not provided, set it to retail price or stock price
+        if ($hide_wholesale && $wholesale_price == 0) {
+            $wholesale_price = $retail_price > 0 ? $retail_price : $stock_price;
+        }
         
         $min_stock_level = (int)($_POST['min_stock_level'] ?? 10);
         $image_alt_text = trim($_POST['image_alt_text'] ?? '');
@@ -223,17 +228,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $retail_price = $stock_price;
         }
 
-        // Calculate wholesale price
-        if ($stock_price > 0 && $wholesale_price_value > 0) {
+        // Calculate wholesale price (only if not manually set for business_id 28)
+        if ($wholesale_price == 0 && $stock_price > 0 && $wholesale_price_value > 0) {
             $wholesale_markup_amount = $wholesale_price_type === 'percentage' 
                 ? $stock_price * $wholesale_price_value / 100
                 : $wholesale_price_value;
             $calculated_wholesale = $stock_price + $wholesale_markup_amount;
-            
-            if ($wholesale_price == 0) {
-                $wholesale_price = $calculated_wholesale;
-            }
-        } elseif ($stock_price > 0 && $wholesale_price == 0) {
+            $wholesale_price = $calculated_wholesale;
+        } elseif ($wholesale_price == 0 && $stock_price > 0) {
             $wholesale_price = $stock_price;
         }
 
@@ -282,10 +284,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($error)) {
             $errors = [];
             if (empty($product_name)) $errors[] = "Product name required.";
-            if ($mrp_input <= 0) $errors[] = "MRP is required and must be greater than 0.";
+            
+            // MRP validation - only required if not business_id 28
+            if ($mrp_required && $mrp_input <= 0) {
+                $errors[] = "MRP is required and must be greater than 0.";
+            }
+            
             if ($stock_price <= 0) $errors[] = "Stock price must be greater than 0.";
             if ($retail_price <= 0) $errors[] = "Retail price must be greater than 0.";
-            if ($wholesale_price <= 0) $errors[] = "Wholesale price must be greater than 0.";
+            
+            // Only validate wholesale price if not hidden
+            if (!$hide_wholesale && $wholesale_price <= 0) {
+                $errors[] = "Wholesale price must be greater than 0.";
+            }
+            
             if ($mrp < 0) $errors[] = "MRP cannot be negative.";
             
             // GST validation
@@ -293,23 +305,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = "Please select GST rate when product is GST Exclusive.";
             }
             
-            // Price hierarchy validation
-            if ($stock_price > 0 && $wholesale_price > 0 && $wholesale_price < $stock_price) {
-                $errors[] = "Wholesale price must be equal to or greater than Stock Price.";
-            }
-            
+            // Price hierarchy validation (skip wholesale for business_id 28 if hidden)
             if ($stock_price > 0 && $retail_price > 0 && $retail_price <= $stock_price) {
                 $errors[] = "Retail price must be greater than Stock Price.";
             }
             
-            if ($wholesale_price > 0 && $retail_price > 0 && $wholesale_price > $retail_price) {
+            if (!$hide_wholesale && $stock_price > 0 && $wholesale_price > 0 && $wholesale_price < $stock_price) {
+                $errors[] = "Wholesale price must be equal to or greater than Stock Price.";
+            }
+            
+            if (!$hide_wholesale && $wholesale_price > 0 && $retail_price > 0 && $wholesale_price > $retail_price) {
                 $errors[] = "Wholesale price should be less than or equal to Retail Price.";
             }
             
             // MRP validation
             if ($mrp > 0) {
                 if ($retail_price > $mrp) $errors[] = "Retail price cannot be higher than MRP.";
-                if ($wholesale_price > $mrp) $errors[] = "Wholesale price cannot be higher than MRP.";
+                if (!$hide_wholesale && $wholesale_price > $mrp) $errors[] = "Wholesale price cannot be higher than MRP.";
                 if ($stock_price > $mrp) $errors[] = "Stock price cannot be higher than MRP.";
             }
 
@@ -318,7 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($discount_type === 'fixed' && $discount_value > $mrp && $mrp > 0) $errors[] = "Discount amount cannot exceed MRP.";
 
             if ($retail_price_value < 0) $errors[] = "Retail markup cannot be negative.";
-            if ($wholesale_price_value < 0) $errors[] = "Wholesale markup cannot be negative.";
+            if (!$hide_wholesale && $wholesale_price_value < 0) $errors[] = "Wholesale markup cannot be negative.";
 
             if ($referral_enabled && $referral_value <= 0) $errors[] = "Referral value must be > 0.";
             if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $errors[] = "Referral % cannot exceed 100.";
@@ -364,63 +376,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $pdo->beginTransaction();
 
-                    // Insert product with gst_type column
+                    // Insert product
                     $stmt = $pdo->prepare("
-    INSERT INTO products (
-        business_id, product_name, product_code, barcode,
-        image_path, image_thumbnail_path, image_alt_text,
-        category_id, subcategory_id, description, unit_of_measure,
-        secondary_unit, sec_unit_conversion, sec_unit_price_type, sec_unit_extra_charge,
-        stock_price, retail_price, wholesale_price,
-        min_stock_level, gst_id, hsn_code, gst_type, gst_amount,
-        referral_enabled, referral_type, referral_value,
-        mrp, discount_type, discount_value,
-        retail_price_type, retail_price_value,
-        wholesale_price_type, wholesale_price_value,
-        created_at
-    ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-        ?, ?, ?, ?
-    )
-");
+                        INSERT INTO products (
+                            business_id, product_name, product_code, barcode,
+                            image_path, image_thumbnail_path, image_alt_text,
+                            category_id, subcategory_id, description, unit_of_measure,
+                            secondary_unit, sec_unit_conversion, sec_unit_price_type, sec_unit_extra_charge,
+                            stock_price, retail_price, wholesale_price,
+                            min_stock_level, gst_id, hsn_code, gst_type, gst_amount,
+                            referral_enabled, referral_type, referral_value,
+                            mrp, discount_type, discount_value,
+                            retail_price_type, retail_price_value,
+                            wholesale_price_type, wholesale_price_value,
+                            created_at
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                            ?, ?, ?, ?
+                        )
+                    ");
 
-$stmt->execute([
-    $current_business_id,
-    $product_name,
-    $product_code ?: null,
-    $barcode ?: null,
-    $image_path,
-    $image_thumbnail_path,
-    $image_alt_text ?: null,
-    $category_id,
-    $subcategory_id,
-    $description ?: null,
-    $unit,
-    $secondary_unit,
-    $sec_unit_conversion,
-    $sec_unit_price_type,
-    $sec_unit_extra_charge,
-    $stock_price,
-    $retail_price,
-    $wholesale_price,
-    $min_stock_level,
-    $gst_id,
-    $hsn_code,
-    $gst_type,
-    $gst_amount,
-    $referral_enabled,
-    $referral_type,
-    $referral_value,
-    $mrp,
-    $discount_type,
-    $discount_value,
-    $retail_price_type,
-    $retail_price_value,
-    $wholesale_price_type,
-    $wholesale_price_value,
-    date('Y-m-d H:i:s')
-]);
+                    $stmt->execute([
+                        $current_business_id,
+                        $product_name,
+                        $product_code ?: null,
+                        $barcode ?: null,
+                        $image_path,
+                        $image_thumbnail_path,
+                        $image_alt_text ?: null,
+                        $category_id,
+                        $subcategory_id,
+                        $description ?: null,
+                        $unit,
+                        $secondary_unit,
+                        $sec_unit_conversion,
+                        $sec_unit_price_type,
+                        $sec_unit_extra_charge,
+                        $stock_price,
+                        $retail_price,
+                        $wholesale_price,
+                        $min_stock_level,
+                        $gst_id,
+                        $hsn_code,
+                        $gst_type,
+                        $gst_amount,
+                        $referral_enabled,
+                        $referral_type,
+                        $referral_value,
+                        $mrp,
+                        $discount_type,
+                        $discount_value,
+                        $retail_price_type,
+                        $retail_price_value,
+                        $wholesale_price_type,
+                        $wholesale_price_value,
+                        date('Y-m-d H:i:s')
+                    ]);
 
                     $product_id = $pdo->lastInsertId();
 
@@ -437,10 +449,8 @@ $stmt->execute([
                         $existing_stock = $check_stock->fetch();
 
                         if ($existing_stock) {
-                            // Store old quantity before update
                             $old_quantity = $existing_stock['quantity'];
                             
-                            // Update existing stock
                             $update_stmt = $pdo->prepare("
                                 UPDATE product_stocks 
                                 SET quantity = quantity + ?, 
@@ -457,7 +467,6 @@ $stmt->execute([
                             
                             $new_quantity = $old_quantity + $initial_stock;
                         } else {
-                            // Insert new stock record
                             $old_quantity = 0;
                             
                             $insert_stmt = $pdo->prepare("
@@ -480,7 +489,6 @@ $stmt->execute([
                         $date = new DateTime();
                         $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
                         
-                        // Ensure uniqueness of adjustment number
                         $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
                         $check_adj->execute([$adjustment_number]);
                         while ($check_adj->fetch()) {
@@ -488,7 +496,6 @@ $stmt->execute([
                             $check_adj->execute([$adjustment_number]);
                         }
                         
-                        // Record stock adjustment
                         $adj_stmt = $pdo->prepare("
                             INSERT INTO stock_adjustments (
                                 adjustment_number,
@@ -515,7 +522,7 @@ $stmt->execute([
                             $adjustment_number,
                             $product_id,
                             $current_shop_id,
-                            'add', // adjustment_type
+                            'add',
                             $initial_stock,
                             $old_quantity,
                             $new_quantity,
@@ -526,7 +533,6 @@ $stmt->execute([
                         ]);
                         
                     } else {
-                        // Even if no initial stock, create a record with 0 quantity
                         $check_stock = $pdo->prepare("SELECT id FROM product_stocks WHERE product_id = ? AND shop_id = ?");
                         $check_stock->execute([$product_id, $current_shop_id]);
                         
@@ -542,7 +548,6 @@ $stmt->execute([
                                 $current_business_id
                             ]);
                             
-                            // Still record a zero stock adjustment for audit trail
                             $adjustment_number = 'ADJ' . date('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
                             
                             $adj_stmt = $pdo->prepare("
@@ -566,7 +571,7 @@ $stmt->execute([
                                 $adjustment_number,
                                 $product_id,
                                 $current_shop_id,
-                                'add', // adjustment_type
+                                'add',
                                 0,
                                 0,
                                 0,
@@ -580,7 +585,6 @@ $stmt->execute([
 
                     $pdo->commit();
                     
-                    // Store success message with stock details
                     $success_message = "Product '$product_name' added successfully!";
                     if ($initial_stock > 0) {
                         $success_message .= " Initial stock added: $initial_stock $unit";
@@ -591,7 +595,6 @@ $stmt->execute([
                     
                     set_flash_message('success', $success_message);
 
-                    // Redirect based on submit button
                     if (isset($_POST['submit']) && $_POST['submit'] === 'add_another') {
                         header('Location: ' . $_SERVER['PHP_SELF']);
                         exit();
@@ -608,7 +611,6 @@ $stmt->execute([
                     }
                     $error = "Database error: " . $e->getMessage();
                     error_log("Add product error: " . $e->getMessage());
-                    error_log("SQL Error Info: " . print_r($pdo->errorInfo(), true));
                 }
             }
         }
@@ -638,6 +640,12 @@ $stmt->execute([
                         <div class="page-title-box d-flex align-items-center justify-content-between">
                             <h4 class="mb-0">
                                 <i class="bx bx-plus-circle me-2"></i> Add New Product
+                                <?php if ($hide_wholesale): ?>
+                                <span class="badge bg-info ms-2">Wholesale Price Hidden</span>
+                                <?php endif; ?>
+                                <?php if (!$mrp_required): ?>
+                                <span class="badge bg-warning ms-2">MRP Optional</span>
+                                <?php endif; ?>
                             </h4>
                             <a href="products.php" class="btn btn-outline-secondary">
                                 <i class="bx bx-arrow-back me-1"></i> Back to Products
@@ -750,7 +758,7 @@ $stmt->execute([
                                             </select>
                                         </div>
 
-                                        <!-- Enhanced Secondary Unit Section -->
+                                        <!-- Secondary Unit Section -->
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-transfer me-1"></i> Secondary Unit Conversion
@@ -955,17 +963,17 @@ $stmt->execute([
                                         </div>
 
                                         <div class="col-md-4">
-                                            <label class="form-label"><strong>Enter MRP <span class="text-danger">*</span></strong></label>
+                                            <label class="form-label"><strong>Enter MRP <?php if ($mrp_required): ?><span class="text-danger">*</span><?php endif; ?></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="mrp_input" 
                                                        class="form-control form-control-lg text-end" 
                                                        value="<?= htmlspecialchars($_POST['mrp_input'] ?? '') ?>" 
-                                                       id="mrpInput" required
+                                                       id="mrpInput" <?= $mrp_required ? 'required' : '' ?>
                                                        oninput="calculateGST()">
                                             </div>
                                             <div class="form-text" id="mrpHelpText">
-                                                Enter Maximum Retail Price
+                                                <?= $mrp_required ? 'Enter Maximum Retail Price' : 'Enter MRP (optional - leave blank for no MRP)' ?>
                                             </div>
                                         </div>
 
@@ -1078,7 +1086,7 @@ $stmt->execute([
                                         <!-- Retail Price Section -->
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
-                                                <i class="bx bx-store-alt me-1"></i> Sale / Retail Price  (For Customers)
+                                                <i class="bx bx-store-alt me-1"></i> Sale / Retail Price (For Customers)
                                             </h6>
                                         </div>
 
@@ -1134,10 +1142,12 @@ $stmt->execute([
                                             </div>
                                         </div>
 
-                                        <!-- Wholesale Price Section -->
+                                        <!-- Wholesale Price Section - Hidden for business_id = 28 -->
+                                        <?php if (!$hide_wholesale): ?>
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-building-house me-1"></i> Wholesale Price (For Customers)
+                                                <span class="text-danger ms-2">* Required</span>
                                             </h6>
                                         </div>
 
@@ -1192,6 +1202,7 @@ $stmt->execute([
                                                 Profit: ₹0.00
                                             </div>
                                         </div>
+                                        <?php endif; ?>
 
                                         <!-- Other Fields -->
                                         <div class="col-md-3">
@@ -1299,13 +1310,19 @@ $stmt->execute([
                                     <h6 class="card-title mb-3"><i class="bx bx-info-circle me-1"></i> Quick Tips</h6>
                                     <ul class="list-unstyled mb-0">
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 1:</strong> Select GST rate and type (Inclusive/Exclusive)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter MRP - GST will be calculated automatically</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter MRP (optional) - GST will be calculated automatically</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> Enter Discount → Stock Price auto-calculated</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> Retail & Wholesale markups are calculated based on Stock Price</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> Retail markups are calculated based on Stock Price</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Secondary Unit:</strong> Convert primary units (coil) to secondary units (mtr)</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin Formula:</strong> ((Selling Price - Cost Price) / Selling Price) × 100</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> Click refresh buttons (⟳) to clear manual entries</li>
-                                        <li><i class="bx bx-check text-success me-1"></i> <strong>Price Hierarchy:</strong> Stock Price ≤ Wholesale Price ≤ Retail Price ≤ MRP</li>
+                                        <li><i class="bx bx-check text-success me-1"></i> <strong>Price Hierarchy:</strong> Stock Price ≤ Retail Price ≤ MRP</li>
+                                        <?php if ($hide_wholesale): ?>
+                                        <li class="mt-2 text-info"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> Wholesale price is hidden for this business.</li>
+                                        <?php endif; ?>
+                                        <?php if (!$mrp_required): ?>
+                                        <li class="mt-2 text-warning"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> MRP is optional for this business.</li>
+                                        <?php endif; ?>
                                     </ul>
                                 </div>
                             </div>
@@ -1332,6 +1349,11 @@ let discountSymbol = '%'; // Default symbol
 let stockPriceCalculationMode = 'auto'; // 'auto' or 'manual'
 let retailPriceCalculationMode = 'auto'; // 'auto' or 'manual'
 let wholesalePriceCalculationMode = 'auto'; // 'auto' or 'manual'
+
+// Business ID for conditional wholesale price
+const currentBusinessId = <?= $current_business_id ?>;
+const hideWholesale = <?= $hide_wholesale ? 'true' : 'false' ?>;
+const mrpRequired = <?= $mrp_required ? 'true' : 'false' ?>;
 
 // GST Calculation Variables
 let gstRate = 0;
@@ -1438,7 +1460,7 @@ function calculateGST() {
         // Update final MRP (same as input if no GST)
         finalMRPInput.value = mrpInput.toFixed(2);
         
-        if (!selectedOption || !selectedOption.value && mrpInput > 0) {
+        if ((!selectedOption || !selectedOption.value) && mrpInput > 0) {
             finalMRPText.innerHTML = 'No GST applied';
             finalMRPText.style.color = '#6c757d';
         } else if (mrpInput <= 0) {
@@ -1576,7 +1598,7 @@ function calculateStockPrice() {
     
     // Trigger other calculations
     calculateRetailPrice();
-    calculateWholesalePrice();
+    if (!hideWholesale) calculateWholesalePrice();
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
@@ -1720,7 +1742,7 @@ function calculateWholesalePrice() {
 function calculateProfitMargins() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailProfitMarginInput = document.getElementById('retailProfitMargin');
     const retailProfitAmountText = document.getElementById('retailProfitAmountText');
     const wholesaleProfitMarginInput = document.getElementById('wholesaleProfitMargin');
@@ -1756,14 +1778,13 @@ function calculateProfitMargins() {
     }
     
     // Calculate Wholesale Profit Margin: ((Wholesale Price - Stock Price) / Wholesale Price) × 100
-    if (stockPrice > 0 && wholesalePrice > 0) {
+    if (!hideWholesale && stockPrice > 0 && wholesalePrice > 0) {
         const wholesaleProfit = wholesalePrice - stockPrice;
         const wholesaleProfitMargin = wholesalePrice > 0 ? (wholesaleProfit / wholesalePrice) * 100 : 0;
         
         wholesaleProfitMarginInput.value = wholesaleProfitMargin.toFixed(2);
         wholesaleProfitAmountText.innerHTML = `Profit: ₹${wholesaleProfit.toFixed(2)}`;
         
-        // Color code based on profit margin
         if (wholesaleProfitMargin > 15) {
             wholesaleProfitMarginInput.style.color = '#198754';
             wholesaleProfitAmountText.style.color = '#198754';
@@ -1777,7 +1798,7 @@ function calculateProfitMargins() {
             wholesaleProfitMarginInput.style.color = '#dc3545';
             wholesaleProfitAmountText.style.color = '#dc3545';
         }
-    } else {
+    } else if (!hideWholesale) {
         wholesaleProfitMarginInput.value = '';
         wholesaleProfitAmountText.innerHTML = 'Profit: ₹0.00';
         wholesaleProfitMarginInput.style.color = '';
@@ -1792,7 +1813,7 @@ function calculateSecondaryPrices() {
     const extraType = document.getElementById('secUnitPriceType').value;
     const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
@@ -1806,12 +1827,12 @@ function calculateSecondaryPrices() {
         ? `Extra charge per ${secondaryUnit || 'secondary unit'}` 
         : `Extra charge percentage per ${secondaryUnit || 'secondary unit'}`;
 
-    if (secondaryUnit && conversion > 0 && conversion < 1000000) { // Reasonable limit
+    if (secondaryUnit && conversion > 0 && conversion < 1000000) {
         previewBox.style.display = 'block';
 
         // Calculate base prices (without extra charge)
         let retailBasePricePerUnit = retailPrice / conversion;
-        let wholesaleBasePricePerUnit = wholesalePrice / conversion;
+        let wholesaleBasePricePerUnit = !hideWholesale ? (wholesalePrice / conversion) : 0;
 
         // Calculate extra charges
         let retailExtraPerUnit = 0;
@@ -1827,7 +1848,7 @@ function calculateSecondaryPrices() {
 
         // Calculate final prices with extra charge
         let retailPerUnit = retailBasePricePerUnit + retailExtraPerUnit;
-        let wholesalePerUnit = wholesaleBasePricePerUnit + wholesaleExtraPerUnit;
+        let wholesalePerUnit = !hideWholesale ? (wholesaleBasePricePerUnit + wholesaleExtraPerUnit) : 0;
 
         // Update display with detailed breakdown
         document.getElementById('secRetailPricePerUnit').textContent = `₹${retailPerUnit.toFixed(2)}`;
@@ -1836,11 +1857,13 @@ function calculateSecondaryPrices() {
             ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
             : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
 
-        document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
-        document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
-        document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
-            ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
-            : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+        if (!hideWholesale) {
+            document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
+            document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
+            document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
+                ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
+                : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+        }
 
         // Validate conversion rate
         if (conversion === 0) {
@@ -1860,33 +1883,23 @@ function calculateSecondaryPrices() {
     }
 }
 
-// Validate price hierarchy: Stock Price ≤ Wholesale Price ≤ Retail Price ≤ MRP
+// Validate price hierarchy
 function validatePriceHierarchy() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
     const mrp = parseFloat(document.getElementById('mrp').value) || 0;
     
     // Clear previous warnings
     document.getElementById('stockPriceText').style.color = '';
-    document.getElementById('wholesalePriceText').style.color = '';
+    if (!hideWholesale) document.getElementById('wholesalePriceText').style.color = '';
     document.getElementById('retailPriceText').style.color = '';
     
-    if (stockPrice > 0 && wholesalePrice > 0 && retailPrice > 0) {
+    if (stockPrice > 0 && retailPrice > 0) {
         // Check hierarchy
-        if (wholesalePrice < stockPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
         if (retailPrice <= stockPrice) {
             document.getElementById('retailPriceText').innerHTML = '<span class="text-danger">Error: Must be > Stock Price</span>';
             document.getElementById('retailPriceText').style.color = '#dc3545';
-        }
-        
-        if (wholesalePrice > retailPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ Retail Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
         }
         
         // Check MRP constraints
@@ -1896,15 +1909,28 @@ function validatePriceHierarchy() {
                 document.getElementById('retailPriceText').style.color = '#dc3545';
             }
             
-            if (wholesalePrice > mrp) {
-                document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
-                document.getElementById('wholesalePriceText').style.color = '#dc3545';
-            }
-            
             if (stockPrice > mrp) {
                 document.getElementById('stockPriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
                 document.getElementById('stockPriceText').style.color = '#dc3545';
             }
+        }
+    }
+    
+    // Wholesale validation only if not hidden
+    if (!hideWholesale) {
+        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
+        }
+        
+        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Should be ≤ Retail Price</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
+        }
+        
+        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
+            document.getElementById('wholesalePriceText').style.color = '#dc3545';
         }
     }
 }
@@ -1943,7 +1969,7 @@ document.getElementById('stockPrice').addEventListener('input', function() {
         calculateStockPrice();
     }
     calculateRetailPrice();
-    calculateWholesalePrice();
+    if (!hideWholesale) calculateWholesalePrice();
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
@@ -1965,26 +1991,28 @@ document.getElementById('retailPrice').addEventListener('input', function() {
     validatePriceHierarchy();
 });
 
-document.getElementById('wholesalePrice').addEventListener('input', function() {
-    const value = parseFloat(this.value) || 0;
-    if (value > 0) {
-        manualWholesalePrice = true;
-        wholesalePriceCalculationMode = 'manual';
-        document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('wholesalePriceText').style.color = '#0d6efd';
-        
-        // Calculate markup based on manual wholesale price
-        calculateWholesalePrice();
-    }
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-});
+if (!hideWholesale) {
+    document.getElementById('wholesalePrice').addEventListener('input', function() {
+        const value = parseFloat(this.value) || 0;
+        if (value > 0) {
+            manualWholesalePrice = true;
+            wholesalePriceCalculationMode = 'manual';
+            document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
+            document.getElementById('wholesalePriceText').style.color = '#0d6efd';
+            
+            // Calculate markup based on manual wholesale price
+            calculateWholesalePrice();
+        }
+        calculateProfitMargins();
+        calculateSecondaryPrices();
+        validatePriceHierarchy();
+    });
+}
 
 // Validate prices before submission
 document.getElementById('addProductForm').addEventListener('submit', function(e) {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
     const mrp = parseFloat(document.getElementById('mrp').value) || 0;
     const mrpInput = parseFloat(document.getElementById('mrpInput').value) || 0;
@@ -1997,8 +2025,8 @@ document.getElementById('addProductForm').addEventListener('submit', function(e)
     
     let errors = [];
     
-    // Check if MRP is entered
-    if (mrpInput <= 0) {
+    // Check if MRP is entered - only if required
+    if (mrpRequired && mrpInput <= 0) {
         errors.push('MRP is required and must be greater than 0.');
     }
     
@@ -2007,14 +2035,14 @@ document.getElementById('addProductForm').addEventListener('submit', function(e)
         errors.push('Stock price is required and must be greater than 0.');
     }
     
-    // Check if wholesale price is valid
-    if (wholesalePrice <= 0) {
-        errors.push('Wholesale price is required and must be greater than 0.');
-    }
-    
     // Check if retail price is valid
     if (retailPrice <= 0) {
         errors.push('Retail price is required and must be greater than 0.');
+    }
+    
+    // Wholesale price validation only if not hidden
+    if (!hideWholesale && wholesalePrice <= 0) {
+        errors.push('Wholesale price is required and must be greater than 0.');
     }
     
     // GST validation
@@ -2023,32 +2051,35 @@ document.getElementById('addProductForm').addEventListener('submit', function(e)
     }
     
     // Check price hierarchy
-    if (stockPrice > 0 && wholesalePrice > 0 && retailPrice > 0) {
-        if (wholesalePrice < stockPrice) {
-            errors.push('Wholesale price must be equal to or greater than Stock Price.');
-        }
-        
+    if (stockPrice > 0 && retailPrice > 0) {
         if (retailPrice <= stockPrice) {
             errors.push('Retail price must be greater than Stock Price.');
         }
         
-        if (wholesalePrice > retailPrice) {
-            errors.push('Wholesale price should be less than or equal to Retail Price.');
-        }
-        
-        // Check MRP constraints
+        // Check MRP constraints - only if MRP is provided
         if (mrp > 0) {
             if (retailPrice > mrp) {
                 errors.push('Retail price cannot be higher than MRP.');
             }
             
-            if (wholesalePrice > mrp) {
-                errors.push('Wholesale price cannot be higher than MRP.');
-            }
-            
             if (stockPrice > mrp) {
                 errors.push('Stock price cannot be higher than MRP.');
             }
+        }
+    }
+    
+    // Wholesale validation only if not hidden
+    if (!hideWholesale) {
+        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
+            errors.push('Wholesale price must be equal to or greater than Stock Price.');
+        }
+        
+        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
+            errors.push('Wholesale price should be less than or equal to Retail Price.');
+        }
+        
+        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
+            errors.push('Wholesale price cannot be higher than MRP.');
         }
     }
     
@@ -2270,23 +2301,25 @@ document.getElementById('retailPriceType').addEventListener('change', function()
     updateRetailPriceUnit();
 });
 
-document.getElementById('wholesalePriceValue').addEventListener('input', function() {
-    // Reset manual wholesale price mode when markup is changed
-    if (manualWholesalePrice) {
-        manualWholesalePrice = false;
-        wholesalePriceCalculationMode = 'auto';
-    }
-    calculateWholesalePrice();
-});
+if (!hideWholesale) {
+    document.getElementById('wholesalePriceValue').addEventListener('input', function() {
+        // Reset manual wholesale price mode when markup is changed
+        if (manualWholesalePrice) {
+            manualWholesalePrice = false;
+            wholesalePriceCalculationMode = 'auto';
+        }
+        calculateWholesalePrice();
+    });
 
-document.getElementById('wholesalePriceType').addEventListener('change', function() {
-    // Reset manual wholesale price mode when markup type is changed
-    if (manualWholesalePrice) {
-        manualWholesalePrice = false;
-        wholesalePriceCalculationMode = 'auto';
-    }
-    updateWholesalePriceUnit();
-});
+    document.getElementById('wholesalePriceType').addEventListener('change', function() {
+        // Reset manual wholesale price mode when markup type is changed
+        if (manualWholesalePrice) {
+            manualWholesalePrice = false;
+            wholesalePriceCalculationMode = 'auto';
+        }
+        updateWholesalePriceUnit();
+    });
+}
 
 // Enhanced secondary unit event listeners
 document.getElementById('secUnitPriceType').addEventListener('change', updateSecUnitExtraUnit);
@@ -2304,7 +2337,7 @@ updateGSTType();
 toggleReferralBox();
 updateCommissionUnit();
 updateRetailPriceUnit();
-updateWholesalePriceUnit();
+if (!hideWholesale) updateWholesalePriceUnit();
 updateSecUnitExtraUnit();
 
 // Set initial discount symbol based on existing value
@@ -2321,7 +2354,7 @@ document.getElementById('discountSymbol').textContent = discountSymbol;
 document.addEventListener('DOMContentLoaded', function() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = parseFloat(document.getElementById('wholesalePrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const discountInput = document.getElementById('discount').value.trim();
     
     if (stockPrice > 0) {
@@ -2338,7 +2371,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('retailPriceText').style.color = '#0d6efd';
     }
     
-    if (wholesalePrice > 0) {
+    if (!hideWholesale && wholesalePrice > 0) {
         manualWholesalePrice = true;
         wholesalePriceCalculationMode = 'manual';
         document.getElementById('wholesalePriceText').innerHTML = 'Manually entered';
@@ -2433,7 +2466,7 @@ function quickAddSubcategory() {
     }
 }
 
-// Enhanced: Populate sample data for testing with GST example
+// Enhanced: Populate sample data for testing
 function populateSampleData() {
     if (confirm('This will fill the form with sample data. Continue?')) {
         document.querySelector('input[name="product_name"]').value = 'Sample Wire Coil';
@@ -2445,7 +2478,7 @@ function populateSampleData() {
         document.getElementById('discount').value = '10%';
         setDiscountSymbol('%');
         document.getElementById('retailPriceValue').value = '20';
-        document.getElementById('wholesalePriceValue').value = '10';
+        if (!hideWholesale) document.getElementById('wholesalePriceValue').value = '10';
         document.querySelector('input[name="min_stock_level"]').value = '20';
         document.querySelector('textarea[name="description"]').value = 'Sample product with GST calculation and secondary unit conversion.';
         document.querySelector('input[name="image_alt_text"]').value = 'Sample wire coil product';
@@ -2454,7 +2487,7 @@ function populateSampleData() {
         // Reset manual flags
         manualStockPrice = false;
         manualRetailPrice = false;
-        manualWholesalePrice = false;
+        if (!hideWholesale) manualWholesalePrice = false;
         
         calculateGST();
         calculateSecondaryPrices();
