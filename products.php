@@ -24,6 +24,14 @@ $error_message = $_SESSION['error_message'] ?? '';
 unset($_SESSION['success_message']);
 unset($_SESSION['error_message']);
 
+// === PAGINATION SETUP ===
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+$per_page = isset($_GET['per_page']) && is_numeric($_GET['per_page']) ? (int)$_GET['per_page'] : 25;
+$per_page = min($per_page, 100); // Limit max per page to 100
+
+// Calculate offset
+$offset = ($page - 1) * $per_page;
+
 // === FILTERS & SEARCH ===
 $search = trim($_GET['search'] ?? '');
 $category = $_GET['category'] ?? '';
@@ -64,7 +72,6 @@ $stock_summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
 
 // Now build WHERE conditions with proper table references
 if ($search !== '') {
-    // Note: We need to reference tables that will be joined in the main query
     $where .= " AND (p.product_name LIKE ? OR p.product_code LIKE ? OR p.barcode LIKE ?)";
     $like = "%$search%";
     $params[] = $like; 
@@ -77,7 +84,27 @@ if ($category !== '') {
     $params[] = $category;
 }
 
-// Main products query with joins
+// Main products query with joins (for counting total)
+$count_sql = "
+    SELECT COUNT(DISTINCT p.id) as total
+    FROM products p
+    LEFT JOIN product_stocks ps ON ps.product_id = p.id $shop_condition
+    LEFT JOIN gst_rates g ON p.gst_id = g.id
+    $where
+";
+$count_stmt = $pdo->prepare($count_sql);
+$count_stmt->execute($params);
+$total_products = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+// Apply HSN filter to count
+if ($hsn_filter !== '') {
+    $count_stmt = $pdo->prepare($count_sql);
+    $count_stmt->execute($params);
+    $all_products_temp = $count_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // We'll handle HSN filter in PHP for simplicity
+}
+
+// Get products with pagination
 $sql = "
     SELECT
         p.id,
@@ -110,6 +137,11 @@ $sql = "
         p.wholesale_price_value,
         p.gst_type,
         p.gst_amount,
+        p.warranty_type,
+        p.warranty_period,
+        p.warranty_unit,
+        p.warranty_description,
+        p.created_at,
         c.category_name,
         s.subcategory_name,
         g.hsn_code,
@@ -127,9 +159,12 @@ $sql = "
     $where
     GROUP BY p.id
     ORDER BY p.product_name
+    LIMIT ? OFFSET ?
 ";
 
-// Apply HSN filter after building the main SQL (will be filtered in PHP)
+$params[] = $per_page;
+$params[] = $offset;
+
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -139,8 +174,8 @@ if ($hsn_filter !== '') {
     $products = array_filter($products, function($product) use ($hsn_filter) {
         return ($product['hsn_code'] ?? '') == $hsn_filter;
     });
-    // Re-index array
     $products = array_values($products);
+    $total_products = count($products);
 }
 
 // Apply stock filter in PHP
@@ -161,10 +196,13 @@ if ($stock_filter !== 'all') {
         }
     }
     $products = $filtered_products;
+    $total_products = count($products);
 }
 
+// Calculate total pages
+$total_pages = ceil($total_products / $per_page);
+
 // Calculate stock value summary
-// Note: We need a separate query for this with the same filters
 $summary_params = [$current_business_id];
 $summary_where = "WHERE p.is_active = 1 AND p.business_id = ?";
 
@@ -191,6 +229,46 @@ $summary_sql = "
 $summary_stmt = $pdo->prepare($summary_sql);
 $summary_stmt->execute($summary_params);
 $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
+
+// Function to calculate warranty end date
+function getWarrantyEndDate($created_at, $warranty_period, $warranty_unit) {
+    if (!$warranty_period || $warranty_period <= 0 || !$created_at) {
+        return null;
+    }
+    
+    $date = new DateTime($created_at);
+    switch ($warranty_unit) {
+        case 'days':
+            $date->modify("+{$warranty_period} days");
+            break;
+        case 'months':
+            $date->modify("+{$warranty_period} months");
+            break;
+        case 'years':
+            $date->modify("+{$warranty_period} years");
+            break;
+        default:
+            return null;
+    }
+    return $date;
+}
+
+// Function to get warranty status
+function getWarrantyStatus($end_date) {
+    if (!$end_date) return null;
+    
+    $now = new DateTime();
+    if ($end_date < $now) {
+        return ['text' => 'Expired', 'class' => 'danger'];
+    }
+    
+    $days_left = $now->diff($end_date)->days;
+    if ($days_left <= 30) {
+        return ['text' => 'Expiring Soon', 'class' => 'warning'];
+    }
+    
+    return ['text' => 'Active', 'class' => 'success'];
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -227,7 +305,6 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                 <a href="product_export.php" class="btn btn-outline-secondary">
                                     <i class="bx bx-download me-1"></i> Export
                                 </a>
-                               
                             </div>
                         </div>
                     </div>
@@ -405,6 +482,7 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                     </div>
                                 </div>
                             </div>
+                            <input type="hidden" name="per_page" value="<?= $per_page ?>">
                         </form>
                     </div>
                 </div>
@@ -413,7 +491,7 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table id="productsTable" class="table table-hover align-middle w-100">
+                            <table class="table table-hover align-middle w-100">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Product Details</th>
@@ -421,6 +499,7 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                         <th class="text-end">Prices</th>
                                         <th>Units & Conversion</th>
                                         <th>GST Details</th>
+                                        <th>Warranty</th>
                                         <th class="text-end">Stock</th>
                                         <th class="text-center">Status</th>
                                         <th class="text-center">Actions</th>
@@ -428,7 +507,17 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                 </thead>
                                 <tbody>
                                     <?php if (empty($products)): ?>
-                                   
+                                    <tr>
+                                        <td colspan="9" class="text-center py-5">
+                                            <i class="bx bx-package fs-1 text-muted"></i>
+                                            <p class="text-muted mt-2 mb-0">No products found</p>
+                                            <?php if ($is_stock_manager): ?>
+                                            <a href="product_add.php" class="btn btn-sm btn-primary mt-3">
+                                                <i class="bx bx-plus-circle me-1"></i> Add Product
+                                            </a>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                     <?php else: ?>
                                     <?php foreach ($products as $p):
                                         $current_stock = $p['total_stock'];
@@ -469,28 +558,18 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                         $sec_unit_extra_charge = $p['sec_unit_extra_charge'] ?? 0;
                                         $total_secondary_units = $p['total_secondary_units'] ?? 0;
                                        
-                                        // Pricing information
-                                        $mrp = $p['mrp'] ?? 0;
-                                        $discount_type = $p['discount_type'] ?? 'percentage';
-                                        $discount_value = $p['discount_value'] ?? 0;
-                                        $retail_price_type = $p['retail_price_type'] ?? 'percentage';
-                                        $retail_price_value = $p['retail_price_value'] ?? 0;
-                                        $wholesale_price_type = $p['wholesale_price_type'] ?? 'percentage';
-                                        $wholesale_price_value = $p['wholesale_price_value'] ?? 0;
-                                       
-                                        // GST Information
-                                        $gst_type = $p['gst_type'] ?? 'inclusive';
-                                        $gst_amount = $p['gst_amount'] ?? 0;
-                                       
-                                        // Calculate discounted price
-                                        if ($mrp > 0 && $discount_value > 0) {
-                                            if ($discount_type === 'percentage') {
-                                                $discounted_price = $mrp - ($mrp * $discount_value / 100);
-                                            } else {
-                                                $discounted_price = $mrp - $discount_value;
-                                            }
-                                        } else {
-                                            $discounted_price = $p['retail_price'];
+                                        // Warranty information
+                                        $warranty_type = $p['warranty_type'] ?? 'none';
+                                        $warranty_period = $p['warranty_period'] ?? 0;
+                                        $warranty_unit = $p['warranty_unit'] ?? 'months';
+                                        $warranty_description = $p['warranty_description'] ?? '';
+                                        $created_at = $p['created_at'] ?? null;
+                                        
+                                        $warranty_end_date = null;
+                                        $warranty_status = null;
+                                        if ($warranty_type != 'none' && $warranty_period > 0 && $created_at) {
+                                            $warranty_end_date = getWarrantyEndDate($created_at, $warranty_period, $warranty_unit);
+                                            $warranty_status = getWarrantyStatus($warranty_end_date);
                                         }
                                        
                                         // Code and Barcode info
@@ -545,15 +624,15 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                         </td>
                                         <td class="text-end">
                                             <!-- MRP and Discount -->
-                                            <?php if ($mrp > 0): ?>
+                                            <?php if ($p['mrp'] > 0): ?>
                                             <div class="mb-1">
-                                                <s class="text-muted small">₹<?= number_format($mrp, 2) ?></s>
-                                                <?php if ($discount_value > 0): ?>
+                                                <s class="text-muted small">₹<?= number_format($p['mrp'], 2) ?></s>
+                                                <?php if ($p['discount_value'] > 0): ?>
                                                 <span class="badge bg-danger ms-1">
-                                                    <?php if ($discount_type === 'percentage'): ?>
-                                                    <?= number_format($discount_value, 1) ?>% off
+                                                    <?php if ($p['discount_type'] === 'percentage'): ?>
+                                                    <?= number_format($p['discount_value'], 1) ?>% off
                                                     <?php else: ?>
-                                                    ₹<?= number_format($discount_value, 2) ?> off
+                                                    ₹<?= number_format($p['discount_value'], 2) ?> off
                                                     <?php endif; ?>
                                                 </span>
                                                 <?php endif; ?>
@@ -643,11 +722,11 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                                
                                                 <!-- GST Type Badge -->
                                                 <div class="mb-1">
-                                                    <span class="badge bg-<?= $gst_type == 'inclusive' ? 'success' : 'primary' ?> bg-opacity-10 text-<?= $gst_type == 'inclusive' ? 'success' : 'primary' ?>">
+                                                    <span class="badge bg-<?= $p['gst_type'] == 'inclusive' ? 'success' : 'primary' ?> bg-opacity-10 text-<?= $p['gst_type'] == 'inclusive' ? 'success' : 'primary' ?>">
                                                         <i class="bx bx-receipt me-1"></i>
-                                                        GST <?= ucfirst($gst_type) ?>
-                                                        <?php if ($gst_amount > 0): ?>
-                                                        <span class="ms-1">(₹<?= number_format($gst_amount, 2) ?>)</span>
+                                                        GST <?= ucfirst($p['gst_type']) ?>
+                                                        <?php if ($p['gst_amount'] > 0): ?>
+                                                        <span class="ms-1">(₹<?= number_format($p['gst_amount'], 2) ?>)</span>
                                                         <?php endif; ?>
                                                     </span>
                                                 </div>
@@ -677,6 +756,50 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                                 </div>
                                                 <?php endif; ?>
                                             </div>
+                                        </td>
+                                        <td>
+                                            <?php if ($warranty_type != 'none' && $warranty_period > 0): ?>
+                                            <div class="d-flex flex-column">
+                                                <div class="mb-1">
+                                                    <span class="badge bg-primary bg-opacity-10 text-primary">
+                                                        <i class="bx bx-shield me-1"></i>
+                                                        <?= ucfirst($warranty_type) ?> Warranty
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">
+                                                        <?= $warranty_period ?> <?= $warranty_unit ?>
+                                                    </small>
+                                                </div>
+                                                <?php if ($warranty_end_date): ?>
+                                                <div>
+                                                    <small class="text-muted">
+                                                        Until: <?= $warranty_end_date->format('d M Y') ?>
+                                                    </small>
+                                                </div>
+                                                <?php endif; ?>
+                                                <?php if ($warranty_status): ?>
+                                                <div class="mt-1">
+                                                    <span class="badge bg-<?= $warranty_status['class'] ?> bg-opacity-10 text-<?= $warranty_status['class'] ?>">
+                                                        <?= $warranty_status['text'] ?>
+                                                    </span>
+                                                </div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($warranty_description)): ?>
+                                                <div class="mt-1">
+                                                    <small class="text-muted" title="<?= htmlspecialchars($warranty_description) ?>">
+                                                        <?= htmlspecialchars(substr($warranty_description, 0, 40)) ?>
+                                                        <?= strlen($warranty_description) > 40 ? '...' : '' ?>
+                                                    </small>
+                                                </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php else: ?>
+                                            <div class="text-center text-muted">
+                                                <i class="bx bx-shield-alt fs-4"></i>
+                                                <br><small>No Warranty</small>
+                                            </div>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="text-end">
                                             <div class="d-flex flex-column align-items-end">
@@ -769,6 +892,87 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
                                 </tbody>
                             </table>
                         </div>
+                        
+                        <!-- Pagination -->
+                        <?php if ($total_pages > 1): ?>
+                        <div class="row mt-4">
+                            <div class="col-sm-12 col-md-6">
+                                <div class="dataTables_info" role="status" aria-live="polite">
+                                    Showing <?= $offset + 1 ?> to <?= min($offset + $per_page, $total_products) ?> of <?= $total_products ?> products
+                                </div>
+                            </div>
+                            <div class="col-sm-12 col-md-6">
+                                <div class="dataTables_paginate paging_simple_numbers float-end">
+                                    <ul class="pagination">
+                                        <!-- Per Page Dropdown -->
+                                        <li class="me-2 mt-1">
+                                            <select class="form-select form-select-sm" id="perPageSelect" style="width: auto;">
+                                                <option value="10" <?= $per_page == 10 ? 'selected' : '' ?>>10 per page</option>
+                                                <option value="25" <?= $per_page == 25 ? 'selected' : '' ?>>25 per page</option>
+                                                <option value="50" <?= $per_page == 50 ? 'selected' : '' ?>>50 per page</option>
+                                                <option value="100" <?= $per_page == 100 ? 'selected' : '' ?>>100 per page</option>
+                                            </select>
+                                        </li>
+                                        
+                                        <!-- First Page -->
+                                        <li class="paginate_button page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+                                            <a href="<?= buildPaginationUrl(1, $per_page, $search, $category, $hsn_filter, $stock_filter) ?>" class="page-link">
+                                                <i class="bx bx-chevrons-left"></i>
+                                            </a>
+                                        </li>
+                                        
+                                        <!-- Previous Page -->
+                                        <li class="paginate_button page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+                                            <a href="<?= buildPaginationUrl($page - 1, $per_page, $search, $category, $hsn_filter, $stock_filter) ?>" class="page-link">
+                                                <i class="bx bx-chevron-left"></i>
+                                            </a>
+                                        </li>
+                                        
+                                        <!-- Page Numbers -->
+                                        <?php
+                                        $start_page = max(1, $page - 2);
+                                        $end_page = min($total_pages, $page + 2);
+                                        
+                                        if ($start_page > 1) {
+                                            echo '<li class="paginate_button page-item"><a href="' . buildPaginationUrl(1, $per_page, $search, $category, $hsn_filter, $stock_filter) . '" class="page-link">1</a></li>';
+                                            if ($start_page > 2) {
+                                                echo '<li class="paginate_button page-item disabled"><span class="page-link">...</span></li>';
+                                            }
+                                        }
+                                        
+                                        for ($i = $start_page; $i <= $end_page; $i++) {
+                                            $active_class = $i == $page ? 'active' : '';
+                                            echo '<li class="paginate_button page-item ' . $active_class . '">
+                                                    <a href="' . buildPaginationUrl($i, $per_page, $search, $category, $hsn_filter, $stock_filter) . '" class="page-link">' . $i . '</a>
+                                                  </li>';
+                                        }
+                                        
+                                        if ($end_page < $total_pages) {
+                                            if ($end_page < $total_pages - 1) {
+                                                echo '<li class="paginate_button page-item disabled"><span class="page-link">...</span></li>';
+                                            }
+                                            echo '<li class="paginate_button page-item"><a href="' . buildPaginationUrl($total_pages, $per_page, $search, $category, $hsn_filter, $stock_filter) . '" class="page-link">' . $total_pages . '</a></li>';
+                                        }
+                                        ?>
+                                        
+                                        <!-- Next Page -->
+                                        <li class="paginate_button page-item <?= $page >= $total_pages ? 'disabled' : '' ?>">
+                                            <a href="<?= buildPaginationUrl($page + 1, $per_page, $search, $category, $hsn_filter, $stock_filter) ?>" class="page-link">
+                                                <i class="bx bx-chevron-right"></i>
+                                            </a>
+                                        </li>
+                                        
+                                        <!-- Last Page -->
+                                        <li class="paginate_button page-item <?= $page >= $total_pages ? 'disabled' : '' ?>">
+                                            <a href="<?= buildPaginationUrl($total_pages, $per_page, $search, $category, $hsn_filter, $stock_filter) ?>" class="page-link">
+                                                <i class="bx bx-chevrons-right"></i>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -776,6 +980,22 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
         <?php include('includes/footer.php'); ?>
     </div>
 </div>
+
+<?php
+// Helper function to build pagination URL
+function buildPaginationUrl($page, $per_page, $search, $category, $hsn_filter, $stock_filter) {
+    $params = [];
+    if ($page > 1) $params['page'] = $page;
+    if ($per_page != 25) $params['per_page'] = $per_page;
+    if ($search) $params['search'] = urlencode($search);
+    if ($category) $params['category'] = $category;
+    if ($hsn_filter) $params['hsn'] = urlencode($hsn_filter);
+    if ($stock_filter != 'all') $params['stock'] = $stock_filter;
+    
+    return 'products.php' . (empty($params) ? '' : '?' . http_build_query($params));
+}
+?>
+
 <?php include('includes/rightbar.php'); ?>
 <?php include('includes/scripts.php'); ?>
 
@@ -926,9 +1146,6 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
     </div>
 </div>
 
-<!-- Auto-dismissible Success Toast -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999"></div>
-
 <script>
     // Delete Confirmation Modal
     const deleteModal = new bootstrap.Modal('#deleteConfirmModal');
@@ -950,26 +1167,16 @@ $summary = $summary_stmt->fetch(PDO::FETCH_ASSOC);
         $('#confirmDeleteBtn').attr('href', '#');
     });
 
-$(document).ready(function() {
-    // Initialize DataTables with client-side processing
-    $('#productsTable').DataTable({
-        responsive: true,
-        pageLength: 25,
-        order: [[0, 'asc']],
-        dom: "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
-             "<'row'<'col-sm-12'tr>>" +
-             "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
-        language: {
-            search: "Search products:",
-            lengthMenu: "Show _MENU_ entries",
-            info: "Showing _START_ to _END_ of _TOTAL_ products",
-            paginate: {
-                previous: "<i class='bx bx-chevron-left'></i>",
-                next: "<i class='bx bx-chevron-right'></i>"
-            }
-        }
+    // Per page select change
+    $('#perPageSelect').on('change', function() {
+        const perPage = $(this).val();
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', perPage);
+        urlParams.set('page', 1);
+        window.location.href = 'products.php?' + urlParams.toString();
     });
 
+$(document).ready(function() {
     // Tooltips
     $('[data-bs-toggle="tooltip"]').tooltip();
 
@@ -1126,74 +1333,10 @@ $(document).ready(function() {
                     showToast('success', 'Stock adjusted successfully!');
                     adjustStockModal.hide();
                     
-                    // Update the row immediately without full page reload
-                    const row = $(`tr[data-id="${productId}"]`);
-                    if (row.length) {
-                        // Calculate new stock based on type
-                        let newStock = currentStock;
-                        if (type === 'add') newStock = currentStock + parseFloat(quantity);
-                        else if (type === 'remove') newStock = currentStock - parseFloat(quantity);
-                        else if (type === 'set') newStock = parseFloat(quantity);
-                        
-                        // Update primary stock display
-                        const stockBadge = row.find('.badge.rounded-pill');
-                        if (stockBadge.length) {
-                            stockBadge.text(newStock.toFixed(2) + ' ' + primaryUnit);
-                        }
-                        
-                        // Update secondary stock if exists
-                        const secondaryUnit = $('#secondaryUnitName').text();
-                        if (secondaryUnit && conversionRate > 0) {
-                            const newSecondaryStock = newStock * conversionRate;
-                            const secondaryStockElement = row.find('small.text-info');
-                            if (secondaryStockElement.length) {
-                                secondaryStockElement.text(`≈ ${newSecondaryStock.toFixed(2)} ${secondaryUnit}`);
-                            }
-                        }
-                        
-                        // Update stock status
-                        const minStockText = row.find('small.text-muted:contains("Min:")').text();
-                        const minStock = parseFloat(minStockText.replace('Min: ', '')) || 10;
-                        let stockClass, stockText;
-                        
-                        if (newStock == 0) {
-                            stockClass = 'danger';
-                            stockText = 'Out of Stock';
-                        } else if (newStock < minStock * 0.25) {
-                            stockClass = 'danger';
-                            stockText = 'Critical';
-                        } else if (newStock < minStock) {
-                            stockClass = 'warning';
-                            stockText = 'Low';
-                        } else {
-                            stockClass = 'success';
-                            stockText = 'In Stock';
-                        }
-                        
-                        // Update badges
-                        const statusBadge = row.find('.badge.bg-opacity-10');
-                        stockBadge.removeClass('bg-danger bg-warning bg-success').addClass('bg-' + stockClass);
-                        statusBadge.removeClass('bg-danger bg-warning bg-success text-danger text-warning text-success')
-                                   .addClass('bg-' + stockClass + ' bg-opacity-10 text-' + stockClass)
-                                   .html('<i class="bx bx-circle me-1"></i>' + stockText);
-                        
-                        // Update progress bar if exists
-                        const progressBar = row.find('.progress-bar');
-                        if (progressBar.length) {
-                            const stockPercentage = minStock > 0 ? Math.min((newStock / minStock) * 100, 100) : 0;
-                            progressBar.css('width', stockPercentage + '%')
-                                       .removeClass('bg-danger bg-warning bg-success')
-                                       .addClass('bg-' + stockClass);
-                        }
-                        
-                        // Update the data-current attribute on the adjust button
-                        row.find('.adjust-stock-btn').data('current', newStock);
-                    }
-                    
-                    // Show success message for 2 seconds before reloading
+                    // Reload page to show updated stock
                     setTimeout(() => {
                         location.reload();
-                    }, 2000);
+                    }, 1500);
                 } else {
                     showToast('error', response.message || 'Failed to adjust stock');
                 }
@@ -1247,11 +1390,21 @@ $(document).ready(function() {
         $(this).closest('.position-relative').find('.avatar-title').removeClass('d-none');
     });
 
-    // Real-time search debounce
+    // Real-time search with URL update
     let searchTimer;
     $('input[name="search"]').on('keyup', function() {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => $('#filterForm').submit(), 500);
+        searchTimer = setTimeout(() => {
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('search', $(this).val());
+            urlParams.set('page', 1);
+            window.location.href = 'products.php?' + urlParams.toString();
+        }, 500);
+    });
+
+    // Select change handlers for filters
+    $('select[name="category"], select[name="hsn"], select[name="stock"]').on('change', function() {
+        $('#filterForm').submit();
     });
 
     // Row hover
@@ -1324,6 +1477,34 @@ $(document).ready(function() {
 
 .text-bg-error, .text-bg-danger {
     background-color: #dc3545 !important;
+}
+
+.card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+}
+
+.pagination {
+    margin-bottom: 0;
+}
+
+.pagination .page-link {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pagination .active .page-link {
+    background-color: #5b73e8;
+    border-color: #5b73e8;
+}
+
+#perPageSelect {
+    font-size: 0.875rem;
+    padding: 0.375rem 1.75rem 0.375rem 0.75rem;
 }
 </style>
 </body>

@@ -518,8 +518,16 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
                                             </span>
                                         </td>
                                         <td class="text-muted small">
-                                            <?= $subcat['description'] ? htmlspecialchars(substr($subcat['description'], 0, 50)) . (strlen($subcat['description']) > 50 ? '...' : '') : '—' ?>
-                                        </td>
+    <?php 
+    $description = $subcat['description'] ?? '';
+    if (!empty($description)) {
+        echo htmlspecialchars(substr($description, 0, 50));
+        echo (strlen($description) > 50) ? '...' : '';
+    } else {
+        echo '—';
+    }
+    ?>
+</td>
                                         <td>
                                             <small class="text-muted">
                                                 <?= htmlspecialchars($subcat['created_by_name'] ?? 'System') ?>
@@ -536,11 +544,11 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
                                                 <button type="button"
                                                         class="btn btn-outline-warning edit-btn"
                                                         data-id="<?= $subcat['id'] ?>"
-                                                        data-name="<?= htmlspecialchars($subcat['subcategory_name']) ?>"
-                                                        data-code="<?= htmlspecialchars($subcat['subcategory_code']) ?>"
-                                                        data-description="<?= htmlspecialchars($subcat['description']) ?>"
-                                                        data-status="<?= $subcat['status'] ?>"
-                                                        data-category-id="<?= $subcat['category_id'] ?>"
+                                                        data-name="<?= htmlspecialchars($subcat['subcategory_name'] ?? '') ?>"
+data-code="<?= htmlspecialchars($subcat['subcategory_code'] ?? '') ?>"
+data-description="<?= htmlspecialchars($subcat['description'] ?? '') ?>"
+data-status="<?= htmlspecialchars($subcat['status'] ?? 'active') ?>"
+data-category-id="<?= htmlspecialchars($subcat['category_id'] ?? '') ?>"
                                                         data-bs-toggle="tooltip"
                                                         title="Edit">
                                                     <i class="bx bx-edit"></i>

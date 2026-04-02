@@ -22,8 +22,48 @@ if (!$product_id || !is_numeric($product_id)) {
     exit();
 }
 
+// Helper function to calculate warranty end date
+function getWarrantyEndDate($created_at, $warranty_period, $warranty_unit) {
+    if (!$warranty_period || $warranty_period <= 0 || !$created_at) {
+        return null;
+    }
+    
+    $date = new DateTime($created_at);
+    switch ($warranty_unit) {
+        case 'days':
+            $date->modify("+{$warranty_period} days");
+            break;
+        case 'months':
+            $date->modify("+{$warranty_period} months");
+            break;
+        case 'years':
+            $date->modify("+{$warranty_period} years");
+            break;
+        default:
+            return null;
+    }
+    return $date;
+}
+
+// Helper function to get warranty status
+function getWarrantyStatus($end_date) {
+    if (!$end_date) return null;
+    
+    $now = new DateTime();
+    if ($end_date < $now) {
+        return ['text' => 'Expired', 'class' => 'danger', 'icon' => 'bx-x-circle'];
+    }
+    
+    $days_left = $now->diff($end_date)->days;
+    if ($days_left <= 30) {
+        return ['text' => 'Expiring Soon', 'class' => 'warning', 'icon' => 'bx-alarm-exclamation'];
+    }
+    
+    return ['text' => 'Active', 'class' => 'success', 'icon' => 'bx-shield'];
+}
+
 try {
-    // Main product query with all fields including GST type
+    // Main product query with all fields including warranty and referral
     $stmt = $pdo->prepare("
         SELECT p.*, c.category_name, g.hsn_code as gst_hsn_code, g.cgst_rate, g.sgst_rate, g.igst_rate,
                (COALESCE(g.cgst_rate, 0) + COALESCE(g.sgst_rate, 0) + COALESCE(g.igst_rate, 0)) AS gst_total,
@@ -43,13 +83,12 @@ try {
         exit();
     }
     
-    // Ensure MRP is properly set - FIX THE MRP ISSUE HERE
+    // Ensure MRP is properly set
     if (!isset($product['mrp']) || $product['mrp'] == 0 || $product['mrp'] === null) {
-        // If MRP is not set or zero, use retail price or calculate from stock price
         if (isset($product['retail_price']) && $product['retail_price'] > 0) {
             $product['mrp'] = $product['retail_price'];
         } elseif (isset($product['stock_price']) && $product['stock_price'] > 0) {
-            $product['mrp'] = $product['stock_price'] * 1.2; // 20% markup as fallback
+            $product['mrp'] = $product['stock_price'] * 1.2;
         } else {
             $product['mrp'] = 0;
         }
@@ -72,7 +111,14 @@ try {
         'secondary_unit' => null,
         'sec_unit_conversion' => 0,
         'sec_unit_price_type' => 'fixed',
-        'sec_unit_extra_charge' => 0
+        'sec_unit_extra_charge' => 0,
+        'warranty_type' => 'none',
+        'warranty_period' => 0,
+        'warranty_unit' => 'months',
+        'warranty_description' => null,
+        'referral_enabled' => 0,
+        'referral_type' => 'percentage',
+        'referral_value' => 0
     ];
     
     foreach ($pricing_fields as $field => $default_value) {
@@ -110,6 +156,24 @@ try {
         }
     }
     
+    // Calculate warranty information
+    $warranty_end_date = getWarrantyEndDate($product['created_at'], $product['warranty_period'], $product['warranty_unit']);
+    $warranty_status = getWarrantyStatus($warranty_end_date);
+    
+    // Calculate referral commission amounts
+    $retail_referral_amount = 0;
+    $wholesale_referral_amount = 0;
+    
+    if ($product['referral_enabled'] && $product['referral_value'] > 0) {
+        if ($product['referral_type'] == 'percentage') {
+            $retail_referral_amount = ($product['retail_price'] * $product['referral_value']) / 100;
+            $wholesale_referral_amount = ($product['wholesale_price'] * $product['referral_value']) / 100;
+        } else {
+            $retail_referral_amount = $product['referral_value'];
+            $wholesale_referral_amount = $product['referral_value'];
+        }
+    }
+    
     // Get stock in current shop
     $shop_stock = 0;
     $shop_secondary_units = 0;
@@ -143,7 +207,6 @@ try {
     $display_secondary_units = 0;
     if ($product['sec_unit_conversion'] > 0) {
         $calculated_secondary_units = $total_stock * $product['sec_unit_conversion'];
-        // Use stored secondary units if available, otherwise calculate
         $display_secondary_units = $total_secondary_units > 0 ? $total_secondary_units : $calculated_secondary_units;
     }
     
@@ -185,10 +248,8 @@ try {
     // Calculate price without GST (for GST exclusive display)
     $price_without_gst = $mrp;
     if ($gst_type == 'inclusive' && $mrp > 0 && $gst_percentage > 0) {
-        // For inclusive: Price without GST = MRP / (1 + GST%)
         $price_without_gst = $mrp / (1 + ($gst_percentage / 100));
     } elseif ($gst_type == 'exclusive' && $mrp > 0 && $gst_amount > 0) {
-        // For exclusive: Price without GST = MRP - GST
         $price_without_gst = $mrp - $gst_amount;
     }
 
@@ -229,7 +290,6 @@ try {
                                     <i class="bx bx-edit"></i> Edit Product
                                 </a>
                                 <?php endif; ?>
-                               
                             </div>
                         </div>
                     </div>
@@ -283,7 +343,7 @@ try {
                                                                 IGST: <?= $product['igst_rate'] ?? 0 ?>%
                                                             </small>
                                                         <?php endif; ?>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 <tr><th>GST Type</th>
                                                     <td>
@@ -296,7 +356,7 @@ try {
                                                             GST Amount: ₹<?= number_format($gst_amount, 2) ?>
                                                         </small>
                                                         <?php endif; ?>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 
                                                 <!-- Unit of Measure -->
@@ -307,7 +367,7 @@ try {
                                                         <?php if ($product['unit_of_measure'] && $product['secondary_unit']): ?>
                                                             <span class="text-muted">(Primary)</span>
                                                         <?php endif; ?>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 
                                                 <!-- Secondary Unit Details -->
@@ -317,7 +377,7 @@ try {
                                                     <td>
                                                         <?= htmlspecialchars($product['secondary_unit']) ?>
                                                         <span class="text-muted">(Secondary)</span>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 <tr>
                                                     <th>Conversion Rate</th>
@@ -325,7 +385,7 @@ try {
                                                         1 <?= htmlspecialchars($product['unit_of_measure']) ?> = 
                                                         <?= number_format($product['sec_unit_conversion'], 4) ?> 
                                                         <?= htmlspecialchars($product['secondary_unit']) ?>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 <?php if ($product['sec_unit_extra_charge'] > 0): ?>
                                                 <tr>
@@ -338,7 +398,7 @@ try {
                                                             ₹<?= number_format($product['sec_unit_extra_charge'], 2) ?>
                                                         <?php endif; ?>
                                                         per <?= htmlspecialchars($product['secondary_unit']) ?>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 <?php endif; ?>
                                                 <?php endif; ?>
@@ -349,7 +409,7 @@ try {
                                                         <span class="badge bg-<?= $product['is_active'] ? 'success' : 'danger' ?>">
                                                             <?= $product['is_active'] ? 'Active' : 'Inactive' ?>
                                                         </span>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                                 <?php if ($product['description']): ?>
                                                 <tr><th>Description</th><td><?= nl2br(htmlspecialchars($product['description'])) ?></td></tr>
@@ -481,7 +541,7 @@ try {
                                     </div>
                                 </div>
 
-                                <!-- Retail Price Section -->
+                                <!-- Retail Price Section with Referral -->
                                 <div class="row mb-4">
                                     <div class="col-md-12">
                                         <h6 class="border-bottom pb-2 mb-3">
@@ -525,10 +585,28 @@ try {
                                                 </div>
                                             </div>
                                         </div>
+                                        <?php if ($product['referral_enabled'] && $retail_referral_amount > 0): ?>
+                                        <div class="row mt-3">
+                                            <div class="col-md-12">
+                                                <div class="alert alert-info text-center mb-0">
+                                                    <i class="bx bx-gift me-2"></i>
+                                                    <strong>Referral Commission (Retail):</strong>
+                                                    <?php if ($product['referral_type'] == 'percentage'): ?>
+                                                        <?= number_format($product['referral_value'], 1) ?>% of retail price = 
+                                                        <span class="fw-bold">₹<?= number_format($retail_referral_amount, 2) ?></span>
+                                                    <?php else: ?>
+                                                        Fixed amount = 
+                                                        <span class="fw-bold">₹<?= number_format($retail_referral_amount, 2) ?></span>
+                                                    <?php endif; ?>
+                                                    per sale
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
 
-                                <!-- Wholesale Price Section -->
+                                <!-- Wholesale Price Section with Referral -->
                                 <div class="row">
                                     <div class="col-md-12">
                                         <h6 class="border-bottom pb-2 mb-3">
@@ -572,6 +650,24 @@ try {
                                                 </div>
                                             </div>
                                         </div>
+                                        <?php if ($product['referral_enabled'] && $wholesale_referral_amount > 0): ?>
+                                        <div class="row mt-3">
+                                            <div class="col-md-12">
+                                                <div class="alert alert-info text-center mb-0">
+                                                    <i class="bx bx-gift me-2"></i>
+                                                    <strong>Referral Commission (Wholesale):</strong>
+                                                    <?php if ($product['referral_type'] == 'percentage'): ?>
+                                                        <?= number_format($product['referral_value'], 1) ?>% of wholesale price = 
+                                                        <span class="fw-bold">₹<?= number_format($wholesale_referral_amount, 2) ?></span>
+                                                    <?php else: ?>
+                                                        Fixed amount = 
+                                                        <span class="fw-bold">₹<?= number_format($wholesale_referral_amount, 2) ?></span>
+                                                    <?php endif; ?>
+                                                    per sale
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
 
@@ -616,9 +712,205 @@ try {
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Warranty Information Card -->
+                        <div class="card mt-3">
+                            <div class="card-header <?= $warranty_status ? 'bg-' . $warranty_status['class'] . ' text-white' : 'bg-secondary text-white' ?>">
+                                <h5 class="mb-0">
+                                    <i class="bx bx-shield me-2"></i> Warranty Information
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <?php if ($product['warranty_type'] != 'none' && $product['warranty_period'] > 0): ?>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <h6 class="text-muted mb-1">Warranty Type</h6>
+                                                <h5>
+                                                    <span class="badge bg-primary">
+                                                        <?= ucfirst($product['warranty_type']) ?> Warranty
+                                                    </span>
+                                                </h5>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <h6 class="text-muted mb-1">Warranty Period</h6>
+                                                <h5>
+                                                    <?= $product['warranty_period'] ?> 
+                                                    <?= ucfirst($product['warranty_unit']) ?>
+                                                    <?php if ($product['warranty_unit'] != 'days' && $product['warranty_period'] > 1): ?>
+                                                        s
+                                                    <?php endif; ?>
+                                                </h5>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <?php if ($warranty_end_date): ?>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <h6 class="text-muted mb-1">Warranty Start Date</h6>
+                                                <h6><?= date('d M Y', strtotime($product['created_at'])) ?></h6>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <h6 class="text-muted mb-1">Warranty End Date</h6>
+                                                <h6 class="<?= $warranty_status && $warranty_status['class'] == 'danger' ? 'text-danger' : ($warranty_status && $warranty_status['class'] == 'warning' ? 'text-warning' : 'text-success') ?>">
+                                                    <?= $warranty_end_date->format('d M Y') ?>
+                                                    <?php if ($warranty_status): ?>
+                                                        <span class="badge bg-<?= $warranty_status['class'] ?> ms-2">
+                                                            <i class="bx <?= $warranty_status['icon'] ?> me-1"></i>
+                                                            <?= $warranty_status['text'] ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </h6>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($warranty_status && $warranty_status['class'] == 'warning'): ?>
+                                    <div class="alert alert-warning">
+                                        <i class="bx bx-alarm-exclamation me-2"></i>
+                                        <strong>Warning:</strong> Warranty expires in less than 30 days!
+                                    </div>
+                                    <?php elseif ($warranty_status && $warranty_status['class'] == 'danger'): ?>
+                                    <div class="alert alert-danger">
+                                        <i class="bx bx-x-circle me-2"></i>
+                                        <strong>Expired:</strong> Product warranty has expired.
+                                    </div>
+                                    <?php elseif ($warranty_status && $warranty_status['class'] == 'success'): ?>
+                                    <div class="alert alert-success">
+                                        <i class="bx bx-shield me-2"></i>
+                                        <strong>Active:</strong> Product is under warranty protection.
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <?php if (!empty($product['warranty_description'])): ?>
+                                    <div class="mt-3">
+                                        <h6 class="text-muted mb-2">Warranty Details</h6>
+                                        <div class="p-3 bg-light rounded">
+                                            <?= nl2br(htmlspecialchars($product['warranty_description'])) ?>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <!-- Warranty Coverage Summary -->
+                                    <div class="mt-4">
+                                        <h6 class="text-muted mb-3">Warranty Coverage</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="bx bx-check-circle text-success me-2 fs-5"></i>
+                                                    <span>Manufacturing defects</span>
+                                                </div>
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="bx bx-check-circle text-success me-2 fs-5"></i>
+                                                    <span>Parts replacement</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="bx bx-check-circle text-success me-2 fs-5"></i>
+                                                    <span>Labor charges</span>
+                                                </div>
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="bx bx-check-circle text-success me-2 fs-5"></i>
+                                                    <span>Technical support</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <small class="text-muted mt-2 d-block">
+                                            <i class="bx bx-info-circle me-1"></i>
+                                            Warranty terms may vary. Please refer to product documentation for complete details.
+                                        </small>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="text-center py-4">
+                                        <i class="bx bx-shield-alt fs-1 text-muted mb-3 d-block"></i>
+                                        <h5 class="text-muted">No Warranty</h5>
+                                        <p class="text-muted mb-0">This product does not come with any warranty coverage.</p>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <!-- Referral Commission Summary Card -->
+                        <?php if ($product['referral_enabled'] && $product['referral_value'] > 0): ?>
+                        <div class="card mt-3">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">
+                                    <i class="bx bx-gift me-2"></i> Referral Commission Summary
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="text-center p-3 border rounded">
+                                            <h6 class="text-muted mb-2">Commission Type</h6>
+                                            <h5>
+                                                <span class="badge bg-info">
+                                                    <?= ucfirst($product['referral_type']) ?>
+                                                </span>
+                                            </h5>
+                                            <small class="text-muted">
+                                                <?php if ($product['referral_type'] == 'percentage'): ?>
+                                                    Percentage of selling price
+                                                <?php else: ?>
+                                                    Fixed amount per sale
+                                                <?php endif; ?>
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="text-center p-3 border rounded">
+                                            <h6 class="text-muted mb-2">Commission Value</h6>
+                                            <h3 class="text-success">
+                                                <?php if ($product['referral_type'] == 'percentage'): ?>
+                                                    <?= number_format($product['referral_value'], 1) ?>%
+                                                <?php else: ?>
+                                                    ₹<?= number_format($product['referral_value'], 2) ?>
+                                                <?php endif; ?>
+                                            </h3>
+                                            <small class="text-muted">per successful referral</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <div class="alert alert-light text-center mb-0">
+                                            <strong>Retail Commission:</strong><br>
+                                            <span class="h5 text-success">₹<?= number_format($retail_referral_amount, 2) ?></span>
+                                            <br>
+                                            <small>per retail sale</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="alert alert-light text-center mb-0">
+                                            <strong>Wholesale Commission:</strong><br>
+                                            <span class="h5 text-primary">₹<?= number_format($wholesale_referral_amount, 2) ?></span>
+                                            <br>
+                                            <small>per wholesale sale</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-3 text-center">
+                                    <small class="text-muted">
+                                        <i class="bx bx-info-circle me-1"></i>
+                                        Referral commission is paid to affiliates/partners who successfully refer customers
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
-                    <!-- Stock Summary -->
+                    <!-- Stock Summary Sidebar -->
                     <div class="col-lg-4">
                         <div class="card">
                             <div class="card-header bg-dark text-white">
@@ -735,47 +1027,47 @@ try {
                                                 <span class="badge bg-<?= $gst_type == 'inclusive' ? 'success' : 'info' ?>">
                                                     GST <?= ucfirst($gst_type) ?>
                                                 </span>
-                                            </td>
-                                        </tr>
+                                             </td>
+                                         </tr>
                                         <tr>
                                             <th>Total GST Rate</th>
                                             <td><?= number_format($gst_percentage, 2) ?>%</td>
-                                        </tr>
+                                         </tr>
                                         <tr>
                                             <th>CGST Rate</th>
                                             <td><?= $product['cgst_rate'] ?? 0 ?>%</td>
-                                        </tr>
+                                         </tr>
                                         <tr>
                                             <th>SGST Rate</th>
                                             <td><?= $product['sgst_rate'] ?? 0 ?>%</td>
-                                        </tr>
+                                         </tr>
                                         <tr>
                                             <th>IGST Rate</th>
                                             <td><?= $product['igst_rate'] ?? 0 ?>%</td>
-                                        </tr>
+                                         </tr>
                                         <?php if ($gst_amount > 0): ?>
                                         <tr>
                                             <th>GST Amount</th>
                                             <td>₹<?= number_format($gst_amount, 2) ?></td>
-                                        </tr>
+                                         </tr>
                                         <?php if ($gst_percentage > 0): ?>
                                         <tr>
                                             <th>CGST Amount</th>
                                             <td>₹<?= number_format($cgst_amount, 2) ?></td>
-                                        </tr>
+                                         </tr>
                                         <tr>
                                             <th>SGST Amount</th>
                                             <td>₹<?= number_format($sgst_amount, 2) ?></td>
-                                        </tr>
+                                         </tr>
                                         <tr>
                                             <th>IGST Amount</th>
                                             <td>₹<?= number_format($igst_amount, 2) ?></td>
-                                        </tr>
+                                         </tr>
                                         <?php endif; ?>
                                         <tr>
                                             <th>Price without GST</th>
                                             <td>₹<?= number_format($price_without_gst, 2) ?></td>
-                                        </tr>
+                                         </tr>
                                         <?php endif; ?>
                                         <?php if ($gst_type == 'inclusive'): ?>
                                         <tr>
@@ -786,8 +1078,8 @@ try {
                                                     ₹<?= number_format($price_without_gst, 2) ?> + 
                                                     ₹<?= number_format($gst_amount, 2) ?> GST
                                                 </small>
-                                            </td>
-                                        </tr>
+                                             </td>
+                                         </tr>
                                         <?php else: ?>
                                         <tr>
                                             <th>Calculation</th>
@@ -798,10 +1090,10 @@ try {
                                                     ₹<?= number_format($gst_amount, 2) ?> = 
                                                     ₹<?= number_format($mrp, 2) ?>
                                                 </small>
-                                            </td>
-                                        </tr>
+                                             </td>
+                                         </tr>
                                         <?php endif; ?>
-                                    </table>
+                                     </table>
                                 </div>
                             </div>
                         </div>
@@ -856,15 +1148,15 @@ try {
                                     <tr>
                                         <th width="140">Product ID</th>
                                         <td><?= $product['id'] ?></td>
-                                    </tr>
+                                     </tr>
                                     <tr>
                                         <th>Created</th>
                                         <td><?= date('d M Y', strtotime($product['created_at'])) ?></td>
-                                    </tr>
+                                     </tr>
                                     <tr>
                                         <th>Last Updated</th>
                                         <td><?= date('d M Y', strtotime($product['updated_at'] ?? $product['created_at'])) ?></td>
-                                    </tr>
+                                     </tr>
                                     <?php if ($product['referral_enabled']): ?>
                                     <tr>
                                         <th>Referral Commission</th>
@@ -872,14 +1164,14 @@ try {
                                             <span class="badge bg-success">Enabled</span>
                                             <?= $product['referral_value'] ?>
                                             <?= $product['referral_type'] == 'percentage' ? '%' : '₹' ?>
-                                        </td>
-                                    </tr>
+                                         </td>
+                                     </tr>
                                     <?php endif; ?>
                                     <?php if ($product['image_alt_text']): ?>
                                     <tr>
                                         <th>Image Alt Text</th>
                                         <td><?= htmlspecialchars($product['image_alt_text']) ?></td>
-                                    </tr>
+                                     </tr>
                                     <?php endif; ?>
                                     <?php if ($product['secondary_unit']): ?>
                                     <tr>
@@ -888,18 +1180,28 @@ try {
                                             <span class="badge bg-info">Dual Units</span>
                                             <?= htmlspecialchars($product['unit_of_measure']) ?> + 
                                             <?= htmlspecialchars($product['secondary_unit']) ?>
-                                        </td>
-                                    </tr>
+                                         </td>
+                                     </tr>
                                     <?php else: ?>
                                     <tr>
                                         <th>Measurement Type</th>
                                         <td>
                                             <span class="badge bg-secondary">Single Unit</span>
                                             <?= htmlspecialchars($product['unit_of_measure']) ?>
-                                        </td>
-                                    </tr>
+                                         </td>
+                                     </tr>
                                     <?php endif; ?>
-                                </table>
+                                    <?php if ($product['warranty_type'] != 'none'): ?>
+                                    <tr>
+                                        <th>Warranty</th>
+                                        <td>
+                                            <span class="badge bg-primary"><?= ucfirst($product['warranty_type']) ?></span>
+                                            <?= $product['warranty_period'] ?> <?= ucfirst($product['warranty_unit']) ?>
+                                            <?php if ($product['warranty_period'] > 1 && $product['warranty_unit'] != 'days'): ?>s<?php endif; ?>
+                                         </td>
+                                     </tr>
+                                    <?php endif; ?>
+                                 </table>
                             </div>
                         </div>
 

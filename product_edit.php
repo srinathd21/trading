@@ -167,6 +167,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         $unit = $_POST['unit'] ?? 'pcs';
         
+        // Warranty fields
+        $warranty_type = $_POST['warranty_type'] ?? 'none';
+        $warranty_period = !empty($_POST['warranty_period']) ? (int)$_POST['warranty_period'] : 0;
+        $warranty_unit = $_POST['warranty_unit'] ?? 'months';
+        $warranty_description = trim($_POST['warranty_description'] ?? '');
+        $is_warranty_applicable = isset($_POST['is_warranty_applicable']) ? 1 : 0;
+        
         // GST fields
         $gst_type = $_POST['gst_type'] ?? 'inclusive';
         $gst_id = !empty($_POST['gst_id']) ? (int)$_POST['gst_id'] : null;
@@ -380,6 +387,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = "Conversion rate is too small. Please use a reasonable value.";
             }
 
+            // Warranty validation
+            if ($is_warranty_applicable) {
+                if ($warranty_type === 'none') {
+                    $errors[] = "Please select warranty type if warranty is applicable.";
+                }
+                if ($warranty_period <= 0) {
+                    $errors[] = "Warranty period must be greater than 0.";
+                }
+                if ($warranty_period > 120) {
+                    $errors[] = "Warranty period cannot exceed 120 months/10 years.";
+                }
+            }
+
             // Duplicate checks (skip if unchanged)
             if (!empty($barcode) && $barcode != $product['barcode']) {
                 $check = $pdo->prepare("SELECT id FROM products WHERE barcode = ? AND business_id = ? AND id != ?");
@@ -411,6 +431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             mrp = ?, discount_type = ?, discount_value = ?,
                             retail_price_type = ?, retail_price_value = ?,
                             wholesale_price_type = ?, wholesale_price_value = ?,
+                            warranty_type = ?, warranty_period = ?, warranty_unit = ?, warranty_description = ?,
                             updated_at = NOW()
                         WHERE id = ? AND business_id = ?
                     ");
@@ -448,6 +469,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $retail_price_value,
                         $wholesale_price_type,
                         $wholesale_price_value,
+                        $is_warranty_applicable ? $warranty_type : 'none',
+                        $is_warranty_applicable ? $warranty_period : 0,
+                        $is_warranty_applicable ? $warranty_unit : 'months',
+                        $is_warranty_applicable ? $warranty_description : null,
                         $product_id,
                         $current_business_id
                     ]);
@@ -550,7 +575,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $product_id,
                             $current_shop_id,
                             $adjustment_type,
-                            $primary_quantity, // Store primary quantity in the quantity field
+                            $primary_quantity,
                             $old_quantity,
                             $new_quantity,
                             $reason,
@@ -644,7 +669,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                     <div class="row g-3">
                                         <div class="col-md-4">
-                                            <label class="form-label"><strong>Category</strong></label>
+                                            <label class="form-label"><strong>Category</strong> <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openCategoryModal()"><i class="bx bx-plus"></i> Quick Add</button></label>
                                             <select name="category_id" id="categorySelect" class="form-select" required>
                                                 <option value="">-- Select Category --</option>
                                                 <?php foreach($categories as $c): ?>
@@ -657,7 +682,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
 
                                         <div class="col-md-4">
-                                            <label class="form-label"><strong>Subcategory</strong></label>
+                                            <label class="form-label"><strong>Subcategory</strong> <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openSubcategoryModal()"><i class="bx bx-plus"></i> Quick Add</button></label>
                                             <select name="subcategory_id" id="subcategorySelect" class="form-select">
                                                 <option value="">-- Select Subcategory --</option>
                                                 <?php foreach($subcategories as $sub): ?>
@@ -875,6 +900,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <div class="col-md-12">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-receipt me-1"></i> GST Configuration
+                                                <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openGSTModal()"><i class="bx bx-plus"></i> Quick Add GST</button>
                                             </h6>
                                         </div>
 
@@ -1182,6 +1208,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
                                         <?php endif; ?>
 
+                                        <!-- Warranty Section -->
+                                        <div class="col-md-12 mt-4">
+                                            <h6 class="border-bottom pb-2 mb-3">
+                                                <i class="bx bx-shield me-1"></i> Warranty Information
+                                            </h6>
+                                        </div>
+
+                                        <div class="col-md-12">
+                                            <div class="form-check mb-3">
+                                                <input class="form-check-input" type="checkbox" id="warrantyCheckbox" 
+                                                       name="is_warranty_applicable" value="1"
+                                                       <?= $product['warranty_type'] != 'none' ? 'checked' : '' ?>
+                                                       onchange="toggleWarrantyFields()">
+                                                <label class="form-check-label fw-bold" for="warrantyCheckbox">
+                                                    This product comes with warranty
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div id="warrantyFields" style="<?= $product['warranty_type'] != 'none' ? 'display:block;' : 'display:none;' ?>">
+                                            <div class="col-md-4">
+                                                <label class="form-label"><strong>Warranty Type</strong></label>
+                                                <select name="warranty_type" id="warrantyType" class="form-select">
+                                                    <option value="none">-- Select Warranty Type --</option>
+                                                    <option value="manufacturer" <?= ($product['warranty_type'] ?? '') == 'manufacturer' ? 'selected' : '' ?>>Manufacturer Warranty</option>
+                                                    <option value="seller" <?= ($product['warranty_type'] ?? '') == 'seller' ? 'selected' : '' ?>>Seller Warranty</option>
+                                                    <option value="extended" <?= ($product['warranty_type'] ?? '') == 'extended' ? 'selected' : '' ?>>Extended Warranty</option>
+                                                    <option value="international" <?= ($product['warranty_type'] ?? '') == 'international' ? 'selected' : '' ?>>International Warranty</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="col-md-4">
+                                                <label class="form-label"><strong>Warranty Period</strong></label>
+                                                <div class="input-group">
+                                                    <input type="number" name="warranty_period" 
+                                                           class="form-control text-end" 
+                                                           value="<?= htmlspecialchars($product['warranty_period'] ?? '12') ?>"
+                                                           min="0" max="120" step="1">
+                                                    <select name="warranty_unit" class="form-select" style="width: auto;">
+                                                        <option value="days" <?= ($product['warranty_unit'] ?? 'months') == 'days' ? 'selected' : '' ?>>Days</option>
+                                                        <option value="months" <?= ($product['warranty_unit'] ?? 'months') == 'months' ? 'selected' : '' ?>>Months</option>
+                                                        <option value="years" <?= ($product['warranty_unit'] ?? '') == 'years' ? 'selected' : '' ?>>Years</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-text">Enter warranty duration (max 10 years / 120 months)</div>
+                                            </div>
+
+                                            <div class="col-md-4">
+                                                <label class="form-label"><strong>Warranty Description</strong></label>
+                                                <textarea name="warranty_description" class="form-control" rows="2" 
+                                                          placeholder="e.g., Covers manufacturing defects, 1 year free service..."><?= htmlspecialchars($product['warranty_description'] ?? '') ?></textarea>
+                                            </div>
+                                        </div>
+
                                         <!-- Other Fields -->
                                         <div class="col-md-3">
                                             <label class="form-label">Min Stock Level</label>
@@ -1275,15 +1355,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <i class="bx bx-x me-1"></i> Cancel
                                         </a>
                                     </div>
-                                    
-                                    <div class="mt-3">
-                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="quickAddCategory()">
-                                            <i class="bx bx-plus"></i> Quick Add Category
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="quickAddSubcategory()">
-                                            <i class="bx bx-plus"></i> Quick Add Subcategory
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
                             
@@ -1316,10 +1387,187 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
+<!-- Quick Add Category Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bx bx-category"></i> Quick Add Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickCategoryForm">
+                    <div class="mb-3">
+                        <label class="form-label">Category Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="categoryName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Category Code (Optional)</label>
+                        <input type="text" class="form-control" id="categoryCode">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="categoryDescription" rows="2"></textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="saveCategoryBtn">
+                            <i class="bx bx-save"></i> Save Category
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Add Subcategory Modal -->
+<div class="modal fade" id="subcategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bx bx-category-alt"></i> Quick Add Subcategory</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickSubcategoryForm">
+                    <div class="mb-3">
+                        <label class="form-label">Parent Category <span class="text-danger">*</span></label>
+                        <select class="form-select" id="subcategoryParentCategory" required>
+                            <option value="">-- Select Category --</option>
+                            <?php foreach($categories as $c): ?>
+                            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['category_name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Subcategory Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="subcategoryName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Subcategory Code (Optional)</label>
+                        <input type="text" class="form-control" id="subcategoryCode">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="subcategoryDescription" rows="2"></textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="saveSubcategoryBtn">
+                            <i class="bx bx-save"></i> Save Subcategory
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Add GST Modal -->
+<div class="modal fade" id="gstModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bx bx-receipt"></i> Quick Add GST Rate</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickGSTForm">
+                    <div class="mb-3">
+                        <label class="form-label">HSN Code <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="hsnCode" required placeholder="e.g., 7318">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" id="gstDescription" placeholder="Product/Service description">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">CGST Rate (%)</label>
+                            <input type="number" step="0.01" class="form-control" id="cgstRate" value="0" onchange="updateTotalGST()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SGST Rate (%)</label>
+                            <input type="number" step="0.01" class="form-control" id="sgstRate" value="0" onchange="updateTotalGST()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">IGST Rate (%)</label>
+                            <input type="number" step="0.01" class="form-control" id="igstRate" value="0" onchange="updateTotalGST()">
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-3 mb-3">
+                        <strong>Total GST Rate:</strong> <span id="totalGSTRate">0.00</span>%
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="saveGSTBtn">
+                            <i class="bx bx-save"></i> Save GST Rate
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include('includes/rightbar.php'); ?>
 <?php include('includes/scripts.php'); ?>
 
 <script>
+// Sweet Toast Alert Functions
+function showSweetToast(title, message, type = 'info', duration = 3000) {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: duration,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+    });
+    
+    Toast.fire({
+        icon: type,
+        title: title,
+        text: message
+    });
+}
+
+function showSweetConfirm(title, text, confirmButtonText = 'Yes', cancelButtonText = 'Cancel') {
+    return Swal.fire({
+        title: title,
+        text: text,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: confirmButtonText,
+        cancelButtonText: cancelButtonText
+    });
+}
+
+function showSweetError(title, message) {
+    Swal.fire({
+        icon: 'error',
+        title: title,
+        text: message,
+        confirmButtonColor: '#3085d6'
+    });
+}
+
+function showSweetSuccess(title, message, duration = 2000) {
+    Swal.fire({
+        icon: 'success',
+        title: title,
+        text: message,
+        timer: duration,
+        showConfirmButton: false
+    });
+}
+
 // Track manual entries
 let manualStockPrice = false;
 let manualRetailPrice = false;
@@ -1340,31 +1588,16 @@ const mrpRequired = <?= $mrp_required ? 'true' : 'false' ?>;
 let gstRate = <?= $product['gst_id'] ? ($gst_rate_percentage ?? 0) : 0 ?>;
 let gstType = '<?= $product['gst_type'] ?? 'inclusive' ?>';
 
-// Initialize on page load
+// Warranty toggle
+function toggleWarrantyFields() {
+    const checkbox = document.getElementById('warrantyCheckbox');
+    const warrantyFields = document.getElementById('warrantyFields');
+    warrantyFields.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+// Set initial warranty state
 document.addEventListener('DOMContentLoaded', function() {
-    // Set manual flags based on existing data
-    if (parseFloat(document.getElementById('stockPrice').value) > 0 && <?= $product['discount_value'] ?? 0 ?> == 0) {
-        manualStockPrice = true;
-        stockPriceCalculationMode = 'manual';
-    }
-    
-    if (parseFloat(document.getElementById('retailPrice').value) > 0 && <?= $product['retail_price_value'] ?? 0 ?> == 0) {
-        manualRetailPrice = true;
-        retailPriceCalculationMode = 'manual';
-    }
-    
-    if (!hideWholesale && parseFloat(document.getElementById('wholesalePrice').value) > 0 && <?= $product['wholesale_price_value'] ?? 0 ?> == 0) {
-        manualWholesalePrice = true;
-        wholesalePriceCalculationMode = 'manual';
-    }
-    
-    // Set discount symbol
-    document.getElementById('discountSymbol').textContent = discountSymbol;
-    
-    // Calculate GST and prices
-    calculateGST();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
+    toggleWarrantyFields();
 });
 
 function setDiscountSymbol(symbol) {
@@ -1513,7 +1746,7 @@ function calculateStockPrice() {
                 discountValue = parseFloat(discountInput.replace('%', '')) || 0;
                 
                 if (discountValue > 100) {
-                    alert('Discount percentage cannot exceed 100%');
+                    showSweetToast('Invalid Discount', 'Discount percentage cannot exceed 100%', 'warning');
                     discountValue = 100;
                     document.getElementById('discount').value = '100%';
                 }
@@ -1524,7 +1757,7 @@ function calculateStockPrice() {
                 discountValue = parseFloat(discountInput) || 0;
                 
                 if (discountValue > mrp) {
-                    alert('Discount amount cannot exceed MRP');
+                    showSweetToast('Invalid Discount', 'Discount amount cannot exceed MRP', 'warning');
                     discountValue = mrp;
                     document.getElementById('discount').value = mrp.toFixed(2);
                 }
@@ -1648,7 +1881,7 @@ function calculateRetailPrice() {
     validatePriceHierarchy();
 }
 
-// Calculate Wholesale Price based on Stock Price and Wholesale Markup
+// Calculate Wholesale Price based on Stock Price and Wholesale Markup (allows lower values)
 function calculateWholesalePrice() {
     if (hideWholesale) return;
     
@@ -1667,7 +1900,7 @@ function calculateWholesalePrice() {
             if (wholesalePriceType === 'percentage') {
                 markupAmount = stockPrice * wholesalePriceValue / 100;
                 calculatedWholesalePrice = stockPrice + markupAmount;
-                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${wholesalePriceValue.toFixed(2)}%)`;
+                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${wholesalePriceValue}%)`;
             } else {
                 markupAmount = wholesalePriceValue;
                 calculatedWholesalePrice = stockPrice + wholesalePriceValue;
@@ -1680,7 +1913,7 @@ function calculateWholesalePrice() {
             wholesalePriceCalculationMode = 'auto';
         } else {
             wholesalePriceInput.value = stockPrice.toFixed(2);
-            wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
+            wholesaleMarkupText.innerHTML = `Markup: ₹0.00`;
             wholesalePriceText.innerHTML = `Same as stock price (no markup)`;
             wholesalePriceText.style.color = '#6c757d';
         }
@@ -1698,22 +1931,29 @@ function calculateWholesalePrice() {
                 document.getElementById('wholesalePriceValue').value = markupAmount.toFixed(2);
                 wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
             }
+            wholesalePriceText.innerHTML = `Manually entered - Markup calculated`;
+            wholesalePriceText.style.color = '#0d6efd';
         } else if (currentWholesalePrice === stockPrice) {
             document.getElementById('wholesalePriceValue').value = '0';
-            wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
+            wholesaleMarkupText.innerHTML = `Markup: ₹0.00`;
+            wholesalePriceText.innerHTML = `Manually entered - Same as stock price`;
+            wholesalePriceText.style.color = '#0d6efd';
+        } else if (currentWholesalePrice < stockPrice && currentWholesalePrice > 0) {
+            // Allow wholesale price to be lower than stock price
+            markupAmount = currentWholesalePrice - stockPrice;
+            wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (loss)`;
+            wholesalePriceText.innerHTML = `Manually entered - Below cost price`;
+            wholesalePriceText.style.color = '#dc3545';
+            document.getElementById('wholesalePriceValue').value = '0';
+            // Keep the user's value, don't reset
+            manualWholesalePrice = true;
         } else {
             document.getElementById('wholesalePriceValue').value = '0';
-            wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
-            if (currentWholesalePrice < stockPrice && currentWholesalePrice > 0) {
-                wholesalePriceInput.value = stockPrice.toFixed(2);
-                wholesaleMarkupText.innerHTML = `Markup: ₹0.00 (0%)`;
-                alert('Wholesale price cannot be less than stock price. It has been reset.');
-            }
+            wholesaleMarkupText.innerHTML = `Markup: ₹0.00`;
+            wholesalePriceText.innerHTML = `Manually entered - Markup calculated`;
+            wholesalePriceText.style.color = '#0d6efd';
             manualWholesalePrice = false;
         }
-        
-        wholesalePriceText.innerHTML = `Manually entered - Markup calculated`;
-        wholesalePriceText.style.color = '#0d6efd';
     }
     
     calculateProfitMargins();
@@ -1763,7 +2003,10 @@ function calculateProfitMargins() {
         wholesaleProfitMarginInput.value = wholesaleProfitMargin.toFixed(2);
         wholesaleProfitAmountText.innerHTML = `Profit: ₹${wholesaleProfit.toFixed(2)}`;
         
-        if (wholesaleProfitMargin > 15) {
+        if (wholesaleProfit < 0) {
+            wholesaleProfitMarginInput.style.color = '#dc3545';
+            wholesaleProfitAmountText.style.color = '#dc3545';
+        } else if (wholesaleProfitMargin > 15) {
             wholesaleProfitMarginInput.style.color = '#198754';
             wholesaleProfitAmountText.style.color = '#198754';
         } else if (wholesaleProfitMargin > 5) {
@@ -1773,8 +2016,8 @@ function calculateProfitMargins() {
             wholesaleProfitMarginInput.style.color = '#0d6efd';
             wholesaleProfitAmountText.style.color = '#0d6efd';
         } else {
-            wholesaleProfitMarginInput.style.color = '#dc3545';
-            wholesaleProfitAmountText.style.color = '#dc3545';
+            wholesaleProfitMarginInput.style.color = '#6c757d';
+            wholesaleProfitAmountText.style.color = '#6c757d';
         }
     } else if (!hideWholesale) {
         wholesaleProfitMarginInput.value = '';
@@ -1793,12 +2036,8 @@ function calculateSecondaryPrices() {
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
-    const extraChargeHelp = document.getElementById('extraChargeHelp');
 
     secondaryUnitLabel.textContent = secondaryUnit || 'units';
-    extraChargeHelp.innerHTML = extraType === 'fixed' 
-        ? `Extra charge per ${secondaryUnit || 'secondary unit'}` 
-        : `Extra charge percentage per ${secondaryUnit || 'secondary unit'}`;
 
     if (secondaryUnit && conversion > 0 && conversion < 1000000) {
         previewBox.style.display = 'block';
@@ -1820,28 +2059,29 @@ function calculateSecondaryPrices() {
         let retailPerUnit = retailBasePricePerUnit + retailExtraPerUnit;
         let wholesalePerUnit = !hideWholesale ? (wholesaleBasePricePerUnit + wholesaleExtraPerUnit) : 0;
 
-        document.getElementById('secRetailPricePerUnit').textContent = `₹${retailPerUnit.toFixed(2)}`;
-        document.getElementById('secRetailBasePrice').textContent = `₹${retailBasePricePerUnit.toFixed(2)}`;
+        document.getElementById('secRetailPricePerUnit').textContent = '₹' + retailPerUnit.toFixed(2);
+        document.getElementById('secRetailBasePrice').textContent = '₹' + retailBasePricePerUnit.toFixed(2);
         document.getElementById('secRetailExtraCharge').textContent = extraType === 'fixed' 
-            ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
-            : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+            ? '₹' + retailExtraPerUnit.toFixed(2) + ' (fixed)' 
+            : '₹' + retailExtraPerUnit.toFixed(2) + ' (' + extraCharge + '%)';
 
         if (!hideWholesale) {
-            document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
-            document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
+            document.getElementById('secWholesalePricePerUnit').textContent = '₹' + wholesalePerUnit.toFixed(2);
+            document.getElementById('secWholesaleBasePrice').textContent = '₹' + wholesaleBasePricePerUnit.toFixed(2);
             document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
-                ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
-                : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+                ? '₹' + wholesaleExtraPerUnit.toFixed(2) + ' (fixed)' 
+                : '₹' + wholesaleExtraPerUnit.toFixed(2) + ' (' + extraCharge + '%)';
         }
 
         if (conversion === 0) {
-            alert('Conversion rate cannot be 0');
+            showSweetToast('Invalid Conversion', 'Conversion rate cannot be 0', 'warning');
             document.getElementById('secUnitConversion').value = '';
             previewBox.style.display = 'none';
         }
         
         if (conversion > 10000) {
             document.getElementById('secUnitConversion').style.borderColor = '#ffc107';
+            showSweetToast('High Conversion Rate', 'Conversion rate is very high. Please verify.', 'info');
         } else {
             document.getElementById('secUnitConversion').style.borderColor = '';
         }
@@ -1850,7 +2090,7 @@ function calculateSecondaryPrices() {
     }
 }
 
-// Validate price hierarchy
+// Validate price hierarchy (modified to allow wholesale below stock price)
 function validatePriceHierarchy() {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
@@ -1865,6 +2105,9 @@ function validatePriceHierarchy() {
         if (retailPrice <= stockPrice) {
             document.getElementById('retailPriceText').innerHTML = '<span class="text-danger">Error: Must be > Stock Price</span>';
             document.getElementById('retailPriceText').style.color = '#dc3545';
+        } else {
+            document.getElementById('retailPriceText').innerHTML = '<span class="text-success">✓ Valid</span>';
+            document.getElementById('retailPriceText').style.color = '#198754';
         }
         
         if (mrp > 0) {
@@ -1876,25 +2119,26 @@ function validatePriceHierarchy() {
             if (stockPrice > mrp) {
                 document.getElementById('stockPriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
                 document.getElementById('stockPriceText').style.color = '#dc3545';
+            } else {
+                document.getElementById('stockPriceText').innerHTML = document.getElementById('stockPriceText').innerHTML.replace('<span class="text-danger">Error: Must be ≤ MRP</span>', '');
             }
         }
     }
     
-    // Wholesale validation only if not hidden
     if (!hideWholesale) {
+        // Allow wholesale price to be lower than stock price - just show warning
         if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
-        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Should be ≤ Retail Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
-        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-warning">Warning: Below stock price (loss making)</span>';
+            document.getElementById('wholesalePriceText').style.color = '#ffc107';
+        } else if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-warning">Warning: Higher than retail price</span>';
+            document.getElementById('wholesalePriceText').style.color = '#ffc107';
+        } else if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
             document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
             document.getElementById('wholesalePriceText').style.color = '#dc3545';
+        } else if (wholesalePrice > 0) {
+            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-success">✓ Valid</span>';
+            document.getElementById('wholesalePriceText').style.color = '#198754';
         }
     }
 }
@@ -1963,6 +2207,9 @@ if (!hideWholesale) {
             document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
             document.getElementById('wholesalePriceText').style.color = '#0d6efd';
             calculateWholesalePrice();
+        } else if (value === 0) {
+            manualWholesalePrice = false;
+            calculateWholesalePrice();
         }
         
         calculateProfitMargins();
@@ -1971,8 +2218,8 @@ if (!hideWholesale) {
     });
 }
 
-// Form validation
-document.getElementById('editProductForm').addEventListener('submit', function(e) {
+// Form validation (modified to remove wholesale price restrictions)
+document.getElementById('editProductForm').addEventListener('submit', async function(e) {
     const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
     const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
@@ -1984,10 +2231,13 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
     const gstSelect = document.getElementById('gstSelect');
     const gstToggle = document.getElementById('gstTypeToggle');
     const gstType = gstToggle.checked ? 'exclusive' : 'inclusive';
+    const warrantyCheckbox = document.getElementById('warrantyCheckbox');
+    const warrantyType = document.getElementById('warrantyType').value;
+    const warrantyPeriod = parseFloat(document.querySelector('input[name="warranty_period"]').value) || 0;
     
     let errors = [];
+    let warnings = [];
     
-    // MRP validation - only if required
     if (mrpRequired && mrpInput <= 0) {
         errors.push('MRP is required and must be greater than 0.');
     }
@@ -2000,7 +2250,6 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
         errors.push('Retail price is required and must be greater than 0.');
     }
     
-    // Only validate wholesale price if not hidden
     if (!hideWholesale && wholesalePrice <= 0) {
         errors.push('Wholesale price is required and must be greater than 0.');
     }
@@ -2025,14 +2274,15 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
         }
     }
     
-    // Wholesale validation only if not hidden
     if (!hideWholesale) {
+        // Remove the wholesale price >= stock price validation
+        // Just show warning instead of error
         if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
-            errors.push('Wholesale price must be equal to or greater than Stock Price.');
+            warnings.push('Wholesale price is below stock price (loss making scenario).');
         }
         
         if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
-            errors.push('Wholesale price should be less than or equal to Retail Price.');
+            warnings.push('Wholesale price is higher than retail price.');
         }
         
         if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
@@ -2071,10 +2321,30 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
         }
     }
     
+    if (warrantyCheckbox.checked) {
+        if (warrantyType === 'none') {
+            errors.push('Please select warranty type if warranty is applicable.');
+        }
+        if (warrantyPeriod <= 0) {
+            errors.push('Warranty period must be greater than 0.');
+        }
+        if (warrantyPeriod > 120) {
+            errors.push('Warranty period cannot exceed 120 months/10 years.');
+        }
+    }
+    
     if (errors.length > 0) {
         e.preventDefault();
-        alert('Please fix the following errors:\n\n' + errors.join('\n'));
+        await showSweetError('Validation Errors', errors.join('\n'));
         return;
+    }
+    
+    if (warnings.length > 0) {
+        e.preventDefault();
+        const result = await showSweetConfirm('Warning', warnings.join('\n\n') + '\n\nDo you want to continue?', 'Yes, Continue', 'Cancel');
+        if (!result.isConfirmed) {
+            return;
+        }
     }
     
     const fileInput = document.getElementById('productImage');
@@ -2083,7 +2353,7 @@ document.getElementById('editProductForm').addEventListener('submit', function(e
         const maxSize = 2 * 1024 * 1024;
         if (fileSize > maxSize) {
             e.preventDefault();
-            alert('File size exceeds 2MB limit. Please choose a smaller image.');
+            await showSweetError('File Too Large', 'File size exceeds 2MB limit. Please choose a smaller image.');
             fileInput.focus();
         }
     }
@@ -2095,6 +2365,7 @@ function generateBarcode() {
     const random = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
     const barcode = prefix + random;
     document.querySelector('input[name="barcode"]').value = barcode;
+    showSweetToast('Barcode Generated', 'New barcode has been generated', 'success', 2000);
 }
 
 // Load subcategories when category changes
@@ -2128,6 +2399,7 @@ document.getElementById('categorySelect').addEventListener('change', function() 
         .catch(error => {
             console.error('Error loading subcategories:', error);
             subcategorySelect.innerHTML = '<option value="">Error loading subcategories</option>';
+            showSweetError('Error', 'Failed to load subcategories. Please try again.');
         })
         .finally(() => {
             loadingDiv.style.display = 'none';
@@ -2165,6 +2437,7 @@ document.getElementById('productImage').addEventListener('change', function(e) {
                 <img src="${e.target.result}" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
                 <p class="mt-2 mb-0"><small>${file.name} (${(file.size / 1024).toFixed(1)} KB) - New image</small></p>
             `;
+            showSweetToast('Image Loaded', 'New image preview is ready', 'success', 1500);
         };
         
         reader.readAsDataURL(file);
@@ -2249,77 +2522,251 @@ document.querySelector('input[name="secondary_unit"]').addEventListener('input',
     document.getElementById('secondaryUnitLabel').textContent = this.value || 'units';
 });
 
-// Quick add category
-function quickAddCategory() {
-    const categoryName = prompt('Enter new category name:');
-    if (categoryName && categoryName.trim()) {
-        fetch('ajax/quick_add_category.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `category_name=${encodeURIComponent(categoryName.trim())}&business_id=<?= $current_business_id ?>`
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const categorySelect = document.getElementById('categorySelect');
-                const newOption = document.createElement('option');
-                newOption.value = data.category_id;
-                newOption.textContent = data.category_name;
-                categorySelect.appendChild(newOption);
-                categorySelect.value = data.category_id;
-                alert('Category added successfully!');
-            } else {
-                alert('Error: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Failed to add category');
-        });
+// Initialize on page load
+updateGSTType();
+toggleReferralBox();
+updateCommissionUnit();
+updateRetailPriceUnit();
+if (!hideWholesale) updateWholesalePriceUnit();
+updateSecUnitExtraUnit();
+
+document.getElementById('discountSymbol').textContent = discountSymbol;
+
+// Check if prices were manually entered on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
+    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
+    
+    if (stockPrice > 0 && <?= $product['discount_value'] ?? 0 ?> == 0) {
+        manualStockPrice = true;
+        stockPriceCalculationMode = 'manual';
+        document.getElementById('stockPriceText').innerHTML = 'Manually entered';
+        document.getElementById('stockPriceText').style.color = '#0d6efd';
     }
+    
+    if (retailPrice > 0 && <?= $product['retail_price_value'] ?? 0 ?> == 0) {
+        manualRetailPrice = true;
+        retailPriceCalculationMode = 'manual';
+        document.getElementById('retailPriceText').innerHTML = 'Manually entered';
+        document.getElementById('retailPriceText').style.color = '#0d6efd';
+    }
+    
+    if (!hideWholesale && wholesalePrice > 0 && <?= $product['wholesale_price_value'] ?? 0 ?> == 0) {
+        manualWholesalePrice = true;
+        wholesalePriceCalculationMode = 'manual';
+        document.getElementById('wholesalePriceText').innerHTML = 'Manually entered';
+        document.getElementById('wholesalePriceText').style.color = '#0d6efd';
+    }
+    
+    calculateGST();
+    calculateSecondaryPrices();
+    toggleWarrantyFields();
+    validatePriceHierarchy();
+});
+
+// Quick Add Category Functions
+function openCategoryModal() {
+    document.getElementById('categoryName').value = '';
+    document.getElementById('categoryCode').value = '';
+    document.getElementById('categoryDescription').value = '';
+    new bootstrap.Modal(document.getElementById('categoryModal')).show();
 }
 
-// Quick add subcategory
-function quickAddSubcategory() {
-    const categorySelect = document.getElementById('categorySelect');
-    if (!categorySelect.value) {
-        alert('Please select a category first');
+document.getElementById('quickCategoryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const categoryName = document.getElementById('categoryName').value.trim();
+    if (!categoryName) {
+        await showSweetError('Missing Information', 'Please enter category name');
         return;
     }
     
-    const subcategoryName = prompt('Enter new subcategory name:');
-    if (subcategoryName && subcategoryName.trim()) {
-        fetch('ajax/quick_add_subcategory.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `subcategory_name=${encodeURIComponent(subcategoryName.trim())}&category_id=${categorySelect.value}&business_id=<?= $current_business_id ?>`
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const subcategorySelect = document.getElementById('subcategorySelect');
-                const newOption = document.createElement('option');
-                newOption.value = data.subcategory_id;
-                newOption.textContent = data.subcategory_name;
-                subcategorySelect.appendChild(newOption);
-                subcategorySelect.value = data.subcategory_id;
-                alert('Subcategory added successfully!');
-            } else {
-                alert('Error: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Failed to add subcategory');
-        });
+    const saveBtn = document.getElementById('saveCategoryBtn');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    
+    fetch('ajax/quick_add_category.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `category_name=${encodeURIComponent(categoryName)}&category_code=${encodeURIComponent(document.getElementById('categoryCode').value)}&description=${encodeURIComponent(document.getElementById('categoryDescription').value)}&business_id=<?= $current_business_id ?>`
+    })
+    .then(response => response.json())
+    .then(async data => {
+        if (data.success) {
+            const categorySelect = document.getElementById('categorySelect');
+            const newOption = document.createElement('option');
+            newOption.value = data.category_id;
+            newOption.textContent = data.category_name;
+            categorySelect.appendChild(newOption);
+            categorySelect.value = data.category_id;
+            
+            bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
+            await showSweetSuccess('Success!', 'Category added successfully!');
+            categorySelect.dispatchEvent(new Event('change'));
+        } else {
+            await showSweetError('Error', data.message || 'Failed to add category');
+        }
+    })
+    .catch(async error => {
+        console.error('Error:', error);
+        await showSweetError('Error', 'Failed to add category. Please try again.');
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Category';
+    });
+});
+
+function openSubcategoryModal() {
+    const categorySelect = document.getElementById('categorySelect');
+    if (!categorySelect.value) {
+        showSweetToast('Select Category First', 'Please select a category before adding a subcategory', 'warning');
+        return;
     }
+    
+    document.getElementById('subcategoryName').value = '';
+    document.getElementById('subcategoryCode').value = '';
+    document.getElementById('subcategoryDescription').value = '';
+    document.getElementById('subcategoryParentCategory').value = categorySelect.value;
+    new bootstrap.Modal(document.getElementById('subcategoryModal')).show();
+}
+
+document.getElementById('quickSubcategoryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const categoryId = document.getElementById('subcategoryParentCategory').value;
+    const subcategoryName = document.getElementById('subcategoryName').value.trim();
+    
+    if (!categoryId) {
+        await showSweetError('Missing Information', 'Please select a parent category');
+        return;
+    }
+    
+    if (!subcategoryName) {
+        await showSweetError('Missing Information', 'Please enter subcategory name');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveSubcategoryBtn');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    
+    fetch('ajax/quick_add_subcategory.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `subcategory_name=${encodeURIComponent(subcategoryName)}&category_id=${categoryId}&subcategory_code=${encodeURIComponent(document.getElementById('subcategoryCode').value)}&description=${encodeURIComponent(document.getElementById('subcategoryDescription').value)}&business_id=<?= $current_business_id ?>`
+    })
+    .then(response => response.json())
+    .then(async data => {
+        if (data.success) {
+            const subcategorySelect = document.getElementById('subcategorySelect');
+            const newOption = document.createElement('option');
+            newOption.value = data.subcategory_id;
+            newOption.textContent = data.subcategory_name;
+            subcategorySelect.appendChild(newOption);
+            subcategorySelect.value = data.subcategory_id;
+            
+            bootstrap.Modal.getInstance(document.getElementById('subcategoryModal')).hide();
+            await showSweetSuccess('Success!', 'Subcategory added successfully!');
+        } else {
+            await showSweetError('Error', data.message || 'Failed to add subcategory');
+        }
+    })
+    .catch(async error => {
+        console.error('Error:', error);
+        await showSweetError('Error', 'Failed to add subcategory. Please try again.');
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Subcategory';
+    });
+});
+
+function openGSTModal() {
+    document.getElementById('hsnCode').value = '';
+    document.getElementById('gstDescription').value = '';
+    document.getElementById('cgstRate').value = '0';
+    document.getElementById('sgstRate').value = '0';
+    document.getElementById('igstRate').value = '0';
+    updateTotalGST();
+    new bootstrap.Modal(document.getElementById('gstModal')).show();
+}
+
+function updateTotalGST() {
+    const cgst = parseFloat(document.getElementById('cgstRate').value) || 0;
+    const sgst = parseFloat(document.getElementById('sgstRate').value) || 0;
+    const igst = parseFloat(document.getElementById('igstRate').value) || 0;
+    const total = cgst + sgst + igst;
+    document.getElementById('totalGSTRate').textContent = total.toFixed(2);
+}
+
+document.getElementById('quickGSTForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const hsnCode = document.getElementById('hsnCode').value.trim();
+    if (!hsnCode) {
+        await showSweetError('Missing Information', 'Please enter HSN code');
+        return;
+    }
+    
+    const cgstRate = parseFloat(document.getElementById('cgstRate').value) || 0;
+    const sgstRate = parseFloat(document.getElementById('sgstRate').value) || 0;
+    const igstRate = parseFloat(document.getElementById('igstRate').value) || 0;
+    
+    if (cgstRate === 0 && sgstRate === 0 && igstRate === 0) {
+        await showSweetError('Missing Information', 'Please enter at least one GST rate');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveGSTBtn');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    
+    fetch('ajax/quick_add_gst.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `hsn_code=${encodeURIComponent(hsnCode)}&description=${encodeURIComponent(document.getElementById('gstDescription').value)}&cgst_rate=${cgstRate}&sgst_rate=${sgstRate}&igst_rate=${igstRate}&business_id=<?= $current_business_id ?>`
+    })
+    .then(response => response.json())
+    .then(async data => {
+        if (data.success) {
+            const gstSelect = document.getElementById('gstSelect');
+            const newOption = document.createElement('option');
+            newOption.value = data.gst_id;
+            newOption.setAttribute('data-rate', data.total_gst_rate);
+            newOption.textContent = `${data.hsn_code} - Total GST: ${data.total_gst_rate}% (CGST: ${data.cgst_rate}%, SGST: ${data.sgst_rate}%, IGST: ${data.igst_rate}%)`;
+            gstSelect.appendChild(newOption);
+            gstSelect.value = data.gst_id;
+            
+            bootstrap.Modal.getInstance(document.getElementById('gstModal')).hide();
+            await showSweetSuccess('Success!', 'GST rate added successfully!');
+            calculateGST();
+        } else {
+            await showSweetError('Error', data.message || 'Failed to add GST rate');
+        }
+    })
+    .catch(async error => {
+        console.error('Error:', error);
+        await showSweetError('Error', 'Failed to add GST rate. Please try again.');
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save GST Rate';
+    });
+});
+
+// Toast notification function for backward compatibility
+function showToast(type, message) {
+    showSweetToast(type === 'success' ? 'Success' : (type === 'error' ? 'Error' : 'Info'), message, type, 3000);
 }
 </script>
-
 <style>
 .form-control-lg { 
     font-size: 1.1rem; 
@@ -2436,6 +2883,22 @@ function quickAddSubcategory() {
 }
 .bg-light {
     background-color: #f8f9fa !important;
+}
+#warrantyFields {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+.modal-content {
+    border-radius: 12px;
+}
+.modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+.modal-header .btn-close {
+    filter: brightness(0) invert(1);
 }
 </style>
 </body>

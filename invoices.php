@@ -457,24 +457,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                 </thead>
                                 <tbody>
                                     <?php if (empty($invoices)): ?>
-                                    <tr>
-                                        <td colspan="7" class="text-center py-5">
-                                            <div class="empty-state">
-                                                <i class="bx bx-receipt fs-1 text-muted mb-3"></i>
-                                                <h5>No invoices found</h5>
-                                                <p class="text-muted">
-                                                    <?php if ($search || $customer_id_filter || $status_filter != 'all' || $due_date_filter != 'all' || $start_date != date('Y-m-01') || $end_date != date('Y-m-d')): ?>
-                                                        Try adjusting your filters or <a href="invoices.php">clear all filters</a>
-                                                    <?php else: ?>
-                                                        Start by creating your first invoice
-                                                    <?php endif; ?>
-                                                </p>
-                                                <a href="pos.php" class="btn btn-primary">
-                                                    <i class="bx bx-plus-circle me-1"></i> Create Invoice
-                                                </a>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    
                                     <?php else: ?>
                                     <?php 
                                     $today = new DateTime();
