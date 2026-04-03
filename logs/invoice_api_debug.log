@@ -63769,3 +63769,3501 @@
     "attempts": 0,
     "final_seq": 24
 }
+[2026-04-03 09:56:51] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 09:56:51] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 09:56:52] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 09:56:52] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 09:58:00] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 09:58:01] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 09:58:01] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 09:58:01] Action: save
+[2026-04-03 09:58:01] Raw input received | {
+    "raw": "{\"customer_name\":\"Test\",\"customer_phone\":\"1234567899\",\"customer_address\":\"Vellichandai\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0001\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2368,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":12.43,\"total_sgst\":12.43,\"total_igst\":0,\"total_taxable\":2343.14,\"total_gst\":24.86,\"grand_total\":2368,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":599,\"name\":\"Product 1 (Category 1 - Sub 1)\",\"code\":\"PR001\",\"quantity\":1,\"unit\":\"nos\",\"price\":163,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":163,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":138.135593220339,\"cgst_amount\":12.432203389830505,\"sgst_amount\":12.432203389830505,\"igst_amount\":0,\"stock_price\":70,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":10,\"quantity_in_primary\":1},{\"product_id\":1106,\"name\":\"raymond (shirt)\",\"code\":\"PR00001\",\"quantity\":5,\"unit\":\"pcs\",\"price\":441,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2205,\"hsn_code\":\"\",\"cgst_rate\":0,\"sgst_rate\":0,\"igst_rate\":0,\"taxable_value\":2205,\"cgst_amount\":0,\"sgst_amount\":0,\"igst_amount\":0,\"stock_price\":405,\"referral_enabled\":0,\"referral_type\":\"percentage\",\"referral_value\":0,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":5}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":500,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":1868,\"totalPaid\":2368,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 09:58:01] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Test",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-03 09:58:01] Transaction started
+[2026-04-03 09:58:01] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 09:58:01] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 09:58:01] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 09:58:01] Customer address | {
+    "address": "Vellichandai"
+}
+[2026-04-03 09:58:01] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 09:58:01] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 09:58:01] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 09:58:01] Created new customer | {
+    "customer_id": "224"
+}
+[2026-04-03 09:58:01] Created new customer points record | {
+    "customer_id": "224"
+}
+[2026-04-03 09:58:02] Using invoice number | {
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-03 09:58:02] Payment summary | {
+    "subtotal": 2368,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2368,
+    "total_paid": 2368,
+    "change_given": 0,
+    "pending_amount": 1868,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 09:58:02] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 09:58:02] Invoice created | {
+    "invoice_id": "366",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 09:58:02] Customer address saved
+[2026-04-03 09:58:02] Processing item #1 | {
+    "product_id": 599,
+    "name": "Product 1 (Category 1 - Sub 1)",
+    "code": "PR001",
+    "quantity": 1,
+    "unit": "nos",
+    "price": 163,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 163,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 138.135593220339,
+    "cgst_amount": 12.432203389830505,
+    "sgst_amount": 12.432203389830505,
+    "igst_amount": 0,
+    "stock_price": 70,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 10,
+    "quantity_in_primary": 1
+}
+[2026-04-03 09:58:02] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "nos",
+    "secondary_unit": "PCS",
+    "sec_unit_conversion": 10,
+    "current_stock": 1024,
+    "current_total_sec_units": 10240,
+    "old_qty": 1016,
+    "use_batch_tracking": true,
+    "batch_id": 84
+}
+[2026-04-03 09:58:02] Primary unit calculation | {
+    "qty_requested": 1,
+    "unit_requested": "nos",
+    "quantity_in_primary": 1,
+    "quantity_in_secondary": 10
+}
+[2026-04-03 09:58:02] Stock availability check | {
+    "quantity_to_check": 1,
+    "total_available_primary": 1024,
+    "total_available_secondary": 10240,
+    "old_qty": 1016,
+    "current_stock": 1024
+}
+[2026-04-03 09:58:02] Item #1 saved | {
+    "item_id": "502",
+    "unit": "nos",
+    "quantity_sold": 1,
+    "quantity_in_primary": 1,
+    "quantity_in_secondary": 10,
+    "profit": 93
+}
+[2026-04-03 09:58:02] Using batch tracking with iterative deduction | {
+    "batch_id": 84,
+    "old_qty": 1016,
+    "current_stock": 1024,
+    "quantity_to_deduct": 1
+}
+[2026-04-03 09:58:02] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 70,
+    "old_purchase_price": 70,
+    "old_mrp": 200,
+    "new_mrp": 200,
+    "retail_price": 84,
+    "wholesale_price": 77,
+    "old_retail_price": 84,
+    "old_wholesale_price": 77,
+    "old_selling_price": 84,
+    "current_stock": 1024,
+    "old_qty": 1016
+}
+[2026-04-03 09:58:02] Iterative deduction #1 of 1 | {
+    "current_old_qty": 1016,
+    "current_quantity": 1024
+}
+[2026-04-03 09:58:02] Deducted one unit | {
+    "old_qty_before": 1016,
+    "old_qty_after": 1015,
+    "quantity_before": 1024,
+    "quantity_after": 1023,
+    "sec_units_deducted": 10
+}
+[2026-04-03 09:58:02] Iterative deduction completed | {
+    "total_deducted": 1,
+    "price_updated": "No"
+}
+[2026-04-03 09:58:02] Selling from OLD stock | {
+    "old_purchase_price": 70,
+    "new_purchase_price": 70,
+    "selling_price": 84,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 09:58:02] Updated invoice item with profit/loss | {
+    "item_id": "502",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 09:58:03] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-2854",
+    "old_stock": 1024,
+    "new_stock": 1023,
+    "quantity_removed": 1
+}
+[2026-04-03 09:58:03] Final stock status | {
+    "final_quantity": "1023.0000",
+    "final_secondary_units": "10230.0000",
+    "final_old_qty": "1015.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 84
+}
+[2026-04-03 09:58:03] Stock deduction completed for item #1 | {
+    "product_id": 599,
+    "product_name": "Product 1",
+    "sold_quantity": "1 nos",
+    "converted_primary": "1 nos",
+    "converted_secondary": "10 PCS",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 09:58:03] Processing item #2 | {
+    "product_id": 1106,
+    "name": "raymond (shirt)",
+    "code": "PR00001",
+    "quantity": 5,
+    "unit": "pcs",
+    "price": 441,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2205,
+    "hsn_code": "",
+    "cgst_rate": 0,
+    "sgst_rate": 0,
+    "igst_rate": 0,
+    "taxable_value": 2205,
+    "cgst_amount": 0,
+    "sgst_amount": 0,
+    "igst_amount": 0,
+    "stock_price": 405,
+    "referral_enabled": 0,
+    "referral_type": "percentage",
+    "referral_value": 0,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 5
+}
+[2026-04-03 09:58:03] Product stock info | {
+    "product_name": "raymond",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 45,
+    "current_total_sec_units": 45,
+    "old_qty": 13,
+    "use_batch_tracking": true,
+    "batch_id": 102
+}
+[2026-04-03 09:58:03] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5
+}
+[2026-04-03 09:58:03] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 45,
+    "total_available_secondary": 45,
+    "old_qty": 13,
+    "current_stock": 45
+}
+[2026-04-03 09:58:03] Item #2 saved | {
+    "item_id": "503",
+    "unit": "pcs",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5,
+    "profit": 180
+}
+[2026-04-03 09:58:03] Using batch tracking with iterative deduction | {
+    "batch_id": 102,
+    "old_qty": 13,
+    "current_stock": 45,
+    "quantity_to_deduct": 5
+}
+[2026-04-03 09:58:03] Batch info | {
+    "quantity_received": 30,
+    "purchase_price": 405,
+    "old_purchase_price": 405,
+    "old_mrp": 450,
+    "new_mrp": 450,
+    "retail_price": 441.45,
+    "wholesale_price": 437.4,
+    "old_retail_price": 441.45,
+    "old_wholesale_price": 437.4,
+    "old_selling_price": 441.45,
+    "current_stock": 45,
+    "old_qty": 13
+}
+[2026-04-03 09:58:03] Iterative deduction #1 of 5 | {
+    "current_old_qty": 13,
+    "current_quantity": 45
+}
+[2026-04-03 09:58:03] Deducted one unit | {
+    "old_qty_before": 13,
+    "old_qty_after": 12,
+    "quantity_before": 45,
+    "quantity_after": 44,
+    "sec_units_deducted": 1
+}
+[2026-04-03 09:58:03] Iterative deduction #2 of 5 | {
+    "current_old_qty": 12,
+    "current_quantity": 44
+}
+[2026-04-03 09:58:03] Deducted one unit | {
+    "old_qty_before": 12,
+    "old_qty_after": 11,
+    "quantity_before": 44,
+    "quantity_after": 43,
+    "sec_units_deducted": 1
+}
+[2026-04-03 09:58:03] Iterative deduction #3 of 5 | {
+    "current_old_qty": 11,
+    "current_quantity": 43
+}
+[2026-04-03 09:58:03] Deducted one unit | {
+    "old_qty_before": 11,
+    "old_qty_after": 10,
+    "quantity_before": 43,
+    "quantity_after": 42,
+    "sec_units_deducted": 1
+}
+[2026-04-03 09:58:03] Iterative deduction #4 of 5 | {
+    "current_old_qty": 10,
+    "current_quantity": 42
+}
+[2026-04-03 09:58:04] Deducted one unit | {
+    "old_qty_before": 10,
+    "old_qty_after": 9,
+    "quantity_before": 42,
+    "quantity_after": 41,
+    "sec_units_deducted": 1
+}
+[2026-04-03 09:58:04] Iterative deduction #5 of 5 | {
+    "current_old_qty": 9,
+    "current_quantity": 41
+}
+[2026-04-03 09:58:04] Deducted one unit | {
+    "old_qty_before": 9,
+    "old_qty_after": 8,
+    "quantity_before": 41,
+    "quantity_after": 40,
+    "sec_units_deducted": 1
+}
+[2026-04-03 09:58:04] Iterative deduction completed | {
+    "total_deducted": 5,
+    "price_updated": "No"
+}
+[2026-04-03 09:58:04] Selling from OLD stock | {
+    "old_purchase_price": 405,
+    "new_purchase_price": 405,
+    "selling_price": 441.45,
+    "margin_before": 8.256880733944952,
+    "margin_after": 8.256880733944952
+}
+[2026-04-03 09:58:04] Updated invoice item with profit/loss | {
+    "item_id": "503",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 09:58:04] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-9852",
+    "old_stock": 45,
+    "new_stock": 40,
+    "quantity_removed": 5
+}
+[2026-04-03 09:58:04] Final stock status | {
+    "final_quantity": "40.0000",
+    "final_secondary_units": "40.0000",
+    "final_old_qty": "8.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 102
+}
+[2026-04-03 09:58:04] Stock deduction completed for item #2 | {
+    "product_id": 1106,
+    "product_name": "raymond",
+    "sold_quantity": "5 pcs",
+    "converted_primary": "5 pcs",
+    "converted_secondary": "5 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 09:58:04] Points earned | {
+    "points_earned": 23.68
+}
+[2026-04-03 09:58:04] Points earning recorded
+[2026-04-03 09:58:05] GST summary saved
+[2026-04-03 09:58:05] Updated customer outstanding amount | {
+    "pending_amount": 1868
+}
+[2026-04-03 09:58:05] Transaction committed successfully
+[2026-04-03 09:58:05] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 09:58:08] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 09:58:08] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:01:03] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:01:04] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:01:05] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:01:05] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:02:30] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:02:30] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:02:30] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:02:30] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:03:19] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:03:20] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 10:03:20] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 10:03:20] Action: save
+[2026-04-03 10:03:20] Raw input received | {
+    "raw": "{\"customer_name\":\"Test 3\",\"customer_phone\":\"8555441122\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0002\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2138,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":62.16,\"total_sgst\":62.16,\"total_igst\":0,\"total_taxable\":2013.68,\"total_gst\":124.32,\"grand_total\":2138,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":599,\"name\":\"Product 1 (Category 1 - Sub 1)\",\"code\":\"PR001\",\"quantity\":5,\"unit\":\"nos\",\"price\":163,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":815,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":690.677966101695,\"cgst_amount\":62.1610169491525,\"sgst_amount\":62.1610169491525,\"igst_amount\":0,\"stock_price\":70,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":10,\"quantity_in_primary\":5},{\"product_id\":1106,\"name\":\"raymond (shirt)\",\"code\":\"PR00001\",\"quantity\":3,\"unit\":\"pcs\",\"price\":441,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":1323,\"hsn_code\":\"\",\"cgst_rate\":0,\"sgst_rate\":0,\"igst_rate\":0,\"taxable_value\":1323,\"cgst_amount\":0,\"sgst_amount\":0,\"igst_amount\":0,\"stock_price\":405,\"referral_enabled\":0,\"referral_type\":\"percentage\",\"referral_value\":0,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":500,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":1638,\"totalPaid\":2138,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 10:03:20] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Test 3",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0002"
+}
+[2026-04-03 10:03:20] Transaction started
+[2026-04-03 10:03:20] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 10:03:20] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 10:03:20] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 10:03:20] Customer address | {
+    "address": ""
+}
+[2026-04-03 10:03:20] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 10:03:20] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 10:03:20] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 10:03:20] Created new customer | {
+    "customer_id": "226"
+}
+[2026-04-03 10:03:20] Created new customer points record | {
+    "customer_id": "226"
+}
+[2026-04-03 10:03:20] Using invoice number | {
+    "invoice_number": "INV202604-0002"
+}
+[2026-04-03 10:03:20] Payment summary | {
+    "subtotal": 2138,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2138,
+    "total_paid": 2138,
+    "change_given": 0,
+    "pending_amount": 1638,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 10:03:20] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 10:03:20] Invoice created | {
+    "invoice_id": "367",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 10:03:20] Processing item #1 | {
+    "product_id": 599,
+    "name": "Product 1 (Category 1 - Sub 1)",
+    "code": "PR001",
+    "quantity": 5,
+    "unit": "nos",
+    "price": 163,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 815,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 690.677966101695,
+    "cgst_amount": 62.1610169491525,
+    "sgst_amount": 62.1610169491525,
+    "igst_amount": 0,
+    "stock_price": 70,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 10,
+    "quantity_in_primary": 5
+}
+[2026-04-03 10:03:21] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "nos",
+    "secondary_unit": "PCS",
+    "sec_unit_conversion": 10,
+    "current_stock": 1023,
+    "current_total_sec_units": 10230,
+    "old_qty": 1015,
+    "use_batch_tracking": true,
+    "batch_id": 84
+}
+[2026-04-03 10:03:21] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "nos",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 50
+}
+[2026-04-03 10:03:21] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 1023,
+    "total_available_secondary": 10230,
+    "old_qty": 1015,
+    "current_stock": 1023
+}
+[2026-04-03 10:03:21] Item #1 saved | {
+    "item_id": "504",
+    "unit": "nos",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 50,
+    "profit": 465
+}
+[2026-04-03 10:03:21] Using batch tracking with iterative deduction | {
+    "batch_id": 84,
+    "old_qty": 1015,
+    "current_stock": 1023,
+    "quantity_to_deduct": 5
+}
+[2026-04-03 10:03:21] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 70,
+    "old_purchase_price": 70,
+    "old_mrp": 200,
+    "new_mrp": 200,
+    "retail_price": 84,
+    "wholesale_price": 77,
+    "old_retail_price": 84,
+    "old_wholesale_price": 77,
+    "old_selling_price": 84,
+    "current_stock": 1023,
+    "old_qty": 1015
+}
+[2026-04-03 10:03:21] Iterative deduction #1 of 5 | {
+    "current_old_qty": 1015,
+    "current_quantity": 1023
+}
+[2026-04-03 10:03:21] Deducted one unit | {
+    "old_qty_before": 1015,
+    "old_qty_after": 1014,
+    "quantity_before": 1023,
+    "quantity_after": 1022,
+    "sec_units_deducted": 10
+}
+[2026-04-03 10:03:21] Iterative deduction #2 of 5 | {
+    "current_old_qty": 1014,
+    "current_quantity": 1022
+}
+[2026-04-03 10:03:21] Deducted one unit | {
+    "old_qty_before": 1014,
+    "old_qty_after": 1013,
+    "quantity_before": 1022,
+    "quantity_after": 1021,
+    "sec_units_deducted": 10
+}
+[2026-04-03 10:03:21] Iterative deduction #3 of 5 | {
+    "current_old_qty": 1013,
+    "current_quantity": 1021
+}
+[2026-04-03 10:03:21] Deducted one unit | {
+    "old_qty_before": 1013,
+    "old_qty_after": 1012,
+    "quantity_before": 1021,
+    "quantity_after": 1020,
+    "sec_units_deducted": 10
+}
+[2026-04-03 10:03:21] Iterative deduction #4 of 5 | {
+    "current_old_qty": 1012,
+    "current_quantity": 1020
+}
+[2026-04-03 10:03:21] Deducted one unit | {
+    "old_qty_before": 1012,
+    "old_qty_after": 1011,
+    "quantity_before": 1020,
+    "quantity_after": 1019,
+    "sec_units_deducted": 10
+}
+[2026-04-03 10:03:21] Iterative deduction #5 of 5 | {
+    "current_old_qty": 1011,
+    "current_quantity": 1019
+}
+[2026-04-03 10:03:22] Deducted one unit | {
+    "old_qty_before": 1011,
+    "old_qty_after": 1010,
+    "quantity_before": 1019,
+    "quantity_after": 1018,
+    "sec_units_deducted": 10
+}
+[2026-04-03 10:03:22] Iterative deduction completed | {
+    "total_deducted": 5,
+    "price_updated": "No"
+}
+[2026-04-03 10:03:22] Selling from OLD stock | {
+    "old_purchase_price": 70,
+    "new_purchase_price": 70,
+    "selling_price": 84,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 10:03:22] Updated invoice item with profit/loss | {
+    "item_id": "504",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 10:03:22] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-7486",
+    "old_stock": 1023,
+    "new_stock": 1018,
+    "quantity_removed": 5
+}
+[2026-04-03 10:03:22] Final stock status | {
+    "final_quantity": "1018.0000",
+    "final_secondary_units": "10180.0000",
+    "final_old_qty": "1010.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 84
+}
+[2026-04-03 10:03:22] Stock deduction completed for item #1 | {
+    "product_id": 599,
+    "product_name": "Product 1",
+    "sold_quantity": "5 nos",
+    "converted_primary": "5 nos",
+    "converted_secondary": "50 PCS",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 10:03:22] Processing item #2 | {
+    "product_id": 1106,
+    "name": "raymond (shirt)",
+    "code": "PR00001",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 441,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 1323,
+    "hsn_code": "",
+    "cgst_rate": 0,
+    "sgst_rate": 0,
+    "igst_rate": 0,
+    "taxable_value": 1323,
+    "cgst_amount": 0,
+    "sgst_amount": 0,
+    "igst_amount": 0,
+    "stock_price": 405,
+    "referral_enabled": 0,
+    "referral_type": "percentage",
+    "referral_value": 0,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-03 10:03:22] Product stock info | {
+    "product_name": "raymond",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 40,
+    "current_total_sec_units": 40,
+    "old_qty": 8,
+    "use_batch_tracking": true,
+    "batch_id": 102
+}
+[2026-04-03 10:03:22] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-03 10:03:22] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 40,
+    "total_available_secondary": 40,
+    "old_qty": 8,
+    "current_stock": 40
+}
+[2026-04-03 10:03:22] Item #2 saved | {
+    "item_id": "505",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 108
+}
+[2026-04-03 10:03:22] Using batch tracking with iterative deduction | {
+    "batch_id": 102,
+    "old_qty": 8,
+    "current_stock": 40,
+    "quantity_to_deduct": 3
+}
+[2026-04-03 10:03:22] Batch info | {
+    "quantity_received": 30,
+    "purchase_price": 405,
+    "old_purchase_price": 405,
+    "old_mrp": 450,
+    "new_mrp": 450,
+    "retail_price": 441.45,
+    "wholesale_price": 437.4,
+    "old_retail_price": 441.45,
+    "old_wholesale_price": 437.4,
+    "old_selling_price": 441.45,
+    "current_stock": 40,
+    "old_qty": 8
+}
+[2026-04-03 10:03:22] Iterative deduction #1 of 3 | {
+    "current_old_qty": 8,
+    "current_quantity": 40
+}
+[2026-04-03 10:03:22] Deducted one unit | {
+    "old_qty_before": 8,
+    "old_qty_after": 7,
+    "quantity_before": 40,
+    "quantity_after": 39,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:03:22] Iterative deduction #2 of 3 | {
+    "current_old_qty": 7,
+    "current_quantity": 39
+}
+[2026-04-03 10:03:23] Deducted one unit | {
+    "old_qty_before": 7,
+    "old_qty_after": 6,
+    "quantity_before": 39,
+    "quantity_after": 38,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:03:23] Iterative deduction #3 of 3 | {
+    "current_old_qty": 6,
+    "current_quantity": 38
+}
+[2026-04-03 10:03:23] Deducted one unit | {
+    "old_qty_before": 6,
+    "old_qty_after": 5,
+    "quantity_before": 38,
+    "quantity_after": 37,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:03:23] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "No"
+}
+[2026-04-03 10:03:23] Selling from OLD stock | {
+    "old_purchase_price": 405,
+    "new_purchase_price": 405,
+    "selling_price": 441.45,
+    "margin_before": 8.256880733944952,
+    "margin_after": 8.256880733944952
+}
+[2026-04-03 10:03:23] Updated invoice item with profit/loss | {
+    "item_id": "505",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 10:03:23] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-6016",
+    "old_stock": 40,
+    "new_stock": 37,
+    "quantity_removed": 3
+}
+[2026-04-03 10:03:24] Final stock status | {
+    "final_quantity": "37.0000",
+    "final_secondary_units": "37.0000",
+    "final_old_qty": "5.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 102
+}
+[2026-04-03 10:03:24] Stock deduction completed for item #2 | {
+    "product_id": 1106,
+    "product_name": "raymond",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 10:03:24] Points earned | {
+    "points_earned": 21.38
+}
+[2026-04-03 10:03:24] Points earning recorded
+[2026-04-03 10:03:24] GST summary saved
+[2026-04-03 10:03:24] Updated customer outstanding amount | {
+    "pending_amount": 1638
+}
+[2026-04-03 10:03:24] Transaction committed successfully
+[2026-04-03 10:03:24] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 10:03:27] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:03:27] Generated invoice number | {
+    "invoice_number": "INV202604-0003",
+    "attempts": 0,
+    "final_seq": 3
+}
+[2026-04-03 10:04:33] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:04:33] Generated invoice number | {
+    "invoice_number": "INV202604-0003",
+    "attempts": 0,
+    "final_seq": 3
+}
+[2026-04-03 10:04:33] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:04:33] Generated invoice number | {
+    "invoice_number": "INV202604-0003",
+    "attempts": 0,
+    "final_seq": 3
+}
+[2026-04-03 10:05:15] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:05:16] Generated invoice number | {
+    "invoice_number": "INV202604-0003",
+    "attempts": 0,
+    "final_seq": 3
+}
+[2026-04-03 10:05:16] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 10:05:16] Action: save
+[2026-04-03 10:05:16] Raw input received | {
+    "raw": "{\"customer_name\":\"Test 2\",\"customer_phone\":\"9874522160\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":\"225\",\"invoice_number\":\"INV202604-0003\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":3423,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":160.17,\"total_sgst\":160.17,\"total_igst\":0,\"total_taxable\":3102.66,\"total_gst\":320.34,\"grand_total\":3423,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":1106,\"name\":\"raymond (shirt)\",\"code\":\"PR00001\",\"quantity\":3,\"unit\":\"pcs\",\"price\":441,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":1323,\"hsn_code\":\"\",\"cgst_rate\":0,\"sgst_rate\":0,\"igst_rate\":0,\"taxable_value\":1323,\"cgst_amount\":0,\"sgst_amount\":0,\"igst_amount\":0,\"stock_price\":405,\"referral_enabled\":0,\"referral_type\":\"percentage\",\"referral_value\":0,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3},{\"product_id\":603,\"name\":\"Product 3 (Category 1 - Sub 1)\",\"code\":\"PR012\",\"quantity\":5,\"unit\":\"pcs\",\"price\":420,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2100,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":1779.6610169491526,\"cgst_amount\":160.16949152542372,\"sgst_amount\":160.16949152542372,\"igst_amount\":0,\"stock_price\":350,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":5}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":1000,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":2423,\"totalPaid\":3423,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 10:05:16] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Test 2",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0003"
+}
+[2026-04-03 10:05:17] Transaction started
+[2026-04-03 10:05:17] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 10:05:17] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 10:05:17] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 10:05:17] Customer address | {
+    "address": ""
+}
+[2026-04-03 10:05:17] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 10:05:17] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 10:05:17] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 10:05:17] Created new customer points record | {
+    "customer_id": "225"
+}
+[2026-04-03 10:05:18] Using invoice number | {
+    "invoice_number": "INV202604-0003"
+}
+[2026-04-03 10:05:18] Payment summary | {
+    "subtotal": 3423,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 3423,
+    "total_paid": 3423,
+    "change_given": 0,
+    "pending_amount": 2423,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 10:05:18] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 10:05:18] Invoice created | {
+    "invoice_id": "368",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 10:05:18] Processing item #1 | {
+    "product_id": 1106,
+    "name": "raymond (shirt)",
+    "code": "PR00001",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 441,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 1323,
+    "hsn_code": "",
+    "cgst_rate": 0,
+    "sgst_rate": 0,
+    "igst_rate": 0,
+    "taxable_value": 1323,
+    "cgst_amount": 0,
+    "sgst_amount": 0,
+    "igst_amount": 0,
+    "stock_price": 405,
+    "referral_enabled": 0,
+    "referral_type": "percentage",
+    "referral_value": 0,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-03 10:05:18] Product stock info | {
+    "product_name": "raymond",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 37,
+    "current_total_sec_units": 37,
+    "old_qty": 5,
+    "use_batch_tracking": true,
+    "batch_id": 102
+}
+[2026-04-03 10:05:18] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-03 10:05:18] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 37,
+    "total_available_secondary": 37,
+    "old_qty": 5,
+    "current_stock": 37
+}
+[2026-04-03 10:05:18] Item #1 saved | {
+    "item_id": "506",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 108
+}
+[2026-04-03 10:05:18] Using batch tracking with iterative deduction | {
+    "batch_id": 102,
+    "old_qty": 5,
+    "current_stock": 37,
+    "quantity_to_deduct": 3
+}
+[2026-04-03 10:05:18] Batch info | {
+    "quantity_received": 30,
+    "purchase_price": 405,
+    "old_purchase_price": 405,
+    "old_mrp": 450,
+    "new_mrp": 450,
+    "retail_price": 441.45,
+    "wholesale_price": 437.4,
+    "old_retail_price": 441.45,
+    "old_wholesale_price": 437.4,
+    "old_selling_price": 441.45,
+    "current_stock": 37,
+    "old_qty": 5
+}
+[2026-04-03 10:05:18] Iterative deduction #1 of 3 | {
+    "current_old_qty": 5,
+    "current_quantity": 37
+}
+[2026-04-03 10:05:18] Deducted one unit | {
+    "old_qty_before": 5,
+    "old_qty_after": 4,
+    "quantity_before": 37,
+    "quantity_after": 36,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:18] Iterative deduction #2 of 3 | {
+    "current_old_qty": 4,
+    "current_quantity": 36
+}
+[2026-04-03 10:05:18] Deducted one unit | {
+    "old_qty_before": 4,
+    "old_qty_after": 3,
+    "quantity_before": 36,
+    "quantity_after": 35,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:18] Iterative deduction #3 of 3 | {
+    "current_old_qty": 3,
+    "current_quantity": 35
+}
+[2026-04-03 10:05:18] Deducted one unit | {
+    "old_qty_before": 3,
+    "old_qty_after": 2,
+    "quantity_before": 35,
+    "quantity_after": 34,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:18] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "No"
+}
+[2026-04-03 10:05:18] Selling from OLD stock | {
+    "old_purchase_price": 405,
+    "new_purchase_price": 405,
+    "selling_price": 441.45,
+    "margin_before": 8.256880733944952,
+    "margin_after": 8.256880733944952
+}
+[2026-04-03 10:05:19] Updated invoice item with profit/loss | {
+    "item_id": "506",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 10:05:19] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-6662",
+    "old_stock": 37,
+    "new_stock": 34,
+    "quantity_removed": 3
+}
+[2026-04-03 10:05:19] Final stock status | {
+    "final_quantity": "34.0000",
+    "final_secondary_units": "34.0000",
+    "final_old_qty": "2.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 102
+}
+[2026-04-03 10:05:19] Stock deduction completed for item #1 | {
+    "product_id": 1106,
+    "product_name": "raymond",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 10:05:19] Processing item #2 | {
+    "product_id": 603,
+    "name": "Product 3 (Category 1 - Sub 1)",
+    "code": "PR012",
+    "quantity": 5,
+    "unit": "pcs",
+    "price": 420,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2100,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 1779.6610169491526,
+    "cgst_amount": 160.16949152542372,
+    "sgst_amount": 160.16949152542372,
+    "igst_amount": 0,
+    "stock_price": 350,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 5
+}
+[2026-04-03 10:05:19] Product stock info | {
+    "product_name": "Product 3",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 22,
+    "current_total_sec_units": 22,
+    "old_qty": 20,
+    "use_batch_tracking": true,
+    "batch_id": 81
+}
+[2026-04-03 10:05:19] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5
+}
+[2026-04-03 10:05:19] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 22,
+    "total_available_secondary": 22,
+    "old_qty": 20,
+    "current_stock": 22
+}
+[2026-04-03 10:05:19] Item #2 saved | {
+    "item_id": "507",
+    "unit": "pcs",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5,
+    "profit": 350
+}
+[2026-04-03 10:05:19] Using batch tracking with iterative deduction | {
+    "batch_id": 81,
+    "old_qty": 20,
+    "current_stock": 22,
+    "quantity_to_deduct": 5
+}
+[2026-04-03 10:05:19] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 350,
+    "old_purchase_price": 350,
+    "old_mrp": 500,
+    "new_mrp": 500,
+    "retail_price": 420,
+    "wholesale_price": 350,
+    "old_retail_price": 420,
+    "old_wholesale_price": 385,
+    "old_selling_price": 420,
+    "current_stock": 22,
+    "old_qty": 20
+}
+[2026-04-03 10:05:19] Iterative deduction #1 of 5 | {
+    "current_old_qty": 20,
+    "current_quantity": 22
+}
+[2026-04-03 10:05:19] Deducted one unit | {
+    "old_qty_before": 20,
+    "old_qty_after": 19,
+    "quantity_before": 22,
+    "quantity_after": 21,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:19] Iterative deduction #2 of 5 | {
+    "current_old_qty": 19,
+    "current_quantity": 21
+}
+[2026-04-03 10:05:19] Deducted one unit | {
+    "old_qty_before": 19,
+    "old_qty_after": 18,
+    "quantity_before": 21,
+    "quantity_after": 20,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:19] Iterative deduction #3 of 5 | {
+    "current_old_qty": 18,
+    "current_quantity": 20
+}
+[2026-04-03 10:05:20] Deducted one unit | {
+    "old_qty_before": 18,
+    "old_qty_after": 17,
+    "quantity_before": 20,
+    "quantity_after": 19,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:20] Iterative deduction #4 of 5 | {
+    "current_old_qty": 17,
+    "current_quantity": 19
+}
+[2026-04-03 10:05:20] Deducted one unit | {
+    "old_qty_before": 17,
+    "old_qty_after": 16,
+    "quantity_before": 19,
+    "quantity_after": 18,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:20] Iterative deduction #5 of 5 | {
+    "current_old_qty": 16,
+    "current_quantity": 18
+}
+[2026-04-03 10:05:20] Deducted one unit | {
+    "old_qty_before": 16,
+    "old_qty_after": 15,
+    "quantity_before": 18,
+    "quantity_after": 17,
+    "sec_units_deducted": 1
+}
+[2026-04-03 10:05:20] Iterative deduction completed | {
+    "total_deducted": 5,
+    "price_updated": "No"
+}
+[2026-04-03 10:05:20] Selling from OLD stock | {
+    "old_purchase_price": 350,
+    "new_purchase_price": 350,
+    "selling_price": 420,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 10:05:20] Updated invoice item with profit/loss | {
+    "item_id": "507",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 10:05:21] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-6986",
+    "old_stock": 22,
+    "new_stock": 17,
+    "quantity_removed": 5
+}
+[2026-04-03 10:05:21] Final stock status | {
+    "final_quantity": "17.0000",
+    "final_secondary_units": "17.0000",
+    "final_old_qty": "15.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 81
+}
+[2026-04-03 10:05:21] Stock deduction completed for item #2 | {
+    "product_id": 603,
+    "product_name": "Product 3",
+    "sold_quantity": "5 pcs",
+    "converted_primary": "5 pcs",
+    "converted_secondary": "5 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 10:05:21] Points earned | {
+    "points_earned": 34.23
+}
+[2026-04-03 10:05:21] Points earning recorded
+[2026-04-03 10:05:21] GST summary saved
+[2026-04-03 10:05:21] Updated customer outstanding amount | {
+    "pending_amount": 2423
+}
+[2026-04-03 10:05:21] Transaction committed successfully
+[2026-04-03 10:05:21] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 10:05:24] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 10:05:24] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:12:27] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:12:27] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:12:27] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:12:28] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:20:35] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:20:35] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:20:36] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:20:36] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:20:57] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:20:57] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:20:58] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:20:58] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:21:48] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:21:48] Generated invoice number | {
+    "invoice_number": "INV202604-0004",
+    "attempts": 0,
+    "final_seq": 4
+}
+[2026-04-03 12:21:48] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 12:21:48] Action: save
+[2026-04-03 12:21:48] Raw input received | {
+    "raw": "{\"customer_name\":\"Test Customer\",\"customer_phone\":\"8956230147\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0004\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":1912,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":145.83,\"total_sgst\":145.83,\"total_igst\":0,\"total_taxable\":1620.34,\"total_gst\":291.66,\"grand_total\":1912,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":599,\"name\":\"Product 1 (Category 1 - Sub 1)\",\"code\":\"PR001\",\"quantity\":4,\"unit\":\"nos\",\"price\":163,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":652,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":552.542372881356,\"cgst_amount\":49.72881355932202,\"sgst_amount\":49.72881355932202,\"igst_amount\":0,\"stock_price\":70,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":10,\"quantity_in_primary\":4},{\"product_id\":603,\"name\":\"Product 3 (Category 1 - Sub 1)\",\"code\":\"PR012\",\"quantity\":3,\"unit\":\"pcs\",\"price\":420,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":1260,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":1067.7966101694915,\"cgst_amount\":96.10169491525426,\"sgst_amount\":96.10169491525426,\"igst_amount\":0,\"stock_price\":350,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":500,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":1412,\"totalPaid\":1912,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 12:21:48] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Test Customer",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0004"
+}
+[2026-04-03 12:21:48] Transaction started
+[2026-04-03 12:21:48] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 12:21:48] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 12:21:48] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 12:21:48] Customer address | {
+    "address": ""
+}
+[2026-04-03 12:21:48] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 12:21:48] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 12:21:48] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 12:21:48] Created new customer | {
+    "customer_id": "227"
+}
+[2026-04-03 12:21:48] Created new customer points record | {
+    "customer_id": "227"
+}
+[2026-04-03 12:21:49] Using invoice number | {
+    "invoice_number": "INV202604-0004"
+}
+[2026-04-03 12:21:49] Payment summary | {
+    "subtotal": 1912,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 1912,
+    "total_paid": 1912,
+    "change_given": 0,
+    "pending_amount": 1412,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 12:21:49] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 12:21:49] Invoice created | {
+    "invoice_id": "369",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 12:21:49] Processing item #1 | {
+    "product_id": 599,
+    "name": "Product 1 (Category 1 - Sub 1)",
+    "code": "PR001",
+    "quantity": 4,
+    "unit": "nos",
+    "price": 163,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 652,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 552.542372881356,
+    "cgst_amount": 49.72881355932202,
+    "sgst_amount": 49.72881355932202,
+    "igst_amount": 0,
+    "stock_price": 70,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 10,
+    "quantity_in_primary": 4
+}
+[2026-04-03 12:21:49] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "nos",
+    "secondary_unit": "PCS",
+    "sec_unit_conversion": 10,
+    "current_stock": 1018,
+    "current_total_sec_units": 10180,
+    "old_qty": 1010,
+    "use_batch_tracking": true,
+    "batch_id": 84
+}
+[2026-04-03 12:21:49] Primary unit calculation | {
+    "qty_requested": 4,
+    "unit_requested": "nos",
+    "quantity_in_primary": 4,
+    "quantity_in_secondary": 40
+}
+[2026-04-03 12:21:49] Stock availability check | {
+    "quantity_to_check": 4,
+    "total_available_primary": 1018,
+    "total_available_secondary": 10180,
+    "old_qty": 1010,
+    "current_stock": 1018
+}
+[2026-04-03 12:21:49] Item #1 saved | {
+    "item_id": "508",
+    "unit": "nos",
+    "quantity_sold": 4,
+    "quantity_in_primary": 4,
+    "quantity_in_secondary": 40,
+    "profit": 372
+}
+[2026-04-03 12:21:49] Using batch tracking with iterative deduction | {
+    "batch_id": 84,
+    "old_qty": 1010,
+    "current_stock": 1018,
+    "quantity_to_deduct": 4
+}
+[2026-04-03 12:21:49] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 70,
+    "old_purchase_price": 70,
+    "old_mrp": 200,
+    "new_mrp": 200,
+    "retail_price": 84,
+    "wholesale_price": 77,
+    "old_retail_price": 84,
+    "old_wholesale_price": 77,
+    "old_selling_price": 84,
+    "current_stock": 1018,
+    "old_qty": 1010
+}
+[2026-04-03 12:21:49] Iterative deduction #1 of 4 | {
+    "current_old_qty": 1010,
+    "current_quantity": 1018
+}
+[2026-04-03 12:21:49] Deducted one unit | {
+    "old_qty_before": 1010,
+    "old_qty_after": 1009,
+    "quantity_before": 1018,
+    "quantity_after": 1017,
+    "sec_units_deducted": 10
+}
+[2026-04-03 12:21:49] Iterative deduction #2 of 4 | {
+    "current_old_qty": 1009,
+    "current_quantity": 1017
+}
+[2026-04-03 12:21:49] Deducted one unit | {
+    "old_qty_before": 1009,
+    "old_qty_after": 1008,
+    "quantity_before": 1017,
+    "quantity_after": 1016,
+    "sec_units_deducted": 10
+}
+[2026-04-03 12:21:49] Iterative deduction #3 of 4 | {
+    "current_old_qty": 1008,
+    "current_quantity": 1016
+}
+[2026-04-03 12:21:49] Deducted one unit | {
+    "old_qty_before": 1008,
+    "old_qty_after": 1007,
+    "quantity_before": 1016,
+    "quantity_after": 1015,
+    "sec_units_deducted": 10
+}
+[2026-04-03 12:21:49] Iterative deduction #4 of 4 | {
+    "current_old_qty": 1007,
+    "current_quantity": 1015
+}
+[2026-04-03 12:21:49] Deducted one unit | {
+    "old_qty_before": 1007,
+    "old_qty_after": 1006,
+    "quantity_before": 1015,
+    "quantity_after": 1014,
+    "sec_units_deducted": 10
+}
+[2026-04-03 12:21:49] Iterative deduction completed | {
+    "total_deducted": 4,
+    "price_updated": "No"
+}
+[2026-04-03 12:21:49] Selling from OLD stock | {
+    "old_purchase_price": 70,
+    "new_purchase_price": 70,
+    "selling_price": 84,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 12:21:49] Updated invoice item with profit/loss | {
+    "item_id": "508",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 12:21:50] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-9680",
+    "old_stock": 1018,
+    "new_stock": 1014,
+    "quantity_removed": 4
+}
+[2026-04-03 12:21:50] Final stock status | {
+    "final_quantity": "1014.0000",
+    "final_secondary_units": "10140.0000",
+    "final_old_qty": "1006.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 84
+}
+[2026-04-03 12:21:50] Stock deduction completed for item #1 | {
+    "product_id": 599,
+    "product_name": "Product 1",
+    "sold_quantity": "4 nos",
+    "converted_primary": "4 nos",
+    "converted_secondary": "40 PCS",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 12:21:50] Processing item #2 | {
+    "product_id": 603,
+    "name": "Product 3 (Category 1 - Sub 1)",
+    "code": "PR012",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 420,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 1260,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 1067.7966101694915,
+    "cgst_amount": 96.10169491525426,
+    "sgst_amount": 96.10169491525426,
+    "igst_amount": 0,
+    "stock_price": 350,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-03 12:21:50] Product stock info | {
+    "product_name": "Product 3",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 17,
+    "current_total_sec_units": 17,
+    "old_qty": 15,
+    "use_batch_tracking": true,
+    "batch_id": 81
+}
+[2026-04-03 12:21:50] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-03 12:21:50] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 17,
+    "total_available_secondary": 17,
+    "old_qty": 15,
+    "current_stock": 17
+}
+[2026-04-03 12:21:50] Item #2 saved | {
+    "item_id": "509",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 210
+}
+[2026-04-03 12:21:50] Using batch tracking with iterative deduction | {
+    "batch_id": 81,
+    "old_qty": 15,
+    "current_stock": 17,
+    "quantity_to_deduct": 3
+}
+[2026-04-03 12:21:50] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 350,
+    "old_purchase_price": 350,
+    "old_mrp": 500,
+    "new_mrp": 500,
+    "retail_price": 420,
+    "wholesale_price": 350,
+    "old_retail_price": 420,
+    "old_wholesale_price": 385,
+    "old_selling_price": 420,
+    "current_stock": 17,
+    "old_qty": 15
+}
+[2026-04-03 12:21:50] Iterative deduction #1 of 3 | {
+    "current_old_qty": 15,
+    "current_quantity": 17
+}
+[2026-04-03 12:21:50] Deducted one unit | {
+    "old_qty_before": 15,
+    "old_qty_after": 14,
+    "quantity_before": 17,
+    "quantity_after": 16,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:21:50] Iterative deduction #2 of 3 | {
+    "current_old_qty": 14,
+    "current_quantity": 16
+}
+[2026-04-03 12:21:50] Deducted one unit | {
+    "old_qty_before": 14,
+    "old_qty_after": 13,
+    "quantity_before": 16,
+    "quantity_after": 15,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:21:50] Iterative deduction #3 of 3 | {
+    "current_old_qty": 13,
+    "current_quantity": 15
+}
+[2026-04-03 12:21:50] Deducted one unit | {
+    "old_qty_before": 13,
+    "old_qty_after": 12,
+    "quantity_before": 15,
+    "quantity_after": 14,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:21:50] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "No"
+}
+[2026-04-03 12:21:50] Selling from OLD stock | {
+    "old_purchase_price": 350,
+    "new_purchase_price": 350,
+    "selling_price": 420,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 12:21:50] Updated invoice item with profit/loss | {
+    "item_id": "509",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 12:21:51] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-6015",
+    "old_stock": 17,
+    "new_stock": 14,
+    "quantity_removed": 3
+}
+[2026-04-03 12:21:51] Final stock status | {
+    "final_quantity": "14.0000",
+    "final_secondary_units": "14.0000",
+    "final_old_qty": "12.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 81
+}
+[2026-04-03 12:21:51] Stock deduction completed for item #2 | {
+    "product_id": 603,
+    "product_name": "Product 3",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 12:21:51] Points earned | {
+    "points_earned": 19.12
+}
+[2026-04-03 12:21:51] Points earning recorded
+[2026-04-03 12:21:51] GST summary saved
+[2026-04-03 12:21:51] Transaction committed successfully
+[2026-04-03 12:21:51] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 12:21:53] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:21:53] Generated invoice number | {
+    "invoice_number": "INV202604-0005",
+    "attempts": 0,
+    "final_seq": 5
+}
+[2026-04-03 12:32:34] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:32:35] Generated invoice number | {
+    "invoice_number": "INV202604-0005",
+    "attempts": 0,
+    "final_seq": 5
+}
+[2026-04-03 12:32:35] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:32:35] Generated invoice number | {
+    "invoice_number": "INV202604-0005",
+    "attempts": 0,
+    "final_seq": 5
+}
+[2026-04-03 12:33:03] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:33:03] Generated invoice number | {
+    "invoice_number": "INV202604-0005",
+    "attempts": 0,
+    "final_seq": 5
+}
+[2026-04-03 12:33:03] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 12:33:03] Action: save
+[2026-04-03 12:33:03] Raw input received | {
+    "raw": "{\"customer_name\":\"Test Customer\",\"customer_phone\":\"8956230147\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":\"227\",\"invoice_number\":\"INV202604-0005\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2205,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":0,\"total_sgst\":0,\"total_igst\":0,\"total_taxable\":2205,\"total_gst\":0,\"grand_total\":2205,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":1106,\"name\":\"raymond (shirt)\",\"code\":\"PR00001\",\"quantity\":5,\"unit\":\"pcs\",\"price\":441,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2205,\"hsn_code\":\"\",\"cgst_rate\":0,\"sgst_rate\":0,\"igst_rate\":0,\"taxable_value\":2205,\"cgst_amount\":0,\"sgst_amount\":0,\"igst_amount\":0,\"stock_price\":405,\"referral_enabled\":0,\"referral_type\":\"percentage\",\"referral_value\":0,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":5}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":200,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":2005,\"totalPaid\":2205,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 12:33:03] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "Test Customer",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0005"
+}
+[2026-04-03 12:33:04] Transaction started
+[2026-04-03 12:33:04] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 12:33:04] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 12:33:04] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 12:33:04] Customer address | {
+    "address": ""
+}
+[2026-04-03 12:33:04] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 12:33:04] HSN check | {
+    "has_hsn": false
+}
+[2026-04-03 12:33:04] Invoice type decided | {
+    "gst_status": 0,
+    "invoice_type": "retail_bill"
+}
+[2026-04-03 12:33:04] Using invoice number | {
+    "invoice_number": "INV202604-0005"
+}
+[2026-04-03 12:33:04] Payment summary | {
+    "subtotal": 2205,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2205,
+    "total_paid": 2205,
+    "change_given": 0,
+    "pending_amount": 2005,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 12:33:04] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 12:33:04] Invoice created | {
+    "invoice_id": "370",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 12:33:04] Processing item #1 | {
+    "product_id": 1106,
+    "name": "raymond (shirt)",
+    "code": "PR00001",
+    "quantity": 5,
+    "unit": "pcs",
+    "price": 441,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2205,
+    "hsn_code": "",
+    "cgst_rate": 0,
+    "sgst_rate": 0,
+    "igst_rate": 0,
+    "taxable_value": 2205,
+    "cgst_amount": 0,
+    "sgst_amount": 0,
+    "igst_amount": 0,
+    "stock_price": 405,
+    "referral_enabled": 0,
+    "referral_type": "percentage",
+    "referral_value": 0,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 5
+}
+[2026-04-03 12:33:04] Product stock info | {
+    "product_name": "raymond",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 34,
+    "current_total_sec_units": 34,
+    "old_qty": 2,
+    "use_batch_tracking": true,
+    "batch_id": 102
+}
+[2026-04-03 12:33:04] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5
+}
+[2026-04-03 12:33:04] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 34,
+    "total_available_secondary": 34,
+    "old_qty": 2,
+    "current_stock": 34
+}
+[2026-04-03 12:33:04] Item #1 saved | {
+    "item_id": "510",
+    "unit": "pcs",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5,
+    "profit": 180
+}
+[2026-04-03 12:33:04] Using batch tracking with iterative deduction | {
+    "batch_id": 102,
+    "old_qty": 2,
+    "current_stock": 34,
+    "quantity_to_deduct": 5
+}
+[2026-04-03 12:33:04] Batch info | {
+    "quantity_received": 30,
+    "purchase_price": 405,
+    "old_purchase_price": 405,
+    "old_mrp": 450,
+    "new_mrp": 450,
+    "retail_price": 441.45,
+    "wholesale_price": 437.4,
+    "old_retail_price": 441.45,
+    "old_wholesale_price": 437.4,
+    "old_selling_price": 441.45,
+    "current_stock": 34,
+    "old_qty": 2
+}
+[2026-04-03 12:33:04] Iterative deduction #1 of 5 | {
+    "current_old_qty": 2,
+    "current_quantity": 34
+}
+[2026-04-03 12:33:05] Deducted one unit | {
+    "old_qty_before": 2,
+    "old_qty_after": 1,
+    "quantity_before": 34,
+    "quantity_after": 33,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:33:05] Iterative deduction #2 of 5 | {
+    "current_old_qty": 1,
+    "current_quantity": 33
+}
+[2026-04-03 12:33:05] Deducted one unit | {
+    "old_qty_before": 1,
+    "old_qty_after": 0,
+    "quantity_before": 33,
+    "quantity_after": 32,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:33:05] Old stock exhausted at deduction #2 | {
+    "new_old_qty": 0,
+    "updated_quantity": 32,
+    "quantity_received": 30
+}
+[2026-04-03 12:33:05] Iterative deduction #3 of 5 | {
+    "current_old_qty": 0,
+    "current_quantity": 32
+}
+[2026-04-03 12:33:05] Deducted one unit | {
+    "old_qty_before": 0,
+    "old_qty_after": 0,
+    "quantity_before": 32,
+    "quantity_after": 31,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:33:05] Old stock exhausted at deduction #3 | {
+    "new_old_qty": 0,
+    "updated_quantity": 31,
+    "quantity_received": 30
+}
+[2026-04-03 12:33:05] Iterative deduction #4 of 5 | {
+    "current_old_qty": 0,
+    "current_quantity": 31
+}
+[2026-04-03 12:33:05] Deducted one unit | {
+    "old_qty_before": 0,
+    "old_qty_after": 0,
+    "quantity_before": 31,
+    "quantity_after": 30,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:33:05] Old stock exhausted at deduction #4 | {
+    "new_old_qty": 0,
+    "updated_quantity": 30,
+    "quantity_received": 30
+}
+[2026-04-03 12:33:05] Batch completion condition met. Updating prices... | {
+    "purchase_price": 405,
+    "retail_price": 441.45,
+    "wholesale_price": 437.4,
+    "new_mrp": 450
+}
+[2026-04-03 12:33:05] Product prices updated | {
+    "new_stock_price": 405,
+    "new_retail_price": 441.45,
+    "new_wholesale_price": 437.4,
+    "new_mrp": 450
+}
+[2026-04-03 12:33:05] Batch tracking reset after price update
+[2026-04-03 12:33:05] Iterative deduction #5 of 5 | {
+    "current_old_qty": 0,
+    "current_quantity": 30
+}
+[2026-04-03 12:33:06] Deducted one unit | {
+    "old_qty_before": 0,
+    "old_qty_after": 0,
+    "quantity_before": 30,
+    "quantity_after": 29,
+    "sec_units_deducted": 1
+}
+[2026-04-03 12:33:06] Iterative deduction completed | {
+    "total_deducted": 5,
+    "price_updated": "Yes"
+}
+[2026-04-03 12:33:06] Selling from NEW stock | {
+    "old_purchase_price": 405,
+    "new_purchase_price": 405,
+    "selling_price": 441.45,
+    "margin_before": 8.256880733944952,
+    "margin_after": 8.256880733944952
+}
+[2026-04-03 12:33:06] Updated invoice item with profit/loss | {
+    "item_id": "510",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 12:33:06] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-1761",
+    "old_stock": 34,
+    "new_stock": 29,
+    "quantity_removed": 5
+}
+[2026-04-03 12:33:06] Final stock status | {
+    "final_quantity": "29.0000",
+    "final_secondary_units": "29.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-03 12:33:06] Stock deduction completed for item #1 | {
+    "product_id": 1106,
+    "product_name": "raymond",
+    "sold_quantity": "5 pcs",
+    "converted_primary": "5 pcs",
+    "converted_secondary": "5 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 12:33:06] Points earned | {
+    "points_earned": 22.05
+}
+[2026-04-03 12:33:06] Points earning recorded
+[2026-04-03 12:33:06] Transaction committed successfully
+[2026-04-03 12:33:06] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 12:33:18] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:33:18] Generated invoice number | {
+    "invoice_number": "INV202604-0006",
+    "attempts": 0,
+    "final_seq": 6
+}
+[2026-04-03 12:34:11] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:34:12] Generated invoice number | {
+    "invoice_number": "INV202604-0006",
+    "attempts": 0,
+    "final_seq": 6
+}
+[2026-04-03 12:34:13] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:34:13] Generated invoice number | {
+    "invoice_number": "INV202604-0006",
+    "attempts": 0,
+    "final_seq": 6
+}
+[2026-04-03 12:34:43] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:34:43] Generated invoice number | {
+    "invoice_number": "INV202604-0006",
+    "attempts": 0,
+    "final_seq": 6
+}
+[2026-04-03 12:34:44] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 12:34:44] Action: save
+[2026-04-03 12:34:44] Raw input received | {
+    "raw": "{\"customer_name\":\"Srinath\",\"customer_phone\":\"6383706866\",\"customer_address\":\"Vellichandai\",\"customer_gstin\":\"\",\"customer_id\":\"185\",\"invoice_number\":\"INV202604-0006\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2205,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":0,\"total_sgst\":0,\"total_igst\":0,\"total_taxable\":2205,\"total_gst\":0,\"grand_total\":2205,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":1106,\"name\":\"raymond (shirt)\",\"code\":\"PR00001\",\"quantity\":5,\"unit\":\"pcs\",\"price\":441,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2205,\"hsn_code\":\"\",\"cgst_rate\":0,\"sgst_rate\":0,\"igst_rate\":0,\"taxable_value\":2205,\"cgst_amount\":0,\"sgst_amount\":0,\"igst_amount\":0,\"stock_price\":405,\"referral_enabled\":0,\"referral_type\":\"percentage\",\"referral_value\":0,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":5}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":100,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":2105,\"totalPaid\":2205,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 12:34:44] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "Srinath",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0006"
+}
+[2026-04-03 12:34:44] Transaction started
+[2026-04-03 12:34:44] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 12:34:44] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 12:34:44] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 12:34:44] Customer address | {
+    "address": "Vellichandai"
+}
+[2026-04-03 12:34:44] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 12:34:44] HSN check | {
+    "has_hsn": false
+}
+[2026-04-03 12:34:44] Invoice type decided | {
+    "gst_status": 0,
+    "invoice_type": "retail_bill"
+}
+[2026-04-03 12:34:44] Updated existing customer address | {
+    "customer_id": "185"
+}
+[2026-04-03 12:34:44] Using invoice number | {
+    "invoice_number": "INV202604-0006"
+}
+[2026-04-03 12:34:44] Payment summary | {
+    "subtotal": 2205,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2205,
+    "total_paid": 2205,
+    "change_given": 0,
+    "pending_amount": 2105,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 12:34:44] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 12:34:44] Invoice created | {
+    "invoice_id": "371",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 12:34:44] Customer address saved
+[2026-04-03 12:34:44] Processing item #1 | {
+    "product_id": 1106,
+    "name": "raymond (shirt)",
+    "code": "PR00001",
+    "quantity": 5,
+    "unit": "pcs",
+    "price": 441,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2205,
+    "hsn_code": "",
+    "cgst_rate": 0,
+    "sgst_rate": 0,
+    "igst_rate": 0,
+    "taxable_value": 2205,
+    "cgst_amount": 0,
+    "sgst_amount": 0,
+    "igst_amount": 0,
+    "stock_price": 405,
+    "referral_enabled": 0,
+    "referral_type": "percentage",
+    "referral_value": 0,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 5
+}
+[2026-04-03 12:34:45] Product stock info | {
+    "product_name": "raymond",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 29,
+    "current_total_sec_units": 29,
+    "old_qty": 0,
+    "use_batch_tracking": false,
+    "batch_id": null
+}
+[2026-04-03 12:34:45] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5
+}
+[2026-04-03 12:34:45] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 29,
+    "total_available_secondary": 29,
+    "old_qty": 0,
+    "current_stock": 29
+}
+[2026-04-03 12:34:45] Item #1 saved | {
+    "item_id": "511",
+    "unit": "pcs",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 5,
+    "profit": 180
+}
+[2026-04-03 12:34:45] Using direct stock deduction (non-batch) | {
+    "quantity_to_deduct": 5,
+    "sec_units_to_deduct": 5
+}
+[2026-04-03 12:34:45] Direct stock deduction completed | {
+    "qty_deducted_primary": 5,
+    "qty_deducted_secondary": 5,
+    "rows_affected": 1
+}
+[2026-04-03 12:34:45] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-2292",
+    "old_stock": 29,
+    "new_stock": 24,
+    "quantity_removed": 5
+}
+[2026-04-03 12:34:45] Final stock status | {
+    "final_quantity": "24.0000",
+    "final_secondary_units": "24.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-03 12:34:45] Stock deduction completed for item #1 | {
+    "product_id": 1106,
+    "product_name": "raymond",
+    "sold_quantity": "5 pcs",
+    "converted_primary": "5 pcs",
+    "converted_secondary": "5 ",
+    "batch_tracking_used": "No",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 12:34:45] Points earned | {
+    "points_earned": 22.05
+}
+[2026-04-03 12:34:45] Points earning recorded
+[2026-04-03 12:34:46] Transaction committed successfully
+[2026-04-03 12:34:46] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 12:34:46] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 12:34:47] Generated invoice number | {
+    "invoice_number": "INV202604-0007",
+    "attempts": 0,
+    "final_seq": 7
+}
+[2026-04-03 13:11:05] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:11:05] Generated invoice number | {
+    "invoice_number": "INV202604-0007",
+    "attempts": 0,
+    "final_seq": 7
+}
+[2026-04-03 13:11:06] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:11:06] Generated invoice number | {
+    "invoice_number": "INV202604-0007",
+    "attempts": 0,
+    "final_seq": 7
+}
+[2026-04-03 13:11:30] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:11:30] Generated invoice number | {
+    "invoice_number": "INV202604-0007",
+    "attempts": 0,
+    "final_seq": 7
+}
+[2026-04-03 13:11:31] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 13:11:31] Action: save
+[2026-04-03 13:11:31] Raw input received | {
+    "raw": "{\"customer_name\":\"kesavan\",\"customer_phone\":\"9597820039\",\"customer_address\":\"Vellichandai\",\"customer_gstin\":\"\",\"customer_id\":\"201\",\"invoice_number\":\"INV202604-0007\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2016,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":153.76,\"total_sgst\":153.76,\"total_igst\":0,\"total_taxable\":1708.47,\"total_gst\":307.53,\"grand_total\":2016,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":625,\"name\":\"Product 8 (Category 1 - Sub 1)\",\"code\":\"PR024\",\"quantity\":3,\"unit\":\"pcs\",\"price\":672,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2016,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":1708.4745762711866,\"cgst_amount\":153.7627118644067,\"sgst_amount\":153.7627118644067,\"igst_amount\":0,\"stock_price\":560,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":500,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":1516,\"totalPaid\":2016,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 13:11:31] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "kesavan",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0007"
+}
+[2026-04-03 13:11:31] Transaction started
+[2026-04-03 13:11:31] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 13:11:31] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 13:11:31] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 13:11:31] Customer address | {
+    "address": "Vellichandai"
+}
+[2026-04-03 13:11:31] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 13:11:31] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 13:11:31] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 13:11:31] Updated existing customer address | {
+    "customer_id": "201"
+}
+[2026-04-03 13:11:31] Using invoice number | {
+    "invoice_number": "INV202604-0007"
+}
+[2026-04-03 13:11:31] Payment summary | {
+    "subtotal": 2016,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2016,
+    "total_paid": 2016,
+    "change_given": 0,
+    "pending_amount": 1516,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 13:11:31] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 13:11:31] Invoice created | {
+    "invoice_id": "372",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 13:11:31] Customer address saved
+[2026-04-03 13:11:31] Processing item #1 | {
+    "product_id": 625,
+    "name": "Product 8 (Category 1 - Sub 1)",
+    "code": "PR024",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 672,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2016,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 1708.4745762711866,
+    "cgst_amount": 153.7627118644067,
+    "sgst_amount": 153.7627118644067,
+    "igst_amount": 0,
+    "stock_price": 560,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-03 13:11:32] Product stock info | {
+    "product_name": "Product 8",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 10,
+    "current_total_sec_units": 10,
+    "old_qty": 0,
+    "use_batch_tracking": false,
+    "batch_id": null
+}
+[2026-04-03 13:11:32] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-03 13:11:32] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 10,
+    "total_available_secondary": 10,
+    "old_qty": 0,
+    "current_stock": 10
+}
+[2026-04-03 13:11:32] Item #1 saved | {
+    "item_id": "512",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 336
+}
+[2026-04-03 13:11:32] Using direct stock deduction (non-batch) | {
+    "quantity_to_deduct": 3,
+    "sec_units_to_deduct": 3
+}
+[2026-04-03 13:11:32] Direct stock deduction completed | {
+    "qty_deducted_primary": 3,
+    "qty_deducted_secondary": 3,
+    "rows_affected": 1
+}
+[2026-04-03 13:11:32] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-8057",
+    "old_stock": 10,
+    "new_stock": 7,
+    "quantity_removed": 3
+}
+[2026-04-03 13:11:32] Final stock status | {
+    "final_quantity": "7.0000",
+    "final_secondary_units": "7.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-03 13:11:32] Stock deduction completed for item #1 | {
+    "product_id": 625,
+    "product_name": "Product 8",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "No",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 13:11:32] Points earned | {
+    "points_earned": 20.16
+}
+[2026-04-03 13:11:32] Points earning recorded
+[2026-04-03 13:11:33] GST summary saved
+[2026-04-03 13:11:33] Transaction committed successfully
+[2026-04-03 13:11:33] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 13:11:35] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:11:35] Generated invoice number | {
+    "invoice_number": "INV202604-0008",
+    "attempts": 0,
+    "final_seq": 8
+}
+[2026-04-03 13:57:48] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:57:48] Generated invoice number | {
+    "invoice_number": "INV202604-0008",
+    "attempts": 0,
+    "final_seq": 8
+}
+[2026-04-03 13:57:49] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 13:57:49] Generated invoice number | {
+    "invoice_number": "INV202604-0008",
+    "attempts": 0,
+    "final_seq": 8
+}
+[2026-04-03 16:25:56] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 16:25:56] Generated invoice number | {
+    "invoice_number": "INV202604-0008",
+    "attempts": 0,
+    "final_seq": 8
+}
+[2026-04-03 16:25:56] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 16:25:56] Generated invoice number | {
+    "invoice_number": "INV202604-0008",
+    "attempts": 0,
+    "final_seq": 8
+}
+[2026-04-03 17:21:34] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:21:34] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 17:21:34] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:21:34] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 17:22:29] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:22:30] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-03 17:22:30] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 17:22:30] Action: save
+[2026-04-03 17:22:30] Raw input received | {
+    "raw": "{\"customer_name\":\"Srinath\",\"customer_phone\":\"6383706866\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0001\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2075,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":158.26,\"total_sgst\":158.26,\"total_igst\":0,\"total_taxable\":1758.47,\"total_gst\":316.53,\"grand_total\":2075,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":599,\"name\":\"Product 1 (Category 1 - Sub 1)\",\"code\":\"PR001\",\"quantity\":5,\"unit\":\"nos\",\"price\":163,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":815,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":690.677966101695,\"cgst_amount\":62.1610169491525,\"sgst_amount\":62.1610169491525,\"igst_amount\":0,\"stock_price\":70,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":10,\"quantity_in_primary\":5},{\"product_id\":603,\"name\":\"Product 3 (Category 1 - Sub 1)\",\"code\":\"PR012\",\"quantity\":3,\"unit\":\"pcs\",\"price\":420,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":1260,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":1067.7966101694915,\"cgst_amount\":96.10169491525426,\"sgst_amount\":96.10169491525426,\"igst_amount\":0,\"stock_price\":350,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":500,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":1575,\"totalPaid\":2075,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 17:22:30] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Srinath",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-03 17:22:30] Transaction started
+[2026-04-03 17:22:30] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 17:22:30] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 17:22:30] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 17:22:30] Customer address | {
+    "address": ""
+}
+[2026-04-03 17:22:30] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 17:22:30] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 17:22:30] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 17:22:31] Created new customer | {
+    "customer_id": "228"
+}
+[2026-04-03 17:22:31] Created new customer points record | {
+    "customer_id": "228"
+}
+[2026-04-03 17:22:31] Using invoice number | {
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-03 17:22:31] Payment summary | {
+    "subtotal": 2075,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2075,
+    "total_paid": 2075,
+    "change_given": 0,
+    "pending_amount": 1575,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 17:22:31] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 17:22:31] Invoice created | {
+    "invoice_id": "373",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 17:22:31] Processing item #1 | {
+    "product_id": 599,
+    "name": "Product 1 (Category 1 - Sub 1)",
+    "code": "PR001",
+    "quantity": 5,
+    "unit": "nos",
+    "price": 163,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 815,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 690.677966101695,
+    "cgst_amount": 62.1610169491525,
+    "sgst_amount": 62.1610169491525,
+    "igst_amount": 0,
+    "stock_price": 70,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 10,
+    "quantity_in_primary": 5
+}
+[2026-04-03 17:22:31] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "nos",
+    "secondary_unit": "PCS",
+    "sec_unit_conversion": 10,
+    "current_stock": 1047,
+    "current_total_sec_units": 10470,
+    "old_qty": 1006,
+    "use_batch_tracking": true,
+    "batch_id": 84
+}
+[2026-04-03 17:22:31] Primary unit calculation | {
+    "qty_requested": 5,
+    "unit_requested": "nos",
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 50
+}
+[2026-04-03 17:22:31] Stock availability check | {
+    "quantity_to_check": 5,
+    "total_available_primary": 1047,
+    "total_available_secondary": 10470,
+    "old_qty": 1006,
+    "current_stock": 1047
+}
+[2026-04-03 17:22:31] Item #1 saved | {
+    "item_id": "513",
+    "unit": "nos",
+    "quantity_sold": 5,
+    "quantity_in_primary": 5,
+    "quantity_in_secondary": 50,
+    "profit": 465
+}
+[2026-04-03 17:22:31] Using batch tracking with iterative deduction | {
+    "batch_id": 84,
+    "old_qty": 1006,
+    "current_stock": 1047,
+    "quantity_to_deduct": 5
+}
+[2026-04-03 17:22:31] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 70,
+    "old_purchase_price": 70,
+    "old_mrp": 200,
+    "new_mrp": 200,
+    "retail_price": 84,
+    "wholesale_price": 77,
+    "old_retail_price": 84,
+    "old_wholesale_price": 77,
+    "old_selling_price": 84,
+    "current_stock": 1047,
+    "old_qty": 1006
+}
+[2026-04-03 17:22:31] Iterative deduction #1 of 5 | {
+    "current_old_qty": 1006,
+    "current_quantity": 1047
+}
+[2026-04-03 17:22:31] Deducted one unit | {
+    "old_qty_before": 1006,
+    "old_qty_after": 1005,
+    "quantity_before": 1047,
+    "quantity_after": 1046,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:22:31] Iterative deduction #2 of 5 | {
+    "current_old_qty": 1005,
+    "current_quantity": 1046
+}
+[2026-04-03 17:22:32] Deducted one unit | {
+    "old_qty_before": 1005,
+    "old_qty_after": 1004,
+    "quantity_before": 1046,
+    "quantity_after": 1045,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:22:32] Iterative deduction #3 of 5 | {
+    "current_old_qty": 1004,
+    "current_quantity": 1045
+}
+[2026-04-03 17:22:32] Deducted one unit | {
+    "old_qty_before": 1004,
+    "old_qty_after": 1003,
+    "quantity_before": 1045,
+    "quantity_after": 1044,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:22:32] Iterative deduction #4 of 5 | {
+    "current_old_qty": 1003,
+    "current_quantity": 1044
+}
+[2026-04-03 17:22:32] Deducted one unit | {
+    "old_qty_before": 1003,
+    "old_qty_after": 1002,
+    "quantity_before": 1044,
+    "quantity_after": 1043,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:22:32] Iterative deduction #5 of 5 | {
+    "current_old_qty": 1002,
+    "current_quantity": 1043
+}
+[2026-04-03 17:22:32] Deducted one unit | {
+    "old_qty_before": 1002,
+    "old_qty_after": 1001,
+    "quantity_before": 1043,
+    "quantity_after": 1042,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:22:32] Iterative deduction completed | {
+    "total_deducted": 5,
+    "price_updated": "No"
+}
+[2026-04-03 17:22:32] Selling from OLD stock | {
+    "old_purchase_price": 70,
+    "new_purchase_price": 70,
+    "selling_price": 84,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 17:22:32] Updated invoice item with profit/loss | {
+    "item_id": "513",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 17:22:32] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-0571",
+    "old_stock": 1047,
+    "new_stock": 1042,
+    "quantity_removed": 5
+}
+[2026-04-03 17:22:33] Final stock status | {
+    "final_quantity": "1042.0000",
+    "final_secondary_units": "10420.0000",
+    "final_old_qty": "1001.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 84
+}
+[2026-04-03 17:22:33] Stock deduction completed for item #1 | {
+    "product_id": 599,
+    "product_name": "Product 1",
+    "sold_quantity": "5 nos",
+    "converted_primary": "5 nos",
+    "converted_secondary": "50 PCS",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 17:22:33] Processing item #2 | {
+    "product_id": 603,
+    "name": "Product 3 (Category 1 - Sub 1)",
+    "code": "PR012",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 420,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 1260,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 1067.7966101694915,
+    "cgst_amount": 96.10169491525426,
+    "sgst_amount": 96.10169491525426,
+    "igst_amount": 0,
+    "stock_price": 350,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-03 17:22:33] Product stock info | {
+    "product_name": "Product 3",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 30,
+    "current_total_sec_units": 14,
+    "old_qty": 12,
+    "use_batch_tracking": true,
+    "batch_id": 81
+}
+[2026-04-03 17:22:33] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-03 17:22:33] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 30,
+    "total_available_secondary": 14,
+    "old_qty": 12,
+    "current_stock": 30
+}
+[2026-04-03 17:22:33] Item #2 saved | {
+    "item_id": "514",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 210
+}
+[2026-04-03 17:22:33] Using batch tracking with iterative deduction | {
+    "batch_id": 81,
+    "old_qty": 12,
+    "current_stock": 30,
+    "quantity_to_deduct": 3
+}
+[2026-04-03 17:22:33] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 350,
+    "old_purchase_price": 350,
+    "old_mrp": 500,
+    "new_mrp": 500,
+    "retail_price": 420,
+    "wholesale_price": 350,
+    "old_retail_price": 420,
+    "old_wholesale_price": 385,
+    "old_selling_price": 420,
+    "current_stock": 30,
+    "old_qty": 12
+}
+[2026-04-03 17:22:33] Iterative deduction #1 of 3 | {
+    "current_old_qty": 12,
+    "current_quantity": 30
+}
+[2026-04-03 17:22:33] Deducted one unit | {
+    "old_qty_before": 12,
+    "old_qty_after": 11,
+    "quantity_before": 30,
+    "quantity_after": 29,
+    "sec_units_deducted": 1
+}
+[2026-04-03 17:22:33] Iterative deduction #2 of 3 | {
+    "current_old_qty": 11,
+    "current_quantity": 29
+}
+[2026-04-03 17:22:33] Deducted one unit | {
+    "old_qty_before": 11,
+    "old_qty_after": 10,
+    "quantity_before": 29,
+    "quantity_after": 28,
+    "sec_units_deducted": 1
+}
+[2026-04-03 17:22:33] Iterative deduction #3 of 3 | {
+    "current_old_qty": 10,
+    "current_quantity": 28
+}
+[2026-04-03 17:22:33] Deducted one unit | {
+    "old_qty_before": 10,
+    "old_qty_after": 9,
+    "quantity_before": 28,
+    "quantity_after": 27,
+    "sec_units_deducted": 1
+}
+[2026-04-03 17:22:33] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "No"
+}
+[2026-04-03 17:22:33] Selling from OLD stock | {
+    "old_purchase_price": 350,
+    "new_purchase_price": 350,
+    "selling_price": 420,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 17:22:33] Updated invoice item with profit/loss | {
+    "item_id": "514",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 17:22:33] Secondary units out of sync after iterative deduction, correcting... | {
+    "calculated": 27,
+    "stored": 11,
+    "difference": 16
+}
+[2026-04-03 17:22:34] Secondary units synchronized after iterative deduction
+[2026-04-03 17:22:34] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-6187",
+    "old_stock": 30,
+    "new_stock": 27,
+    "quantity_removed": 3
+}
+[2026-04-03 17:22:34] Final stock status | {
+    "final_quantity": "27.0000",
+    "final_secondary_units": "27.0000",
+    "final_old_qty": "9.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 81
+}
+[2026-04-03 17:22:34] Stock deduction completed for item #2 | {
+    "product_id": 603,
+    "product_name": "Product 3",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 17:22:34] Points earned | {
+    "points_earned": 20.75
+}
+[2026-04-03 17:22:34] Points earning recorded
+[2026-04-03 17:22:34] GST summary saved
+[2026-04-03 17:22:34] Transaction committed successfully
+[2026-04-03 17:22:34] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 17:22:37] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:22:37] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 17:33:34] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:33:34] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 17:33:35] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:33:35] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 17:34:28] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:34:28] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}
+[2026-04-03 17:34:29] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-03 17:34:29] Action: save
+[2026-04-03 17:34:29] Raw input received | {
+    "raw": "{\"customer_name\":\"Srinath\",\"customer_phone\":\"6383706866\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":\"228\",\"invoice_number\":\"INV202604-0002\",\"invoice_type\":\"gst\",\"date\":\"2026-04-03\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2141,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":163.3,\"total_sgst\":163.3,\"total_igst\":0,\"total_taxable\":1814.41,\"total_gst\":326.59,\"grand_total\":2141,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":599,\"name\":\"Product 1 (Category 1 - Sub 1)\",\"code\":\"PR001\",\"quantity\":3,\"unit\":\"nos\",\"price\":163,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":489,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":414.40677966101697,\"cgst_amount\":37.296610169491515,\"sgst_amount\":37.296610169491515,\"igst_amount\":0,\"stock_price\":70,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":10,\"quantity_in_primary\":3},{\"product_id\":1104,\"name\":\"6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)\",\"code\":\"PIPE-006-GR\",\"quantity\":2,\"unit\":\"pcs\",\"price\":826,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":1652,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":1400,\"cgst_amount\":126,\"sgst_amount\":126,\"igst_amount\":0,\"stock_price\":612,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":4.5,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":2}],\"payment_method\":\"cash+credit\",\"payment_details\":{\"cash\":141,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":2000,\"totalPaid\":2141,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":\"2026-05-03\"},\"pending_amount\":0}"
+}
+[2026-04-03 17:34:29] Input parsed successfully | {
+    "item_count": 2,
+    "gst_type": "gst",
+    "customer_name": "Srinath",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0002"
+}
+[2026-04-03 17:34:29] Transaction started
+[2026-04-03 17:34:29] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-03 17:34:29] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-03 17:34:29] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-03 17:34:29] Customer address | {
+    "address": ""
+}
+[2026-04-03 17:34:29] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-03 17:34:29] HSN check | {
+    "has_hsn": true
+}
+[2026-04-03 17:34:29] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-03 17:34:29] Using invoice number | {
+    "invoice_number": "INV202604-0002"
+}
+[2026-04-03 17:34:29] Payment summary | {
+    "subtotal": 2141,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2141,
+    "total_paid": 2141,
+    "change_given": 0,
+    "pending_amount": 2000,
+    "payment_status": "partial",
+    "payment_method": "split",
+    "credit_due_date": "2026-05-03"
+}
+[2026-04-03 17:34:29] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-03 17:34:29] Invoice created | {
+    "invoice_id": "374",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-03 17:34:29] Processing item #1 | {
+    "product_id": 599,
+    "name": "Product 1 (Category 1 - Sub 1)",
+    "code": "PR001",
+    "quantity": 3,
+    "unit": "nos",
+    "price": 163,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 489,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 414.40677966101697,
+    "cgst_amount": 37.296610169491515,
+    "sgst_amount": 37.296610169491515,
+    "igst_amount": 0,
+    "stock_price": 70,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 10,
+    "quantity_in_primary": 3
+}
+[2026-04-03 17:34:29] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "nos",
+    "secondary_unit": "PCS",
+    "sec_unit_conversion": 10,
+    "current_stock": 1042,
+    "current_total_sec_units": 10420,
+    "old_qty": 1001,
+    "use_batch_tracking": true,
+    "batch_id": 84
+}
+[2026-04-03 17:34:29] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "nos",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 30
+}
+[2026-04-03 17:34:29] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 1042,
+    "total_available_secondary": 10420,
+    "old_qty": 1001,
+    "current_stock": 1042
+}
+[2026-04-03 17:34:30] Item #1 saved | {
+    "item_id": "515",
+    "unit": "nos",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 30,
+    "profit": 279
+}
+[2026-04-03 17:34:30] Using batch tracking with iterative deduction | {
+    "batch_id": 84,
+    "old_qty": 1001,
+    "current_stock": 1042,
+    "quantity_to_deduct": 3
+}
+[2026-04-03 17:34:30] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 70,
+    "old_purchase_price": 70,
+    "old_mrp": 200,
+    "new_mrp": 200,
+    "retail_price": 84,
+    "wholesale_price": 77,
+    "old_retail_price": 84,
+    "old_wholesale_price": 77,
+    "old_selling_price": 84,
+    "current_stock": 1042,
+    "old_qty": 1001
+}
+[2026-04-03 17:34:30] Iterative deduction #1 of 3 | {
+    "current_old_qty": 1001,
+    "current_quantity": 1042
+}
+[2026-04-03 17:34:30] Deducted one unit | {
+    "old_qty_before": 1001,
+    "old_qty_after": 1000,
+    "quantity_before": 1042,
+    "quantity_after": 1041,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:34:30] Iterative deduction #2 of 3 | {
+    "current_old_qty": 1000,
+    "current_quantity": 1041
+}
+[2026-04-03 17:34:30] Deducted one unit | {
+    "old_qty_before": 1000,
+    "old_qty_after": 999,
+    "quantity_before": 1041,
+    "quantity_after": 1040,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:34:30] Iterative deduction #3 of 3 | {
+    "current_old_qty": 999,
+    "current_quantity": 1040
+}
+[2026-04-03 17:34:30] Deducted one unit | {
+    "old_qty_before": 999,
+    "old_qty_after": 998,
+    "quantity_before": 1040,
+    "quantity_after": 1039,
+    "sec_units_deducted": 10
+}
+[2026-04-03 17:34:30] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "No"
+}
+[2026-04-03 17:34:30] Selling from OLD stock | {
+    "old_purchase_price": 70,
+    "new_purchase_price": 70,
+    "selling_price": 84,
+    "margin_before": 16.666666666666664,
+    "margin_after": 16.666666666666664
+}
+[2026-04-03 17:34:30] Updated invoice item with profit/loss | {
+    "item_id": "515",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 0
+}
+[2026-04-03 17:34:31] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260403-7604",
+    "old_stock": 1042,
+    "new_stock": 1039,
+    "quantity_removed": 3
+}
+[2026-04-03 17:34:31] Final stock status | {
+    "final_quantity": "1039.0000",
+    "final_secondary_units": "10390.0000",
+    "final_old_qty": "998.0000",
+    "final_batch_tracking": 1,
+    "final_batch_id": 84
+}
+[2026-04-03 17:34:31] Stock deduction completed for item #1 | {
+    "product_id": 599,
+    "product_name": "Product 1",
+    "sold_quantity": "3 nos",
+    "converted_primary": "3 nos",
+    "converted_secondary": "30 PCS",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 17:34:31] Processing item #2 | {
+    "product_id": 1104,
+    "name": "6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)",
+    "code": "PIPE-006-GR",
+    "quantity": 2,
+    "unit": "pcs",
+    "price": 826,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 1652,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 1400,
+    "cgst_amount": 126,
+    "sgst_amount": 126,
+    "igst_amount": 0,
+    "stock_price": 612,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 4.5,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 2
+}
+[2026-04-03 17:34:31] Product stock info | {
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 12,
+    "current_total_sec_units": 0,
+    "old_qty": 0,
+    "use_batch_tracking": false,
+    "batch_id": null
+}
+[2026-04-03 17:34:31] Primary unit calculation | {
+    "qty_requested": 2,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 2,
+    "quantity_in_secondary": 2
+}
+[2026-04-03 17:34:31] Stock availability check | {
+    "quantity_to_check": 2,
+    "total_available_primary": 12,
+    "total_available_secondary": 0,
+    "old_qty": 0,
+    "current_stock": 12
+}
+[2026-04-03 17:34:31] Item #2 saved | {
+    "item_id": "516",
+    "unit": "pcs",
+    "quantity_sold": 2,
+    "quantity_in_primary": 2,
+    "quantity_in_secondary": 2,
+    "profit": 428
+}
+[2026-04-03 17:34:31] Using direct stock deduction (non-batch) | {
+    "quantity_to_deduct": 2,
+    "sec_units_to_deduct": 2
+}
+[2026-04-03 17:34:31] Direct stock deduction completed | {
+    "qty_deducted_primary": 2,
+    "qty_deducted_secondary": 2,
+    "rows_affected": 1
+}
+[2026-04-03 17:34:31] Synchronized secondary units for non-batch product
+[2026-04-03 17:34:31] Stock adjustment recorded for item #2 | {
+    "adjustment_number": "ADJ20260403-2076",
+    "old_stock": 12,
+    "new_stock": 10,
+    "quantity_removed": 2
+}
+[2026-04-03 17:34:31] Final stock status | {
+    "final_quantity": "10.0000",
+    "final_secondary_units": "10.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-03 17:34:31] Stock deduction completed for item #2 | {
+    "product_id": 1104,
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "sold_quantity": "2 pcs",
+    "converted_primary": "2 pcs",
+    "converted_secondary": "2 ",
+    "batch_tracking_used": "No",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-03 17:34:31] Points earned | {
+    "points_earned": 21.41
+}
+[2026-04-03 17:34:31] Points earning recorded
+[2026-04-03 17:34:32] GST summary saved
+[2026-04-03 17:34:32] Transaction committed successfully
+[2026-04-03 17:34:32] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-03 17:34:33] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-03 17:34:33] Generated invoice number | {
+    "invoice_number": "INV202604-0003",
+    "attempts": 0,
+    "final_seq": 3
+}

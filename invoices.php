@@ -553,7 +553,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                                         <i class="bx bx-time ms-2 me-1"></i><?= date('h:i A', strtotime($inv['created_at'])) ?>
                                                     </small>
                                                     <div class="d-flex gap-2 mt-2">
-                                                        <span class="badge bg-<?= $status_class ?> bg-opacity-10 text-<?= $status_class ?> px-3 py-1 d-inline-block">
+                                                        <span class="badge bg-<?= $status_class ?> bg-opacity-10 text-<?= $status_class ?> px-3 text-white py-1 d-inline-block">
                                                             <i class="bx bx-<?= $status_class == 'success' ? 'check-circle' : ($status_class == 'warning' ? 'time-five' : 'x-circle') ?> me-1"></i>
                                                             <?= ucfirst($payment_status) ?>
                                                         </span>

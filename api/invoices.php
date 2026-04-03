@@ -1714,19 +1714,19 @@ $stmt->execute([
         }
 
         // Update customer outstanding amount if credit sale
-        if ($pending_amount > 0) {
-            try {
-                $updateCustomerSql = "UPDATE customers
-                                     SET outstanding_amount = outstanding_amount + ?,
-                                         outstanding_type = 'credit'
-                                     WHERE id = ? AND business_id = ?";
-                $updateStmt = $pdo->prepare($updateCustomerSql);
-                $updateStmt->execute([$pending_amount, $customer_id, $business_id]);
-                debug_log("Updated customer outstanding amount", ['pending_amount' => $pending_amount]);
-            } catch (Exception $e) {
-                debug_log("Failed to update customer outstanding", ['error' => $e->getMessage()]);
-            }
-        }
+        // if ($pending_amount > 0) {
+        //     try {
+        //         $updateCustomerSql = "UPDATE customers
+        //                              SET outstanding_amount = outstanding_amount + ?,
+        //                                  outstanding_type = 'credit'
+        //                              WHERE id = ? AND business_id = ?";
+        //         $updateStmt = $pdo->prepare($updateCustomerSql);
+        //         $updateStmt->execute([$pending_amount, $customer_id, $business_id]);
+        //         debug_log("Updated customer outstanding amount", ['pending_amount' => $pending_amount]);
+        //     } catch (Exception $e) {
+        //         debug_log("Failed to update customer outstanding", ['error' => $e->getMessage()]);
+        //     }
+        // }
 
         // Commit transaction
         $pdo->commit();
@@ -2124,13 +2124,13 @@ function deleteInvoice()
         }
 
         // Update customer outstanding if credit sale
-        if ($invoice['pending_amount'] > 0) {
-            $customer_sql = "UPDATE customers 
-                            SET outstanding_amount = outstanding_amount - ? 
-                            WHERE id = ? AND business_id = ?";
-            $customer_stmt = $pdo->prepare($customer_sql);
-            $customer_stmt->execute([$invoice['pending_amount'], $invoice['customer_id'], $business_id]);
-        }
+        // if ($invoice['pending_amount'] > 0) {
+        //     $customer_sql = "UPDATE customers 
+        //                     SET outstanding_amount = outstanding_amount - ? 
+        //                     WHERE id = ? AND business_id = ?";
+        //     $customer_stmt = $pdo->prepare($customer_sql);
+        //     $customer_stmt->execute([$invoice['pending_amount'], $invoice['customer_id'], $business_id]);
+        // }
 
         // Delete invoice items
         $delete_items_sql = "DELETE FROM invoice_items WHERE invoice_id = ?";

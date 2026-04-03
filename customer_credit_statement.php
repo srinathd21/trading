@@ -17,16 +17,14 @@ if (!$customer_id) {
     exit();
 }
 
-// Fetch customer details with proper outstanding calculation
+// Fetch customer details
 $stmt = $pdo->prepare("
-    SELECT c.*, 
-           COALESCE(SUM(i.pending_amount), 0) as invoice_outstanding
+    SELECT c.*
     FROM customers c
-    LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = ? AND i.pending_amount > 0
     WHERE c.id = ? AND c.business_id = ?
-    GROUP BY c.id
+    LIMIT 1
 ");
-$stmt->execute([$business_id, $customer_id, $business_id]);
+$stmt->execute([$customer_id, $business_id]);
 $customer = $stmt->fetch();
 
 if (!$customer) {
@@ -35,9 +33,94 @@ if (!$customer) {
     exit();
 }
 
+function normalizeInvoiceAmounts(array $invoice, ?float $ledgerPaidOverride = null): array {
+    $total = round((float)($invoice['total'] ?? 0), 2);
+    $storedPaid = round((float)($invoice['paid_amount'] ?? 0), 2);
+    $storedPending = round((float)($invoice['pending_amount'] ?? 0), 2);
+    $ledgerPaid = round((float)($ledgerPaidOverride ?? ($invoice['ledger_paid'] ?? 0)), 2);
+    $methodPaid = round(
+        (float)($invoice['cash_amount'] ?? 0) +
+        (float)($invoice['upi_amount'] ?? 0) +
+        (float)($invoice['bank_amount'] ?? 0) +
+        (float)($invoice['cheque_amount'] ?? 0) +
+        (float)($invoice['credit_amount'] ?? 0),
+        2
+    );
+
+    // Prefer actual payment rows, then method-wise stored amounts, then sane invoice header values.
+    if ($ledgerPaid > 0) {
+        $effectivePaid = max($ledgerPaid, $methodPaid);
+    } elseif ($methodPaid > 0) {
+        $effectivePaid = $methodPaid;
+    } else {
+        $effectivePaid = $storedPaid;
+    }
+
+    // If header paid amount is clearly broken (greater than total), ignore it.
+    if ($effectivePaid > $total + 0.009) {
+        if ($ledgerPaid > 0 || $methodPaid > 0) {
+            $effectivePaid = max($ledgerPaid, $methodPaid);
+        } else {
+            $effectivePaid = 0;
+        }
+    }
+
+    $effectivePaid = round(max(0, min($total, $effectivePaid)), 2);
+    $effectivePending = round(max(0, $total - $effectivePaid), 2);
+
+    if ($effectivePending <= 0) {
+        $effectiveStatus = 'paid';
+        $effectivePending = 0.00;
+    } elseif ($effectivePaid > 0) {
+        $effectiveStatus = 'partial';
+    } else {
+        $effectiveStatus = 'pending';
+    }
+
+    $invoice['effective_paid_amount'] = $effectivePaid;
+    $invoice['effective_pending_amount'] = $effectivePending;
+    $invoice['effective_payment_status'] = $effectiveStatus;
+    return $invoice;
+}
+
+// Fetch all invoices once with payment-ledger totals
+$all_invoices_stmt = $pdo->prepare("
+    SELECT i.id, i.invoice_number, i.created_at, i.total, i.pending_amount,
+           i.paid_amount, i.payment_status, i.cash_received, i.change_given,
+           COALESCE(i.cash_amount, 0) AS cash_amount,
+           COALESCE(i.upi_amount, 0) AS upi_amount,
+           COALESCE(i.bank_amount, 0) AS bank_amount,
+           COALESCE(i.cheque_amount, 0) AS cheque_amount,
+           COALESCE(i.credit_amount, 0) AS credit_amount,
+           COALESCE(p.ledger_paid, 0) AS ledger_paid
+    FROM invoices i
+    LEFT JOIN (
+        SELECT invoice_id, business_id, SUM(payment_amount) AS ledger_paid
+        FROM invoice_payments
+        WHERE business_id = ?
+        GROUP BY invoice_id, business_id
+    ) p ON p.invoice_id = i.id AND p.business_id = i.business_id
+    WHERE i.customer_id = ? AND i.business_id = ? AND i.total > 0
+    ORDER BY i.created_at ASC, i.id ASC
+");
+$all_invoices_stmt->execute([$business_id, $customer_id, $business_id]);
+$invoices = $all_invoices_stmt->fetchAll();
+
+$normalized_invoices = [];
+$invoice_outstanding = 0.00;
+foreach ($invoices as $inv) {
+    $inv = normalizeInvoiceAmounts($inv);
+    $normalized_invoices[] = $inv;
+    if ($inv['effective_pending_amount'] > 0) {
+        $invoice_outstanding += $inv['effective_pending_amount'];
+    }
+}
+$invoice_outstanding = round($invoice_outstanding, 2);
+
 // Calculate total outstanding (manual + invoice)
 $manual_outstanding = ($customer['outstanding_type'] == 'debit') ? -$customer['outstanding_amount'] : $customer['outstanding_amount'];
-$total_outstanding = $manual_outstanding + $customer['invoice_outstanding'];
+$total_outstanding = $manual_outstanding + $invoice_outstanding;
+$customer['invoice_outstanding'] = $invoice_outstanding;
 
 // Calculate credit limit usage
 $credit_limit = $customer['credit_limit'] ?? 0;
@@ -50,62 +133,44 @@ $credit_utilization = $credit_limit > 0 ? ($credit_used / $credit_limit) * 100 :
 // =============================
 $statement_data = [];
 
-// 1. Initial outstanding from customer record (if any)
-if ($customer['outstanding_amount'] > 0) {
+// 1. Opening balance - This should be the very first transaction
+$opening_balance_amount = $manual_outstanding;
+$opening_balance_type = $opening_balance_amount >= 0 ? 'credit' : 'debit';
+
+if ($opening_balance_amount != 0) {
     $statement_data[] = [
         'date' => $customer['created_at'],
         'type' => 'opening_balance',
         'description' => 'Opening Balance',
-        'credit' => $customer['outstanding_type'] == 'credit' ? $customer['outstanding_amount'] : 0,
-        'debit' => $customer['outstanding_type'] == 'debit' ? $customer['outstanding_amount'] : 0,
-        'balance' => $customer['outstanding_type'] == 'credit' ? $customer['outstanding_amount'] : -$customer['outstanding_amount'],
+        'credit' => $opening_balance_amount > 0 ? abs($opening_balance_amount) : 0,
+        'debit' => $opening_balance_amount < 0 ? abs($opening_balance_amount) : 0,
+        'balance' => $opening_balance_amount,
         'reference' => 'SYSTEM',
         'invoice_id' => null,
-        'payment_id' => null
+        'payment_id' => null,
+        'display_date' => date('Y-m-d', strtotime($customer['created_at']))
     ];
 }
 
 // 2. All invoices (credit transactions)
-$invoices_stmt = $pdo->prepare("
-    SELECT id, invoice_number, created_at, total, pending_amount, 
-           paid_amount, payment_status, cash_received, change_given
-    FROM invoices
-    WHERE customer_id = ? AND business_id = ?
-    ORDER BY created_at ASC
-");
-$invoices_stmt->execute([$customer_id, $business_id]);
-$invoices = $invoices_stmt->fetchAll();
-
-foreach ($invoices as $inv) {
-    $statement_data[] = [
-        'date' => $inv['created_at'],
-        'type' => 'invoice',
-        'description' => 'Invoice: ' . $inv['invoice_number'],
-        'credit' => $inv['total'],
-        'debit' => 0,
-        'balance' => 0, // Will calculate in next step
-        'reference' => $inv['invoice_number'],
-        'invoice_id' => $inv['id'],
-        'payment_id' => null
-    ];
-    
-    // If invoice was partially paid on creation, add that payment immediately
-    if ($inv['paid_amount'] > 0) {
+foreach ($normalized_invoices as $inv) {
+    if ($inv['total'] > 0) {
         $statement_data[] = [
             'date' => $inv['created_at'],
-            'type' => 'payment',
-            'description' => 'Payment against Invoice: ' . $inv['invoice_number'] . ' (initial)',
-            'credit' => 0,
-            'debit' => $inv['paid_amount'],
+            'type' => 'invoice',
+            'description' => 'Invoice: ' . $inv['invoice_number'],
+            'credit' => $inv['total'],
+            'debit' => 0,
             'balance' => 0,
             'reference' => $inv['invoice_number'],
             'invoice_id' => $inv['id'],
-            'payment_id' => null
+            'payment_id' => null,
+            'display_date' => date('Y-m-d', strtotime($inv['created_at']))
         ];
     }
 }
 
-// 3. All invoice payments (debit transactions)
+// 3. All invoice payments (debit transactions) - single source of truth for payments
 $payments_stmt = $pdo->prepare("
     SELECT ip.*, i.invoice_number, u.full_name as recorded_by
     FROM invoice_payments ip
@@ -121,13 +186,14 @@ foreach ($payments as $pay) {
     $statement_data[] = [
         'date' => $pay['payment_date'] . ' ' . date('H:i:s', strtotime($pay['created_at'])),
         'type' => 'payment',
-        'description' => 'Payment - ' . ($pay['notes'] ?? 'Against Invoice: ' . $pay['invoice_number']),
+        'description' => 'Payment Received - ' . ($pay['notes'] ?? 'Against Invoice: ' . $pay['invoice_number']),
         'credit' => 0,
         'debit' => $pay['payment_amount'],
         'balance' => 0,
         'reference' => $pay['invoice_number'] ?? $pay['reference_no'] ?? 'PAY-' . $pay['id'],
         'invoice_id' => $pay['invoice_id'],
-        'payment_id' => $pay['id']
+        'payment_id' => $pay['id'],
+        'display_date' => date('Y-m-d', strtotime($pay['payment_date']))
     ];
 }
 
@@ -151,7 +217,8 @@ foreach ($adjustments as $adj) {
             'balance' => 0,
             'reference' => 'ADJ-CR-' . $adj['id'],
             'invoice_id' => null,
-            'payment_id' => null
+            'payment_id' => null,
+            'display_date' => date('Y-m-d', strtotime($adj['adjustment_date']))
         ];
     } else {
         $statement_data[] = [
@@ -163,22 +230,37 @@ foreach ($adjustments as $adj) {
             'balance' => 0,
             'reference' => 'ADJ-DR-' . $adj['id'],
             'invoice_id' => null,
-            'payment_id' => null
+            'payment_id' => null,
+            'display_date' => date('Y-m-d', strtotime($adj['adjustment_date']))
         ];
     }
 }
 
-// Sort all transactions by date
+// Sort all transactions by date (ascending for proper balance calculation)
 usort($statement_data, function($a, $b) {
-    return strtotime($a['date']) <=> strtotime($b['date']);
+    $dateCompare = strtotime($a['date']) <=> strtotime($b['date']);
+    if ($dateCompare != 0) {
+        return $dateCompare;
+    }
+    // If same date, opening balance should come first, then adjustments, then invoices, then payments
+    $order = [
+        'opening_balance' => 1,
+        'adjustment_credit' => 2,
+        'adjustment_debit' => 3,
+        'invoice' => 4,
+        'payment' => 5
+    ];
+    return ($order[$a['type']] ?? 99) <=> ($order[$b['type']] ?? 99);
 });
 
 // Calculate running balance
 $running_balance = 0;
+$first_transaction = true;
 foreach ($statement_data as &$transaction) {
     if ($transaction['type'] == 'opening_balance') {
-        $running_balance = $transaction['balance'];
+        $running_balance = ($transaction['credit'] > 0 ? $transaction['credit'] : -$transaction['debit']);
         $transaction['balance'] = $running_balance;
+        $first_transaction = false;
     } else {
         $running_balance += $transaction['credit'];
         $running_balance -= $transaction['debit'];
@@ -189,187 +271,229 @@ foreach ($statement_data as &$transaction) {
 // Calculate totals for summary
 $total_credit = array_sum(array_column($statement_data, 'credit'));
 $total_debit = array_sum(array_column($statement_data, 'debit'));
-$opening_balance = $statement_data[0]['balance'] ?? 0;
-$closing_balance = end($statement_data)['balance'] ?? $opening_balance;
+
+// Get opening and closing balances
+$opening_balance = !empty($statement_data) && $statement_data[0]['type'] == 'opening_balance' 
+    ? $statement_data[0]['balance'] 
+    : 0;
+$closing_balance = !empty($statement_data) ? end($statement_data)['balance'] : 0;
 
 // =============================
 // EXISTING LOGIC (for backward compatibility)
 // =============================
 
-// Fetch all invoices with pending amount > 0 (for unpaid invoices section)
-$unpaid_invoices_stmt = $pdo->prepare("
-    SELECT i.id, i.invoice_number, i.created_at, i.total, i.pending_amount,
-           i.paid_amount, i.payment_status, i.cash_received, i.change_given
-    FROM invoices i
-    WHERE i.customer_id = ? AND i.business_id = ? AND i.pending_amount > 0
-    ORDER BY i.created_at ASC
-");
-$unpaid_invoices_stmt->execute([$customer_id, $business_id]);
-$unpaid_invoices = $unpaid_invoices_stmt->fetchAll();
+// Unpaid invoices section should also use normalized values
+$unpaid_invoices = array_values(array_filter($normalized_invoices, function ($inv) {
+    return (float)$inv['effective_pending_amount'] > 0;
+}));
 
 // Process overall payment
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['overall_payment'])) {
-        $payment_amount = (float)($_POST['payment_amount'] ?? 0);
-        $payment_method = $_POST['payment_method'] ?? 'cash';
+        $payment_amount = round((float)($_POST['payment_amount'] ?? 0), 2);
+        $payment_method = trim($_POST['payment_method'] ?? 'cash');
         $reference = trim($_POST['reference'] ?? '');
         $payment_date = $_POST['payment_date'] ?? date('Y-m-d');
         $notes = trim($_POST['notes'] ?? '');
-        
+
+        $allowed_methods = ['cash', 'upi', 'bank', 'cheque', 'credit_card', 'other'];
+        if (!in_array($payment_method, $allowed_methods, true)) {
+            $payment_method = 'cash';
+        }
+        if ($payment_method === 'credit_card') {
+            $payment_method = 'other';
+        }
+
         if ($payment_amount <= 0 || $payment_amount > $total_outstanding) {
             $_SESSION['error'] = "Invalid payment amount. Must be between ₹0.01 and ₹" . number_format($total_outstanding, 2);
             header("Location: customer_credit_statement.php?customer_id=$customer_id");
             exit();
         }
-        
+
         try {
             $pdo->beginTransaction();
-            
+
             $remaining_payment = $payment_amount;
-            
-            // Distribute payment across invoices (oldest first)
-            foreach ($unpaid_invoices as $invoice) {
-                if ($remaining_payment <= 0) break;
-                
-                $invoice_payment = min($remaining_payment, $invoice['pending_amount']);
-                
-                if ($invoice_payment > 0) {
-                    // Calculate new amounts for this invoice
-                    $new_paid = $invoice['paid_amount'] + $invoice_payment;
-                    $new_pending = $invoice['pending_amount'] - $invoice_payment;
-                    
-                    // Determine new payment status
-                    if ($new_pending <= 0) {
-                        $new_status = 'paid';
-                    } elseif ($new_paid > 0) {
-                        $new_status = 'partial';
-                    } else {
-                        $new_status = 'pending';
-                    }
-                    
-                    // Update invoice with payment details
-                    $update_stmt = $pdo->prepare("
-                        UPDATE invoices 
-                        SET paid_amount = ?, 
-                            pending_amount = ?,
-                            payment_status = ?,
-                            cash_amount = cash_amount + ?,
-                            upi_amount = upi_amount + ?,
-                            bank_amount = bank_amount + ?,
-                            cheque_amount = cheque_amount + ?,
-                            upi_reference = COALESCE(?, upi_reference),
-                            bank_reference = COALESCE(?, bank_reference),
-                            cheque_number = COALESCE(?, cheque_number),
-                            updated_at = NOW()
-                        WHERE id = ? AND business_id = ?
-                    ");
-                    
-                    $cash_amt = $payment_method === 'cash' ? $invoice_payment : 0;
-                    $upi_amt = $payment_method === 'upi' ? $invoice_payment : 0;
-                    $bank_amt = $payment_method === 'bank' ? $invoice_payment : 0;
-                    $cheque_amt = $payment_method === 'cheque' ? $invoice_payment : 0;
-                    $upi_ref = $payment_method === 'upi' ? $reference : null;
-                    $bank_ref = $payment_method === 'bank' ? $reference : null;
-                    $cheque_no = $payment_method === 'cheque' ? $reference : null;
-                    
-                    $update_stmt->execute([
-                        $new_paid,
-                        $new_pending,
-                        $new_status,
-                        $cash_amt,
-                        $upi_amt,
-                        $bank_amt,
-                        $cheque_amt,
-                        $upi_ref,
-                        $bank_ref,
-                        $cheque_no,
-                        $invoice['id'],
-                        $business_id
-                    ]);
-                    
-                    // Record individual invoice payment
-                    try {
-                        $payment_stmt = $pdo->prepare("
-                            INSERT INTO invoice_payments 
-                            (business_id, invoice_id, customer_id, payment_amount, 
-                             payment_date, payment_method, reference_no, 
-                             notes, created_by, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                        ");
-                        $payment_stmt->execute([
-                            $business_id,
-                            $invoice['id'],
-                            $customer_id,
-                            $invoice_payment,
-                            $payment_date,
-                            $payment_method,
-                            $reference,
-                            "Overall payment - " . $notes,
-                            $_SESSION['user_id']
-                        ]);
-                    } catch (Exception $e) {
-                        error_log("Failed to record payment: " . $e->getMessage());
-                    }
-                    
-                    $remaining_payment -= $invoice_payment;
+
+            // Re-fetch unpaid invoices inside transaction so stale data is never used.
+            $live_unpaid_stmt = $pdo->prepare("
+                SELECT id, invoice_number, total, paid_amount, pending_amount, payment_status,
+                       cash_amount, upi_amount, bank_amount, cheque_amount, credit_amount
+                FROM invoices
+                WHERE customer_id = ? AND business_id = ? AND pending_amount > 0
+                ORDER BY created_at ASC, id ASC
+                FOR UPDATE
+            ");
+            $live_unpaid_stmt->execute([$customer_id, $business_id]);
+            $live_unpaid_invoices = $live_unpaid_stmt->fetchAll();
+
+            foreach ($live_unpaid_invoices as $invoice) {
+                if ($remaining_payment <= 0) {
+                    break;
                 }
-            }
-            
-            // If there's remaining payment after clearing invoices, adjust manual outstanding
-            if ($remaining_payment > 0 && $manual_outstanding > 0) {
-                // Reduce manual outstanding
-                $new_manual_outstanding = max(0, $manual_outstanding - $remaining_payment);
-                $new_outstanding_type = $new_manual_outstanding >= 0 ? 'credit' : 'debit';
-                
-                $update_customer_stmt = $pdo->prepare("
-                    UPDATE customers 
-                    SET outstanding_amount = ?, outstanding_type = ?
+
+                $ledger_sum_stmt = $pdo->prepare("
+                    SELECT COALESCE(SUM(payment_amount), 0)
+                    FROM invoice_payments
+                    WHERE invoice_id = ? AND business_id = ?
+                " );
+                $ledger_sum_stmt->execute([$invoice['id'], $business_id]);
+                $ledger_paid = (float)$ledger_sum_stmt->fetchColumn();
+
+                $normalized_live_invoice = normalizeInvoiceAmounts($invoice, $ledger_paid);
+                $invoice_total = round((float)$normalized_live_invoice['total'], 2);
+                $invoice_paid = round((float)$normalized_live_invoice['effective_paid_amount'], 2);
+                $invoice_pending = round((float)$normalized_live_invoice['effective_pending_amount'], 2);
+
+                if ($invoice_pending <= 0) {
+                    continue;
+                }
+
+                $invoice_payment = round(min($remaining_payment, $invoice_pending), 2);
+                if ($invoice_payment <= 0) {
+                    continue;
+                }
+
+                $new_paid = round($invoice_paid + $invoice_payment, 2);
+                $new_pending = round(max(0, $invoice_total - $new_paid), 2);
+
+                if ($new_pending <= 0) {
+                    $new_pending = 0.00;
+                    $new_status = 'paid';
+                } elseif ($new_paid > 0) {
+                    $new_status = 'partial';
+                } else {
+                    $new_status = 'pending';
+                }
+
+                $cash_amt   = $payment_method === 'cash'   ? $invoice_payment : 0;
+                $upi_amt    = $payment_method === 'upi'    ? $invoice_payment : 0;
+                $bank_amt   = $payment_method === 'bank'   ? $invoice_payment : 0;
+                $cheque_amt = $payment_method === 'cheque' ? $invoice_payment : 0;
+                $upi_ref    = $payment_method === 'upi'    ? $reference : null;
+                $bank_ref   = $payment_method === 'bank'   ? $reference : null;
+                $cheque_no  = $payment_method === 'cheque' ? $reference : null;
+
+                $update_stmt = $pdo->prepare("
+                    UPDATE invoices
+                    SET paid_amount = ?,
+                        pending_amount = ?,
+                        payment_status = ?,
+                        cash_amount = COALESCE(cash_amount, 0) + ?,
+                        upi_amount = COALESCE(upi_amount, 0) + ?,
+                        bank_amount = COALESCE(bank_amount, 0) + ?,
+                        cheque_amount = COALESCE(cheque_amount, 0) + ?,
+                        upi_reference = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE upi_reference END,
+                        bank_reference = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE bank_reference END,
+                        cheque_number = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE cheque_number END,
+                        payment_method = ?,
+                        updated_at = NOW()
                     WHERE id = ? AND business_id = ?
                 ");
-                $update_customer_stmt->execute([
-                    abs($new_manual_outstanding),
-                    $new_outstanding_type,
-                    $customer_id,
+                $update_stmt->execute([
+                    $new_paid,
+                    $new_pending,
+                    $new_status,
+                    $cash_amt,
+                    $upi_amt,
+                    $bank_amt,
+                    $cheque_amt,
+                    $upi_ref, $upi_ref, $upi_ref,
+                    $bank_ref, $bank_ref, $bank_ref,
+                    $cheque_no, $cheque_no, $cheque_no,
+                    $payment_method,
+                    $invoice['id'],
                     $business_id
                 ]);
-            }
-            
-            // Record overall payment summary
-            try {
-                $summary_stmt = $pdo->prepare("
-                    INSERT INTO customer_payments 
-                    (business_id, customer_id, total_amount, payment_method, 
-                     reference_no, payment_date, notes, created_by, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+
+                $payment_stmt = $pdo->prepare("
+                    INSERT INTO invoice_payments
+                    (business_id, invoice_id, customer_id, payment_amount, payment_date, payment_method, reference_no, notes, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ");
-                $summary_stmt->execute([
+                $payment_stmt->execute([
                     $business_id,
+                    $invoice['id'],
                     $customer_id,
-                    $payment_amount,
+                    $invoice_payment,
+                    $payment_date,
                     $payment_method,
                     $reference,
-                    $payment_date,
-                    "Overall payment distributed across invoices - " . $notes,
+                    'Overall payment - ' . $notes,
                     $_SESSION['user_id']
                 ]);
-            } catch (Exception $e) {
-                error_log("Failed to record overall payment: " . $e->getMessage());
+
+                $remaining_payment = round($remaining_payment - $invoice_payment, 2);
             }
-            
+
+            // If any amount remains after clearing invoices, adjust only manual outstanding.
+            if ($remaining_payment > 0) {
+                $customer_lock_stmt = $pdo->prepare("
+                    SELECT outstanding_amount, outstanding_type
+                    FROM customers
+                    WHERE id = ? AND business_id = ?
+                    FOR UPDATE
+                ");
+                $customer_lock_stmt->execute([$customer_id, $business_id]);
+                $live_customer = $customer_lock_stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($live_customer) {
+                    $live_manual = ($live_customer['outstanding_type'] === 'debit')
+                        ? -(float)$live_customer['outstanding_amount']
+                        : (float)$live_customer['outstanding_amount'];
+
+                    if ($live_manual > 0) {
+                        $new_manual = round(max(0, $live_manual - $remaining_payment), 2);
+                        $new_type = 'credit';
+                        $new_amount = $new_manual;
+
+                        $update_customer_stmt = $pdo->prepare("
+                            UPDATE customers
+                            SET outstanding_amount = ?, outstanding_type = ?
+                            WHERE id = ? AND business_id = ?
+                        ");
+                        $update_customer_stmt->execute([
+                            $new_amount,
+                            $new_type,
+                            $customer_id,
+                            $business_id
+                        ]);
+                    }
+                }
+            }
+
+            $summary_stmt = $pdo->prepare("
+                INSERT INTO customer_payments
+                (business_id, customer_id, total_amount, payment_method, reference_no, payment_date, notes, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            $summary_stmt->execute([
+                $business_id,
+                $customer_id,
+                $payment_amount,
+                $payment_method,
+                $reference,
+                $payment_date,
+                'Overall payment distributed across invoices - ' . $notes,
+                $_SESSION['user_id']
+            ]);
+
             $pdo->commit();
-            
+
             $_SESSION['success'] = "Overall payment of ₹" . number_format($payment_amount, 2) . " successfully distributed!";
             header("Location: customer_credit_statement.php?customer_id=$customer_id");
             exit();
-            
+
         } catch (Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $_SESSION['error'] = "Failed to process payment: " . $e->getMessage();
             header("Location: customer_credit_statement.php?customer_id=$customer_id");
             exit();
         }
     }
-    
+
     // Handle manual credit adjustment
     if (isset($_POST['manual_adjustment'])) {
         $adjustment_type = $_POST['adjustment_type'] ?? 'credit';
@@ -639,18 +763,18 @@ $payments_history = $payments_history_stmt->fetchAll();
                             <div class="col-md-3">
                                 <div class="card bg-light">
                                     <div class="card-body text-center p-3">
-                                        <h6 class="text-muted mb-1">Total Credit</h6>
+                                        <h6 class="text-muted mb-1">Total Sales (Credit)</h6>
                                         <h4 class="text-success mb-0">₹<?= number_format($total_credit, 2) ?></h4>
-                                        <small class="text-muted">Amount Added</small>
+                                        <small class="text-muted">Invoices & Credits</small>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="card bg-light">
                                     <div class="card-body text-center p-3">
-                                        <h6 class="text-muted mb-1">Total Debit</h6>
+                                        <h6 class="text-muted mb-1">Total Payments (Debit)</h6>
                                         <h4 class="text-danger mb-0">₹<?= number_format($total_debit, 2) ?></h4>
-                                        <small class="text-muted">Amount Received</small>
+                                        <small class="text-muted">Payments Received</small>
                                     </div>
                                 </div>
                             </div>
@@ -674,8 +798,8 @@ $payments_history = $payments_history_stmt->fetchAll();
                             <table class="table table-bordered table-hover align-middle" id="statementTable">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th width="120">Date</th>
-                                        <th width="150">Type</th>
+                                        <th width="100">Date</th>
+                                        <th width="120">Type</th>
                                         <th>Description</th>
                                         <th width="120">Reference</th>
                                         <th width="120" class="text-end">Credit (₹)</th>
@@ -692,7 +816,9 @@ $payments_history = $payments_history_stmt->fetchAll();
                                         </td>
                                     </tr>
                                     <?php else: ?>
-                                    <?php foreach ($statement_data as $transaction): 
+                                    <?php 
+                                    $display_balance = 0;
+                                    foreach ($statement_data as $index => $transaction): 
                                         $type_class = '';
                                         switch ($transaction['type']) {
                                             case 'invoice': $type_class = 'bg-info bg-opacity-10 text-info'; break;
@@ -710,8 +836,10 @@ $payments_history = $payments_history_stmt->fetchAll();
                                             case 'adjustment_debit': $type_text = 'Debit Adj'; break;
                                             case 'opening_balance': $type_text = 'Opening'; break;
                                         }
+                                        
+                                        $display_balance = $transaction['balance'];
                                     ?>
-                                    <tr>
+                                    <tr class="<?= $transaction['type'] == 'opening_balance' ? 'table-secondary' : '' ?>">
                                         <td><?= date('d M Y', strtotime($transaction['date'])) ?></td>
                                         <td>
                                             <span class="badge <?= $type_class ?>">
@@ -731,17 +859,21 @@ $payments_history = $payments_history_stmt->fetchAll();
                                         <td class="text-end <?= $transaction['credit'] > 0 ? 'text-success fw-bold' : '' ?>">
                                             <?php if ($transaction['credit'] > 0): ?>
                                             ₹<?= number_format($transaction['credit'], 2) ?>
+                                            <?php else: ?>
+                                            —
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-end <?= $transaction['debit'] > 0 ? 'text-danger fw-bold' : '' ?>">
                                             <?php if ($transaction['debit'] > 0): ?>
                                             ₹<?= number_format($transaction['debit'], 2) ?>
+                                            <?php else: ?>
+                                            —
                                             <?php endif; ?>
                                         </td>
-                                        <td class="text-end fw-bold <?= $transaction['balance'] >= 0 ? 'text-danger' : 'text-success' ?>">
-                                            ₹<?= number_format(abs($transaction['balance']), 2) ?>
+                                        <td class="text-end fw-bold <?= $display_balance >= 0 ? 'text-danger' : 'text-success' ?>">
+                                            ₹<?= number_format(abs($display_balance), 2) ?>
                                             <small class="d-block text-muted">
-                                                <?= $transaction['balance'] >= 0 ? 'Cr' : 'Dr' ?>
+                                                <?= $display_balance >= 0 ? 'Cr' : 'Dr' ?>
                                             </small>
                                         </td>
                                     </tr>
@@ -868,17 +1000,17 @@ $payments_history = $payments_history_stmt->fetchAll();
                                     <?php 
                                     $running_balance = 0;
                                     foreach ($unpaid_invoices as $inv): 
-                                        $running_balance += $inv['pending_amount'];
+                                        $running_balance += $inv['effective_pending_amount'];
                                     ?>
                                     <tr>
                                         <td><strong><?= htmlspecialchars($inv['invoice_number']) ?></strong></td>
                                         <td><?= date('d M Y', strtotime($inv['created_at'])) ?></td>
                                         <td class="text-end">₹<?= number_format($inv['total'], 2) ?></td>
-                                        <td class="text-end text-success">₹<?= number_format($inv['paid_amount'], 2) ?></td>
-                                        <td class="text-end text-danger fw-bold">₹<?= number_format($inv['pending_amount'], 2) ?></td>
+                                        <td class="text-end text-success">₹<?= number_format($inv['effective_paid_amount'], 2) ?></td>
+                                        <td class="text-end text-danger fw-bold">₹<?= number_format($inv['effective_pending_amount'], 2) ?></td>
                                         <td>
-                                            <span class="badge bg-<?= $inv['payment_status'] === 'paid' ? 'success' : ($inv['payment_status'] === 'partial' ? 'warning' : 'danger') ?>">
-                                                <?= ucfirst($inv['payment_status']) ?>
+                                            <span class="badge bg-<?= $inv['effective_payment_status'] === 'paid' ? 'success' : ($inv['effective_payment_status'] === 'partial' ? 'warning' : 'danger') ?>">
+                                                <?= ucfirst($inv['effective_payment_status']) ?>
                                             </span>
                                         </td>
                                         <td class="text-center">
@@ -886,7 +1018,7 @@ $payments_history = $payments_history_stmt->fetchAll();
                                                class="btn btn-sm btn-outline-info">
                                                 <i class="bx bx-show"></i> View
                                             </a>
-                                            <?php if ($inv['pending_amount'] > 0): ?>
+                                            <?php if ($inv['effective_pending_amount'] > 0): ?>
                                             <a href="collect_payment.php?invoice_id=<?= $inv['id'] ?>" 
                                                class="btn btn-sm btn-success">
                                                 <i class="bx bx-money"></i> Collect
@@ -1028,6 +1160,7 @@ $payments_history = $payments_history_stmt->fetchAll();
 .border-start.border-4 { border-left-width: 6px !important; }
 .table thead th { background-color: #f8d7da !important; color: #721c24; }
 #statementTable tbody tr:hover { background-color: #f8f9fa; }
+#statementTable tbody tr.table-secondary { background-color: #e9ecef; }
 </style>
 
 <script>
@@ -1115,7 +1248,7 @@ document.getElementById('adjustmentType').dispatchEvent(new Event('change'));
 $(document).ready(function() {
     $('#statementTable').DataTable({
         pageLength: 50,
-        order: [[0, 'desc']],
+        order: [[0, 'asc']], // Order by date ascending to show opening balance first
         dom: "<'row'<'col-sm-12 col-md-6'l><'col-sm-12 col-md-6'f>>" +
              "<'row'<'col-sm-12'tr>>" +
              "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",

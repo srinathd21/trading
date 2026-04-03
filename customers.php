@@ -173,7 +173,6 @@ if ($customer_type && in_array($customer_type, ['retail', 'wholesale'])) {
 }
 
 // Main query with credit/outstanding and points calculation
-// Main query with credit/outstanding and points calculation
 $sql = "
     SELECT c.*,
            rp.full_name as referral_name,
@@ -599,34 +598,34 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                             </div>
                                         </td>
                                         <td class="text-center">
-    <?php if ($c['phone']): ?>
-    <div class="mb-2">
-        <a href="tel:<?= htmlspecialchars($c['phone']) ?>"
-           class="text-decoration-none d-flex align-items-center justify-content-center">
-            <i class="bx bx-phone text-primary me-2"></i>
-            <?= htmlspecialchars($c['phone']) ?>
-        </a>
-    </div>
-    <?php endif; ?>
-    <?php if ($c['alt_phone']): ?>
-    <div class="mb-2">
-        <a href="tel:<?= htmlspecialchars($c['alt_phone']) ?>"
-           class="text-decoration-none d-flex align-items-center justify-content-center">
-            <i class="bx bx-phone-call text-secondary me-2"></i>
-            <small><?= htmlspecialchars($c['alt_phone']) ?></small>
-        </a>
-    </div>
-    <?php endif; ?>
-    <?php if ($c['email']): ?>
-    <div>
-        <a href="mailto:<?= htmlspecialchars($c['email']) ?>"
-           class="text-decoration-none d-flex align-items-center justify-content-center">
-            <i class="bx bx-envelope text-info me-2"></i>
-            <?= htmlspecialchars($c['email']) ?>
-        </a>
-    </div>
-    <?php endif; ?>
-</td>
+                                            <?php if ($c['phone']): ?>
+                                            <div class="mb-2">
+                                                <a href="tel:<?= htmlspecialchars($c['phone']) ?>"
+                                                   class="text-decoration-none d-flex align-items-center justify-content-center">
+                                                    <i class="bx bx-phone text-primary me-2"></i>
+                                                    <?= htmlspecialchars($c['phone']) ?>
+                                                </a>
+                                            </div>
+                                            <?php endif; ?>
+                                            <?php if ($c['alt_phone']): ?>
+                                            <div class="mb-2">
+                                                <a href="tel:<?= htmlspecialchars($c['alt_phone']) ?>"
+                                                   class="text-decoration-none d-flex align-items-center justify-content-center">
+                                                    <i class="bx bx-phone-call text-secondary me-2"></i>
+                                                    <small><?= htmlspecialchars($c['alt_phone']) ?></small>
+                                                </a>
+                                            </div>
+                                            <?php endif; ?>
+                                            <?php if ($c['email']): ?>
+                                            <div>
+                                                <a href="mailto:<?= htmlspecialchars($c['email']) ?>"
+                                                   class="text-decoration-none d-flex align-items-center justify-content-center">
+                                                    <i class="bx bx-envelope text-info me-2"></i>
+                                                    <?= htmlspecialchars($c['email']) ?>
+                                                </a>
+                                            </div>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-center">
                                             <div class="mb-2">
                                                 <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-3 py-2 fs-6">
@@ -694,10 +693,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                     </div>
                                                 <?php endif; ?>
                                                 
-                                                <a href="customer_credit_statement.php?customer_id=<?= $c['id'] ?>"
-                                                   class="btn btn-sm btn-outline-danger mt-2">
-                                                    <i class="bx bx-receipt me-1"></i> View Statement
-                                                </a>
+                                                
                                                 
                                             <?php elseif ($total_outstanding_customer < -0.01): ?>
                                                 <div class="mb-1">
@@ -707,10 +703,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                 <div class="small text-success">
                                                     <i class="bx bx-check-circle me-1"></i> Customer has credit balance
                                                 </div>
-                                                <a href="customer_credit_statement.php?customer_id=<?= $c['id'] ?>"
-                                                   class="btn btn-sm btn-outline-success mt-2">
-                                                    <i class="bx bx-receipt me-1"></i> View Statement
-                                                </a>
+                                               
                                                 
                                             <?php else: ?>
                                                 <div class="mb-1">
@@ -750,6 +743,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                         data-id="<?= $c['id'] ?>"
                                                         data-name="<?= htmlspecialchars($c['name'], ENT_QUOTES) ?>"
                                                         data-phone="<?= htmlspecialchars($c['phone'] ?? '', ENT_QUOTES) ?>"
+                                                        data-alt_phone="<?= htmlspecialchars($c['alt_phone'] ?? '', ENT_QUOTES) ?>"
                                                         data-email="<?= htmlspecialchars($c['email'] ?? '', ENT_QUOTES) ?>"
                                                         data-address="<?= htmlspecialchars($c['address'] ?? '', ENT_QUOTES) ?>"
                                                         data-gstin="<?= htmlspecialchars($c['gstin'] ?? '', ENT_QUOTES) ?>"
@@ -761,10 +755,19 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                         data-bs-toggle="tooltip" title="Edit">
                                                     <i class="bx bx-edit"></i>
                                                 </button>
-                                                <a href="pos.php?customer_id=<?= $c['id'] ?>"
+                                                
+                                                <!-- Make Payment Button - Replaces New Sale -->
+                                                <a href="customer_payment.php?customer_id=<?= $c['id'] ?>"
                                                    class="btn btn-outline-success"
-                                                   data-bs-toggle="tooltip" title="New Sale">
-                                                    <i class="bx bx-plus"></i>
+                                                   data-bs-toggle="tooltip" title="Make Payment">
+                                                    <i class="bx bx-rupee"></i>
+                                                </a>
+                                                
+                                                <!-- Statement Button - New button -->
+                                                <a href="customer_statement.php?id=<?= $c['id'] ?>"
+                                                   class="btn btn-outline-primary"
+                                                   data-bs-toggle="tooltip" title="View Statement">
+                                                    <i class="bx bx-file"></i>
                                                 </a>
                                               
                                                 <?php if ($c['last_invoice_id'] && $c['phone']):
@@ -807,6 +810,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                     <i class="bx bx-trash"></i>
                                                 </button>
                                             </div>
+                                         </div>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -822,7 +826,6 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
     </div>
 </div>
 
-<!-- Add/Edit Customer Modal -->
 <!-- Add/Edit Customer Modal -->
 <div class="modal fade" id="addCustomerModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -995,7 +998,7 @@ $(document).ready(function() {
         $('#editId').val($(this).data('id'));
         $('#custName').val($(this).data('name'));
         $('#custPhone').val($(this).data('phone'));
-        $('#custAltPhone').val($(this).data('alt_phone') || ''); // Add this line
+        $('#custAltPhone').val($(this).data('alt_phone') || '');
         $('#custEmail').val($(this).data('email'));
         $('#custAddress').val($(this).data('address'));
         $('#custGstin').val($(this).data('gstin'));
@@ -1065,7 +1068,7 @@ $(document).ready(function() {
         $('#custReferral').val('');
         $('#custOutstandingType').val('credit');
         $('#custOutstandingAmount').val('0');
-        $('#custAltPhone').val(''); // Clear alt phone on reset
+        $('#custAltPhone').val('');
     });
 
     // Phone number formatting for both fields
