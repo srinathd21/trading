@@ -526,7 +526,7 @@ $credit_amount = (float)($payment_details['credit'] ?? 0);
 $credit_reference = $payment_details['credit_reference'] ?? '';
 $credit_due_date = $payment_details['credit_due_date'] ?? null;
 
-$total_paid = $cash_amount + $upi_amount + $bank_amount + $cheque_amount + $credit_amount;
+$total_paid = $cash_amount + $upi_amount + $bank_amount + $cheque_amount;
 $change_given = max(0, $total_paid - $total);
 
 // Get shipping details from the request

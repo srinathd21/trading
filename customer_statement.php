@@ -44,14 +44,16 @@ if (!$customer) {
     exit();
 }
 
-// Get all transactions for statement
+// Get all transactions for statement - ORDERED BY DATE DESC, TIME DESC (most recent on top)
 // FIX: Use CONVERT or CAST to ensure consistent collation
 $transactions_sql = "
     SELECT 
         CAST('invoice' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
         i.id as reference_id,
         CONVERT(COALESCE(i.invoice_number, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
-        i.created_at as transaction_date,
+        i.created_at as transaction_datetime,
+        DATE(i.created_at) as transaction_date,
+        TIME(i.created_at) as transaction_time,
         i.total as debit,
         0 as credit,
         i.paid_amount as paid_amount,
@@ -69,7 +71,9 @@ $transactions_sql = "
         CAST('payment' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
         ip.id as reference_id,
         CONVERT(COALESCE(ip.reference_no, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
-        ip.payment_date as transaction_date,
+        ip.created_at as transaction_datetime,
+        DATE(ip.payment_date) as transaction_date,
+        TIME(ip.created_at) as transaction_time,
         0 as debit,
         ip.payment_amount as credit,
         NULL as paid_amount,
@@ -88,7 +92,9 @@ $transactions_sql = "
         CAST('adjustment' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
         ca.id as reference_id,
         CONVERT(COALESCE(ca.description, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
-        ca.adjustment_date as transaction_date,
+        ca.created_at as transaction_datetime,
+        DATE(ca.adjustment_date) as transaction_date,
+        TIME(ca.created_at) as transaction_time,
         CASE WHEN ca.adjustment_type = 'debit' THEN ca.amount ELSE 0 END as debit,
         CASE WHEN ca.adjustment_type = 'credit' THEN ca.amount ELSE 0 END as credit,
         NULL as paid_amount,
@@ -100,7 +106,7 @@ $transactions_sql = "
     WHERE ca.customer_id = ? AND ca.business_id = ?
     AND DATE(ca.adjustment_date) BETWEEN ? AND ?
 
-    ORDER BY transaction_date ASC, created_at ASC
+    ORDER BY transaction_datetime DESC, created_at DESC
 ";
 
 $stmt = $pdo->prepare($transactions_sql);
@@ -168,8 +174,13 @@ foreach ($transactions as $t) {
     }
 }
 
-$closing_balance = $opening_balance + $period_summary['total_invoices'] - $period_summary['total_payments'] 
-                   + $period_summary['total_adjustment_debit'] - $period_summary['total_adjustment_credit'];
+// Calculate running balance from oldest to newest (for correct balance calculation)
+$transactions_reverse = array_reverse($transactions);
+$running_balance = $opening_balance;
+foreach ($transactions_reverse as $t) {
+    $running_balance += $t['debit'] - $t['credit'];
+}
+$closing_balance = $running_balance;
 
 // Get credit limit status
 $credit_limit = $customer['credit_limit'];
@@ -516,11 +527,11 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                     </div>
                 </div>
 
-                <!-- Statement Table -->
+                <!-- Statement Table - Most Recent on Top -->
                 <div class="card shadow-sm">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
-                            <i class="bx bx-list-ul me-2"></i> Transaction Statement
+                            <i class="bx bx-list-ul me-2"></i> Transaction Statement (Most Recent First)
                         </h5>
                     </div>
                     <div class="card-body p-0">
@@ -528,33 +539,21 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                             <table class="table table-hover mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Date</th>
+                                        <th>Date & Time</th>
                                         <th>Transaction Type</th>
                                         <th>Reference</th>
                                         <th>Description</th>
                                         <th class="text-end">Debit (Purchases)</th>
                                         <th class="text-end">Credit (Payments)</th>
-                                        <th class="text-end">Balance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php 
-                                    $running_balance = $opening_balance;
                                     $has_transactions = false;
                                     ?>
                                     
-                                    <!-- Opening Balance Row -->
-                                    <tr class="table-secondary fw-bold">
-                                        <td colspan="6" class="text-end">Opening Balance (as on <?= date('d M Y', strtotime($from_date)) ?>):</td>
-                                        <td class="text-end <?= $opening_balance > 0 ? 'text-danger' : ($opening_balance < 0 ? 'text-success' : 'text-secondary') ?>">
-                                            ₹<?= number_format(abs($opening_balance), 2) ?>
-                                            <small class="d-block"><?= $opening_balance > 0 ? 'Dr' : ($opening_balance < 0 ? 'Cr' : '') ?></small>
-                                        </td>
-                                    </tr>
-                                    
                                     <?php foreach ($transactions as $t): 
                                         $has_transactions = true;
-                                        $running_balance += $t['debit'] - $t['credit'];
                                         $row_class = '';
                                         $badge_class = '';
                                         
@@ -576,7 +575,7 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                         <td>
                                             <strong><?= date('d M Y', strtotime($t['transaction_date'])) ?></strong>
                                             <br>
-                                            <small class="text-muted"><?= date('h:i A', strtotime($t['created_at'])) ?></small>
+                                            <small class="text-muted"><?= date('h:i A', strtotime($t['transaction_time'] ?? $t['created_at'])) ?></small>
                                         </td>
                                         <td>
                                             <span class="badge-transaction <?= $badge_class ?>">
@@ -608,23 +607,23 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                         <td class="text-end amount-positive">
                                             <?php if ($t['debit'] > 0): ?>
                                             ₹<?= number_format($t['debit'], 2) ?>
+                                            <?php else: ?>
+                                            —
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-end amount-negative">
                                             <?php if ($t['credit'] > 0): ?>
                                             ₹<?= number_format($t['credit'], 2) ?>
+                                            <?php else: ?>
+                                            —
                                             <?php endif; ?>
                                         </td>
-                                        <td class="text-end running-balance <?= $running_balance > 0 ? 'text-danger' : ($running_balance < 0 ? 'text-success' : 'text-secondary') ?>">
-                                            ₹<?= number_format(abs($running_balance), 2) ?>
-                                            <small class="d-block"><?= $running_balance > 0 ? 'Dr' : ($running_balance < 0 ? 'Cr' : '') ?></small>
-                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
                                     
                                     <?php if (!$has_transactions): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-4">
+                                        <td colspan="6" class="text-center py-4">
                                             <div class="empty-state">
                                                 <i class="bx bx-data fs-1 text-muted mb-3"></i>
                                                 <h5>No transactions found</h5>
@@ -635,17 +634,8 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                         </td>
                                     </tr>
                                     <?php endif; ?>
-                                    
-                                    <!-- Closing Balance Row -->
-                                    <tr class="table-primary fw-bold">
-                                        <td colspan="6" class="text-end">Closing Balance (as on <?= date('d M Y', strtotime($to_date)) ?>):</td>
-                                        <td class="text-end <?= $closing_balance > 0 ? 'text-danger' : ($closing_balance < 0 ? 'text-success' : 'text-secondary') ?>">
-                                            ₹<?= number_format(abs($closing_balance), 2) ?>
-                                            <small class="d-block"><?= $closing_balance > 0 ? 'Dr' : ($closing_balance < 0 ? 'Cr' : '') ?></small>
-                                        </td>
-                                    </tr>
                                 </tbody>
-                            </table>
+                             </table>
                         </div>
                     </div>
                     <div class="card-footer bg-light">
@@ -769,7 +759,7 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
-                            </table>
+                             </table>
                         </div>
                     </div>
                 </div>

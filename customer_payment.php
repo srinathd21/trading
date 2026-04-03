@@ -21,16 +21,76 @@ if (!$customer_id) {
     exit();
 }
 
-// Get customer details
+function normalizePaymentMethod($method) {
+    $allowed_methods = ['cash', 'upi', 'bank', 'cheque', 'other'];
+    return in_array($method, $allowed_methods, true) ? $method : 'other';
+}
+
+function computeInvoiceStatus($total, $paid) {
+    $pending = max(0, round((float)$total - (float)$paid, 2));
+
+    if ($pending <= 0.01) {
+        return ['paid', 0.00];
+    }
+
+    if ((float)$paid > 0) {
+        return ['partial', $pending];
+    }
+
+    return ['pending', $pending];
+}
+
+function applyAdvanceToCustomer(PDO $pdo, $customer_id, $business_id, $advance_amount) {
+    if ($advance_amount <= 0) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("SELECT outstanding_type, outstanding_amount FROM customers WHERE id = ? AND business_id = ? FOR UPDATE");
+    $stmt->execute([$customer_id, $business_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return;
+    }
+
+    $current_type = $row['outstanding_type'] ?? 'credit';
+    $current_amount = (float)($row['outstanding_amount'] ?? 0);
+
+    if ($current_type === 'debit') {
+        $new_type = 'debit';
+        $new_amount = $current_amount + $advance_amount;
+    } else {
+        if ($current_amount > $advance_amount) {
+            $new_type = 'credit';
+            $new_amount = $current_amount - $advance_amount;
+        } elseif ($current_amount < $advance_amount) {
+            $new_type = 'debit';
+            $new_amount = $advance_amount - $current_amount;
+        } else {
+            $new_type = 'credit';
+            $new_amount = 0;
+        }
+    }
+
+    $update = $pdo->prepare("UPDATE customers SET outstanding_type = ?, outstanding_amount = ? WHERE id = ? AND business_id = ?");
+    $update->execute([$new_type, round($new_amount, 2), $customer_id, $business_id]);
+}
+
+// Get customer details using real outstanding balance, not stale pending_amount values
 $stmt = $pdo->prepare("
     SELECT c.*, 
-           (SELECT COALESCE(SUM(pending_amount), 0) FROM invoices 
-            WHERE customer_id = c.id AND business_id = ? AND payment_status IN ('pending', 'partial')) as total_outstanding
+           (
+               SELECT COALESCE(SUM(GREATEST(total - paid_amount, 0)), 0)
+               FROM invoices
+               WHERE customer_id = c.id
+                 AND business_id = ?
+                 AND GREATEST(total - paid_amount, 0) > 0.01
+           ) AS total_outstanding
     FROM customers c
     WHERE c.id = ? AND c.business_id = ?
 ");
 $stmt->execute([$business_id, $customer_id, $business_id]);
-$customer = $stmt->fetch();
+$customer = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$customer) {
     $_SESSION['error'] = "Customer not found";
@@ -40,29 +100,38 @@ if (!$customer) {
 
 // Get all outstanding invoices (oldest first for FIFO allocation)
 $invoices_sql = "
-    SELECT id, invoice_number, total, paid_amount, 
-           (total - paid_amount) as outstanding,
+    SELECT id,
+           invoice_number,
+           total,
+           paid_amount,
+           GREATEST(total - paid_amount, 0) AS outstanding,
            created_at,
-           payment_status
+           CASE
+               WHEN GREATEST(total - paid_amount, 0) <= 0.01 THEN 'paid'
+               WHEN paid_amount > 0 THEN 'partial'
+               ELSE 'pending'
+           END AS payment_status
     FROM invoices 
-    WHERE customer_id = ? AND business_id = ? 
-    AND payment_status IN ('pending', 'partial')
-    AND (total - paid_amount) > 0.01
+    WHERE customer_id = ?
+      AND business_id = ?
+      AND GREATEST(total - paid_amount, 0) > 0.01
     ORDER BY created_at ASC
 ";
 $stmt = $pdo->prepare($invoices_sql);
 $stmt->execute([$customer_id, $business_id]);
-$outstanding_invoices = $stmt->fetchAll();
+$outstanding_invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get manual outstanding (credit/debit from customer table)
-$manual_outstanding = ($customer['outstanding_type'] == 'credit') ? $customer['outstanding_amount'] : -$customer['outstanding_amount'];
-$total_outstanding = $manual_outstanding + $customer['total_outstanding'];
+$manual_outstanding = (($customer['outstanding_type'] ?? 'credit') === 'credit')
+    ? (float)$customer['outstanding_amount']
+    : -(float)$customer['outstanding_amount'];
+$total_outstanding = $manual_outstanding + (float)$customer['total_outstanding'];
 
 // Handle payment submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $payment_mode = $_POST['payment_mode'] ?? 'bulk';
     $payment_amount = floatval($_POST['payment_amount'] ?? 0);
-    $payment_method = $_POST['payment_method'] ?? 'cash';
+    $payment_method = normalizePaymentMethod($_POST['payment_method'] ?? 'cash');
     $reference_no = trim($_POST['reference_no'] ?? '');
     $payment_date = $_POST['payment_date'] ?? date('Y-m-d');
     $notes = trim($_POST['notes'] ?? '');
@@ -82,29 +151,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($payment_mode == 'bulk') {
             // BULK PAYMENT: First reduce manual outstanding, then FIFO on invoices
             
-            // Step 1: Reduce manual outstanding first
+            // Step 1: Reduce manual outstanding first when customer owes you
             if ($manual_outstanding > 0 && $remaining_amount > 0) {
                 $manual_reduction = min($remaining_amount, $manual_outstanding);
-                
-                // Update customer manual outstanding
-                if ($customer['outstanding_type'] == 'credit') {
-                    $new_manual_amount = $customer['outstanding_amount'] - $manual_reduction;
-                    $update_sql = "UPDATE customers SET outstanding_amount = ? WHERE id = ? AND business_id = ?";
-                    $stmt = $pdo->prepare($update_sql);
-                    $stmt->execute([max(0, $new_manual_amount), $customer_id, $business_id]);
-                    
-                    // Log manual payment
-                    $log_sql = "INSERT INTO manufacturer_outstanding_history (manufacturer_id, date, type, amount, balance_after, reference_no, notes, created_by) 
-                                VALUES (?, ?, 'payment_made', ?, ?, ?, ?, ?)";
-                    // Note: This is for customers - you may need a similar customer_outstanding_history table
-                    
-                    $payment_allocations[] = [
-                        'type' => 'manual_credit',
-                        'amount' => $manual_reduction,
-                        'description' => 'Payment towards manual credit balance'
-                    ];
-                }
-                
+
+                $new_manual_amount = max(0, round((float)$customer['outstanding_amount'] - $manual_reduction, 2));
+                $update_sql = "UPDATE customers SET outstanding_type = 'credit', outstanding_amount = ? WHERE id = ? AND business_id = ?";
+                $stmt = $pdo->prepare($update_sql);
+                $stmt->execute([$new_manual_amount, $customer_id, $business_id]);
+
+                $payment_allocations[] = [
+                    'type' => 'manual_credit',
+                    'amount' => $manual_reduction,
+                    'description' => 'Payment towards manual credit balance'
+                ];
+
                 $remaining_amount -= $manual_reduction;
             }
             
@@ -112,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             foreach ($outstanding_invoices as $invoice) {
                 if ($remaining_amount <= 0) break;
                 
-                $invoice_outstanding = $invoice['outstanding'];
+                $invoice_outstanding = (float)$invoice['outstanding'];
                 $allocation = min($remaining_amount, $invoice_outstanding);
                 
                 if ($allocation > 0) {
@@ -127,14 +188,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $payment_method, $reference_no, $payment_date, $notes, $_SESSION['user_id']
                     ]);
                     
-                    // Update invoice paid amount and status
-                    $new_paid = $invoice['paid_amount'] + $allocation;
-                    $new_status = ($new_paid >= $invoice['total']) ? 'paid' : 'partial';
+                    // Update invoice paid amount, pending amount and status
+                    $new_paid = round((float)$invoice['paid_amount'] + $allocation, 2);
+                    [$new_status, $new_pending] = computeInvoiceStatus($invoice['total'], $new_paid);
                     
-                    $update_sql = "UPDATE invoices SET paid_amount = ?, payment_status = ?, updated_at = NOW() 
+                    $update_sql = "UPDATE invoices 
+                                   SET paid_amount = ?, pending_amount = ?, payment_status = ?, updated_at = NOW() 
                                    WHERE id = ?";
                     $stmt = $pdo->prepare($update_sql);
-                    $stmt->execute([$new_paid, $new_status, $invoice['id']]);
+                    $stmt->execute([$new_paid, $new_pending, $new_status, $invoice['id']]);
                     
                     $payment_allocations[] = [
                         'type' => 'invoice',
@@ -146,6 +208,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     $remaining_amount -= $allocation;
                 }
+            }
+
+            // Step 3: Save any extra payment as advance (customer debit balance)
+            if ($remaining_amount > 0.01) {
+                applyAdvanceToCustomer($pdo, $customer_id, $business_id, round($remaining_amount, 2));
+
+                $payment_allocations[] = [
+                    'type' => 'advance',
+                    'amount' => round($remaining_amount, 2),
+                    'description' => 'Excess payment stored as advance balance'
+                ];
+
+                $remaining_amount = 0;
             }
             
             // Record the overall payment transaction
@@ -163,9 +238,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // Update customer's total outstanding in customers table if needed
             // Recalculate total outstanding
             $new_total_outstanding_sql = "
-                SELECT COALESCE(SUM(total - paid_amount), 0) 
+                SELECT COALESCE(SUM(GREATEST(total - paid_amount, 0)), 0) 
                 FROM invoices 
-                WHERE customer_id = ? AND business_id = ? AND payment_status IN ('pending', 'partial')
+                WHERE customer_id = ? AND business_id = ? AND GREATEST(total - paid_amount, 0) > 0.01
             ";
             $stmt = $pdo->prepare($new_total_outstanding_sql);
             $stmt->execute([$customer_id, $business_id]);
@@ -193,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
             }
             
-            if ($total_selected != $payment_amount) {
+            if (abs($total_selected - $payment_amount) > 0.009) {
                 throw new Exception("Payment amount does not match sum of selected invoice payments");
             }
             
@@ -229,14 +304,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $payment_method, $reference_no, $payment_date, $notes, $_SESSION['user_id']
                 ]);
                 
-                // Update invoice paid amount and status
-                $new_paid = $invoice['paid_amount'] + $amount;
-                $new_status = ($new_paid >= $invoice['total']) ? 'paid' : 'partial';
+                // Update invoice paid amount, pending amount and status
+                $new_paid = round((float)$invoice['paid_amount'] + $amount, 2);
+                [$new_status, $new_pending] = computeInvoiceStatus($invoice['total'], $new_paid);
                 
-                $update_sql = "UPDATE invoices SET paid_amount = ?, payment_status = ?, updated_at = NOW() 
+                $update_sql = "UPDATE invoices 
+                               SET paid_amount = ?, pending_amount = ?, payment_status = ?, updated_at = NOW() 
                                WHERE id = ?";
                 $stmt = $pdo->prepare($update_sql);
-                $stmt->execute([$new_paid, $new_status, $inv_id]);
+                $stmt->execute([$new_paid, $new_pending, $new_status, $inv_id]);
                 
                 $payment_allocations[] = [
                     'type' => 'invoice',
@@ -274,17 +350,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Get payment history
+// Use BINARY comparison for reference_no to avoid mixed-collation errors
 $history_sql = "
     SELECT cp.*, 
-           (SELECT COUNT(*) FROM invoice_payments ip WHERE ip.customer_id = cp.customer_id AND DATE(ip.payment_date) = DATE(cp.payment_date)) as invoice_count
+           COALESCE(u.full_name, 'System') AS recorded_by,
+           (
+               SELECT COUNT(*)
+               FROM invoice_payments ip
+               WHERE ip.customer_id = cp.customer_id
+                 AND ip.business_id = cp.business_id
+                 AND DATE(ip.payment_date) = DATE(cp.payment_date)
+                 AND BINARY TRIM(COALESCE(ip.reference_no, '')) = BINARY TRIM(COALESCE(cp.reference_no, ''))
+           ) AS invoice_count
     FROM customer_payments cp
+    LEFT JOIN users u ON u.id = cp.created_by
     WHERE cp.customer_id = ? AND cp.business_id = ?
     ORDER BY cp.created_at DESC
     LIMIT 20
 ";
 $stmt = $pdo->prepare($history_sql);
 $stmt->execute([$customer_id, $business_id]);
-$payment_history = $stmt->fetchAll();
+$payment_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -397,7 +483,7 @@ $payment_history = $stmt->fetchAll();
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <small class="opacity-75">Total Outstanding</small>
-                                        <h2 class="mb-0">₹<?= number_format($total_outstanding, 2) ?></h2>
+                                        <h2 class="mb-0">₹<?= number_format(max(0, $total_outstanding), 2) ?></h2>
                                     </div>
                                     <i class="bx bx-error-circle fs-1 opacity-50"></i>
                                 </div>
@@ -424,7 +510,7 @@ $payment_history = $stmt->fetchAll();
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <small class="opacity-75">Invoice Outstanding</small>
-                                        <h3 class="mb-0">₹<?= number_format($customer['total_outstanding'], 2) ?></h3>
+                                        <h3 class="mb-0">₹<?= number_format(max(0, (float)$customer['total_outstanding']), 2) ?></h3>
                                         <small><?= count($outstanding_invoices) ?> pending invoice(s)</small>
                                     </div>
                                     <i class="bx bx-receipt fs-1 opacity-50"></i>
@@ -498,7 +584,6 @@ $payment_history = $stmt->fetchAll();
                                                     <option value="upi">UPI</option>
                                                     <option value="bank">Bank Transfer</option>
                                                     <option value="cheque">Cheque</option>
-                                                    <option value="credit_card">Credit Card</option>
                                                     <option value="other">Other</option>
                                                 </select>
                                             </div>
@@ -618,7 +703,6 @@ $payment_history = $stmt->fetchAll();
                                                     <option value="upi">UPI</option>
                                                     <option value="bank">Bank Transfer</option>
                                                     <option value="cheque">Cheque</option>
-                                                    <option value="credit_card">Credit Card</option>
                                                     <option value="other">Other</option>
                                                 </select>
                                             </div>
@@ -698,14 +782,7 @@ $payment_history = $stmt->fetchAll();
                                             <?php endif; ?>
                                         </td>
                                         <td><?= htmlspecialchars($payment['notes'] ?: '—') ?></td>
-                                        <td>
-                                            <?php
-                                            $user_stmt = $pdo->prepare("SELECT full_name FROM users WHERE id = ?");
-                                            $user_stmt->execute([$payment['created_by']]);
-                                            $user = $user_stmt->fetch();
-                                            echo htmlspecialchars($user['full_name'] ?? 'System');
-                                            ?>
-                                        </td>
+                                        <td><?= htmlspecialchars($payment['recorded_by'] ?? 'System') ?></td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -724,77 +801,55 @@ $payment_history = $stmt->fetchAll();
 <?php include('includes/scripts.php'); ?>
 
 <script>
-$(document).ready(function() {
-    // Show/hide reference number field based on payment method
-    function toggleReferenceField(method, prefix) {
-        if (method === 'upi' || method === 'bank' || method === 'cheque') {
-            $('#' + prefix + '_reference_div').show();
-        } else {
-            $('#' + prefix + '_reference_div').hide();
-            $('input[name="reference_no"]').val('');
-        }
+function toggleReferenceField(method, prefix) {
+    if (method === 'upi' || method === 'bank' || method === 'cheque') {
+        $('#' + prefix + '_reference_div').show();
+    } else {
+        $('#' + prefix + '_reference_div').hide();
+        $('#' + prefix + '_reference_div').find('input[name="reference_no"]').val('');
     }
-    
-    $('#bulk_payment_method').change(function() {
+}
+
+function resetInvoiceSelection() {
+    $('.invoice-checkbox').prop('checked', false).trigger('change');
+    $('#select_all_invoices').prop('checked', false).prop('indeterminate', false);
+    $('.invoice-amount').val('').prop('disabled', true);
+    $('#total_payment_amount').val('');
+    $('#invoice_reference_div').find('input[name="reference_no"]').val('');
+    $('#invoicePaymentForm').find('input[name="notes"]').val('');
+    $('#invoice_payment_method').val('cash');
+    toggleReferenceField('cash', 'invoice');
+}
+
+$(document).ready(function() {
+    $('#bulk_payment_method').on('change', function() {
         toggleReferenceField($(this).val(), 'bulk');
     });
-    
-    $('#invoice_payment_method').change(function() {
+
+    $('#invoice_payment_method').on('change', function() {
         toggleReferenceField($(this).val(), 'invoice');
     });
-    
-    // Initialize reference fields
+
     toggleReferenceField($('#bulk_payment_method').val(), 'bulk');
     toggleReferenceField($('#invoice_payment_method').val(), 'invoice');
-    
-    // Invoice-wise payment logic
-    let selectedInvoices = [];
-    
-    // Select all invoices
-    $('#select_all_invoices').change(function() {
+
+    $('#select_all_invoices').on('change', function() {
         const isChecked = $(this).is(':checked');
         $('.invoice-checkbox').prop('checked', isChecked).trigger('change');
     });
-    
-    // Individual invoice selection
-    $('.invoice-checkbox').change(function() {
-        const invoiceRow = $(this).closest('tr');
-        const invoiceId = $(this).val();
-        const amountInput = $(this).closest('tr').find('.invoice-amount');
-        
-        if ($(this).is(':checked')) {
-            invoiceRow.addClass('invoice-selected');
-            amountInput.prop('disabled', false);
-            amountInput.focus();
-            
-            // Set default amount to full outstanding
-            const maxAmount = amountInput.data('max');
-            amountInput.val(maxAmount);
-        } else {
-            invoiceRow.removeClass('invoice-selected');
-            amountInput.prop('disabled', true);
-            amountInput.val('');
-        }
-        
-        updateTotalPayment();
-        updateSelectAllCheckbox();
-    });
-    
-    // Update total payment amount
+
     function updateTotalPayment() {
         let total = 0;
         $('.invoice-amount:not(:disabled)').each(function() {
-            let amount = parseFloat($(this).val()) || 0;
-            total += amount;
+            total += parseFloat($(this).val()) || 0;
         });
         $('#total_payment_amount').val(total.toFixed(2));
     }
-    
-    // Update select all checkbox state
+
     function updateSelectAllCheckbox() {
         const totalCheckboxes = $('.invoice-checkbox').length;
         const checkedCheckboxes = $('.invoice-checkbox:checked').length;
-        
+
         if (checkedCheckboxes === 0) {
             $('#select_all_invoices').prop('checked', false).prop('indeterminate', false);
         } else if (checkedCheckboxes === totalCheckboxes) {
@@ -803,13 +858,31 @@ $(document).ready(function() {
             $('#select_all_invoices').prop('checked', false).prop('indeterminate', true);
         }
     }
-    
-    // Validate invoice amounts
+
+    $('.invoice-checkbox').on('change', function() {
+        const invoiceRow = $(this).closest('tr');
+        const amountInput = invoiceRow.find('.invoice-amount');
+
+        if ($(this).is(':checked')) {
+            invoiceRow.addClass('invoice-selected');
+            amountInput.prop('disabled', false);
+            const maxAmount = parseFloat(amountInput.data('max')) || 0;
+            amountInput.val(maxAmount.toFixed(2)).focus();
+        } else {
+            invoiceRow.removeClass('invoice-selected');
+            amountInput.prop('disabled', true).val('');
+        }
+
+        updateTotalPayment();
+        updateSelectAllCheckbox();
+    });
+
     $('.invoice-amount').on('input', function() {
         let value = parseFloat($(this).val()) || 0;
-        const maxValue = parseFloat($(this).data('max'));
-        
+        const maxValue = parseFloat($(this).data('max')) || 0;
+
         if (value > maxValue) {
+            value = maxValue;
             $(this).val(maxValue.toFixed(2));
             Swal.fire({
                 icon: 'warning',
@@ -819,19 +892,24 @@ $(document).ready(function() {
                 showConfirmButton: false
             });
         }
+
         if (value < 0) {
-            $(this).val(0);
+            $(this).val('0.00');
         }
-        
+
         updateTotalPayment();
     });
-    
-    // Form validation for invoice-wise payment
+
     $('#invoicePaymentForm').on('submit', function(e) {
+        if ($(this).data('confirmed') === true) {
+            return true;
+        }
+
+        e.preventDefault();
+        const form = this;
         const totalPayment = parseFloat($('#total_payment_amount').val()) || 0;
-        
+
         if (totalPayment <= 0) {
-            e.preventDefault();
             Swal.fire({
                 icon: 'error',
                 title: 'Invalid Payment',
@@ -839,9 +917,8 @@ $(document).ready(function() {
             });
             return false;
         }
-        
-        // Confirm payment
-        return Swal.fire({
+
+        Swal.fire({
             title: 'Confirm Payment',
             html: `Are you sure you want to process payment of <strong>₹${totalPayment.toFixed(2)}</strong>?`,
             icon: 'question',
@@ -852,18 +929,22 @@ $(document).ready(function() {
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                return true;
+                $(form).data('confirmed', true);
+                form.submit();
             }
-            return false;
         });
     });
-    
-    // Bulk payment validation
+
     $('#bulkPaymentForm').on('submit', function(e) {
+        if ($(this).data('confirmed') === true) {
+            return true;
+        }
+
+        e.preventDefault();
+        const form = this;
         const amount = parseFloat($('#bulk_amount').val()) || 0;
-        
+
         if (amount <= 0) {
-            e.preventDefault();
             Swal.fire({
                 icon: 'error',
                 title: 'Invalid Amount',
@@ -871,12 +952,10 @@ $(document).ready(function() {
             });
             return false;
         }
-        
-        // Confirm payment
-        return Swal.fire({
+
+        Swal.fire({
             title: 'Confirm Bulk Payment',
-            html: `Are you sure you want to process bulk payment of <strong>₹${amount.toFixed(2)}</strong>?<br><br>
-                   <small>This will first reduce manual credit balance, then apply to oldest invoices first.</small>`,
+            html: `Are you sure you want to process bulk payment of <strong>₹${amount.toFixed(2)}</strong>?<br><br><small>This will first reduce manual credit balance, then apply to oldest invoices first. Any extra amount will be stored as advance.</small>`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#28a745',
@@ -885,39 +964,27 @@ $(document).ready(function() {
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                return true;
+                $(form).data('confirmed', true);
+                form.submit();
             }
-            return false;
         });
     });
-    
-    // Bulk amount validation
+
     $('#bulk_amount').on('input', function() {
-        let value = parseFloat($(this).val()) || 0;
-        const totalOutstanding = <?= $total_outstanding ?>;
-        
+        const value = parseFloat($(this).val()) || 0;
+        const totalOutstanding = <?= json_encode(max(0, $total_outstanding)) ?>;
+
         if (value > totalOutstanding && totalOutstanding > 0) {
             Swal.fire({
                 icon: 'warning',
                 title: 'Amount Exceeds Outstanding',
-                text: `Payment amount exceeds total outstanding balance of ₹${totalOutstanding.toFixed(2)}. Extra amount will be treated as advance payment.`,
+                text: `Payment amount exceeds total outstanding balance of ₹${Number(totalOutstanding).toFixed(2)}. Extra amount will be stored as advance.`,
                 timer: 3000,
                 showConfirmButton: true
             });
         }
     });
 });
-
-function resetInvoiceSelection() {
-    $('.invoice-checkbox').prop('checked', false).trigger('change');
-    $('#select_all_invoices').prop('checked', false).prop('indeterminate', false);
-    $('.invoice-amount').val('').prop('disabled', true);
-    $('#total_payment_amount').val('');
-    $('input[name="reference_no"]').val('');
-    $('textarea[name="notes"]').val('');
-    $('#invoice_payment_method').val('cash');
-    toggleReferenceField('cash', 'invoice');
-}
 </script>
 
 </body>
