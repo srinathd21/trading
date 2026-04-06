@@ -68667,3 +68667,224 @@
     "attempts": 0,
     "final_seq": 11
 }
+[2026-04-06 11:15:24] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-06 11:15:24] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-06 11:15:25] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-06 11:15:25] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-06 11:15:52] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-06 11:15:52] Generated invoice number | {
+    "invoice_number": "INV202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-06 11:15:52] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-06 11:15:52] Action: save
+[2026-04-06 11:15:52] Raw input received | {
+    "raw": "{\"customer_name\":\"Walk-in Customer\",\"customer_phone\":\"\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0001\",\"invoice_type\":\"gst\",\"date\":\"2026-04-06\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":5040,\"discount\":\"40\",\"discount_type\":\"rupees\",\"overall_discount\":40,\"total_cgst\":384.41,\"total_sgst\":384.41,\"total_igst\":0,\"total_taxable\":4271.19,\"total_gst\":768.81,\"grand_total\":5000,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"charges\":0},\"items\":[{\"product_id\":1190,\"name\":\"Product 1 (Sleek Oil)\",\"code\":\"1190\",\"quantity\":3,\"unit\":\"pcs\",\"price\":1680,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":5040,\"hsn_code\":\"29301010\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":4271.186440677966,\"cgst_amount\":384.406779661017,\"sgst_amount\":384.406779661017,\"igst_amount\":0,\"stock_price\":1400,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":2,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash\",\"payment_details\":{\"cash\":5000,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":0,\"totalPaid\":5000,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":null},\"pending_amount\":0}"
+}
+[2026-04-06 11:15:52] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "Walk-in Customer",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-06 11:15:53] Transaction started
+[2026-04-06 11:15:53] Context loaded | {
+    "business_id": 28,
+    "shop_id": 37,
+    "seller_id": 36
+}
+[2026-04-06 11:15:53] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-06 11:15:53] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-06 11:15:53] Customer address | {
+    "address": ""
+}
+[2026-04-06 11:15:53] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-06 11:15:53] HSN check | {
+    "has_hsn": true
+}
+[2026-04-06 11:15:53] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-06 11:15:53] Created new customer | {
+    "customer_id": "233"
+}
+[2026-04-06 11:15:53] Created new customer points record | {
+    "customer_id": "233"
+}
+[2026-04-06 11:15:53] Using invoice number | {
+    "invoice_number": "INV202604-0001"
+}
+[2026-04-06 11:15:53] Payment summary | {
+    "subtotal": 5040,
+    "overall_discount": 40,
+    "points_discount": 0,
+    "total": 5000,
+    "total_paid": 5000,
+    "change_given": 0,
+    "pending_amount": 0,
+    "payment_status": "paid",
+    "payment_method": "cash",
+    "credit_due_date": null
+}
+[2026-04-06 11:15:53] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-06 11:15:53] Invoice created | {
+    "invoice_id": "384",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-06 11:15:53] Processing item #1 | {
+    "product_id": 1190,
+    "name": "Product 1 (Sleek Oil)",
+    "code": "1190",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 1680,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 5040,
+    "hsn_code": "29301010",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 4271.186440677966,
+    "cgst_amount": 384.406779661017,
+    "sgst_amount": 384.406779661017,
+    "igst_amount": 0,
+    "stock_price": 1400,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 2,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-06 11:15:54] Product stock info | {
+    "product_name": "Product 1",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 10,
+    "current_total_sec_units": 0,
+    "old_qty": 0,
+    "use_batch_tracking": false,
+    "batch_id": null
+}
+[2026-04-06 11:15:54] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-06 11:15:54] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 10,
+    "total_available_secondary": 0,
+    "old_qty": 0,
+    "current_stock": 10
+}
+[2026-04-06 11:15:54] Item #1 saved | {
+    "item_id": "528",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 840
+}
+[2026-04-06 11:15:54] Using direct stock deduction (non-batch) | {
+    "quantity_to_deduct": 3,
+    "sec_units_to_deduct": 3
+}
+[2026-04-06 11:15:54] Direct stock deduction completed | {
+    "qty_deducted_primary": 3,
+    "qty_deducted_secondary": 3,
+    "rows_affected": 1
+}
+[2026-04-06 11:15:55] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260406-8784",
+    "old_stock": 10,
+    "new_stock": 7,
+    "quantity_removed": 3
+}
+[2026-04-06 11:15:55] Final stock status | {
+    "final_quantity": "7.0000",
+    "final_secondary_units": 0,
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-06 11:15:55] Stock deduction completed for item #1 | {
+    "product_id": 1190,
+    "product_name": "Product 1",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "No",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-06 11:15:55] Points earned | {
+    "points_earned": 50.4
+}
+[2026-04-06 11:15:55] Points earning recorded
+[2026-04-06 11:15:56] GST summary saved
+[2026-04-06 11:15:56] Transaction committed successfully
+[2026-04-06 11:15:56] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-06 11:15:58] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "prefix": "INV",
+    "year_month": "202604"
+}
+[2026-04-06 11:15:58] Generated invoice number | {
+    "invoice_number": "INV202604-0002",
+    "attempts": 0,
+    "final_seq": 2
+}

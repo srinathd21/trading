@@ -1,28 +1,11 @@
 <?php
-// invoice_print.php - Using FPDF with new template design
-session_start();
-require_once 'config/database.php';
-
-// Check authentication
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit();
-}
+// template_modern.php - Modern Template (Your second template)
+// This file should be placed in the invoice_templates/ folder
 
 $business_id = $_SESSION['business_id'] ?? 1;
+$invoice_id = (int)$_GET['invoice_id'];
 
-// Check if we have invoice_id
-if (isset($_GET['invoice_id'])) {
-    $invoice_id = (int)$_GET['invoice_id'];
-    if ($invoice_id <= 0) {
-        die("Invalid invoice ID");
-    }
-} else {
-    header('Location: invoices.php?msg=' . urlencode('Invoice ID is required') . '&type=danger');
-    exit();
-}
-
-// Fetch invoice with shop details and shipping details
+// Fetch invoice with all details
 $stmt = $pdo->prepare("
     SELECT i.*,
            c.name as customer_name, c.phone as customer_phone, c.gstin as customer_gstin,
@@ -42,7 +25,7 @@ $stmt->execute([$invoice_id, $business_id]);
 $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$invoice) {
-    die("Invoice not found or access denied");
+    die("Invoice not found");
 }
 
 // Get shipping details
@@ -56,34 +39,18 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
 // Get shop_id from invoice
 $shop_id = $invoice['shop_id'] ?? null;
 
-// Fetch invoice settings for this shop/business
+// Fetch invoice settings
 $settings_stmt = $pdo->prepare("
     SELECT * FROM invoice_settings
-    WHERE business_id = ? AND shop_id = ?
-    LIMIT 1
+    WHERE business_id = ? AND (shop_id = ? OR (shop_id IS NULL AND ? IS NULL))
+    ORDER BY shop_id DESC LIMIT 1
 ");
-$settings_stmt->execute([$business_id, $shop_id]);
+$settings_stmt->execute([$business_id, $shop_id, $shop_id]);
 $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
-
-// If no shop-specific settings, get business default
-if (!$settings && $shop_id) {
-    $settings_stmt = $pdo->prepare("
-        SELECT * FROM invoice_settings
-        WHERE business_id = ? AND shop_id IS NULL
-        LIMIT 1
-    ");
-    $settings_stmt->execute([$business_id]);
-    $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
-}
 
 // Fallback to business table if no settings
 if (!$settings) {
-    $business_stmt = $pdo->prepare("
-        SELECT business_name, phone, address, gstin
-        FROM businesses
-        WHERE id = ?
-        LIMIT 1
-    ");
+    $business_stmt = $pdo->prepare("SELECT business_name, phone, address, gstin FROM businesses WHERE id = ?");
     $business_stmt->execute([$business_id]);
     $business = $business_stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -104,31 +71,29 @@ if (!$settings) {
     ];
 }
 
-// Get company info from settings
+// Get company info
 $company_name = $settings['company_name'] ?? 'Ecommer';
 $company_address = $settings['company_address'] ?? 'Sogathur X Road, Dharmapuri';
 $company_phone = $settings['company_phone'] ?? '9003552650';
 $company_gstin = $settings['gst_number'] ?? ($invoice['shop_gstin'] ?? '');
 
-// ========== Fetch default active bank accounts ==========
+// Fetch bank accounts
 if ($shop_id) {
     $bank_account_sql = "SELECT * FROM bank_accounts 
                         WHERE business_id = ? AND shop_id = ? AND is_active = 1
-                        ORDER BY is_default DESC, id ASC
-                        LIMIT 2";
+                        ORDER BY is_default DESC, id ASC LIMIT 2";
     $bank_account_stmt = $pdo->prepare($bank_account_sql);
     $bank_account_stmt->execute([$business_id, $shop_id]);
 } else {
     $bank_account_sql = "SELECT * FROM bank_accounts 
                         WHERE business_id = ? AND shop_id IS NULL AND is_active = 1
-                        ORDER BY is_default DESC, id ASC
-                        LIMIT 2";
+                        ORDER BY is_default DESC, id ASC LIMIT 2";
     $bank_account_stmt = $pdo->prepare($bank_account_sql);
     $bank_account_stmt->execute([$business_id]);
 }
 $bank_accounts = $bank_account_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ========== Fetch invoice items ==========
+// Fetch invoice items
 $items_stmt = $pdo->prepare("
     SELECT ii.*, 
            p.product_name, p.product_code, p.hsn_code, p.mrp, p.gst_id,
@@ -143,20 +108,17 @@ $items_stmt = $pdo->prepare("
 $items_stmt->execute([$invoice_id]);
 $items = $items_stmt->fetchAll();
 
-// ========== Calculate totals ==========
+// Calculate totals
 $subtotal = $total_discount = $total_profit = 0;
 $total_taxable = $total_cgst = $total_sgst = $total_igst = 0;
-$taxable_by_rate = []; // Group by GST rate for totals box
+$taxable_by_rate = [];
 
 foreach ($items as $item) {
     $line_total = $item['unit_price'] * $item['quantity'];
     $discount = $item['discount_amount'] ?? 0;
-    $net = $line_total - $discount;
-
     $subtotal += $line_total;
     $total_discount += $discount;
-    $total_profit += $item['profit'] ?? 0;
-
+    
     $taxable = $item['taxable_value'] ?? 0;
     $cgst = $item['cgst_amount'] ?? 0;
     $sgst = $item['sgst_amount'] ?? 0;
@@ -167,7 +129,6 @@ foreach ($items as $item) {
     $total_sgst += $sgst;
     $total_igst += $igst;
     
-    // Group by GST rate for totals box
     $gst_rate = ($item['cgst_rate'] ?? 0) + ($item['sgst_rate'] ?? 0) + ($item['igst_rate'] ?? 0);
     if ($gst_rate > 0) {
         if (!isset($taxable_by_rate[$gst_rate])) {
@@ -180,40 +141,26 @@ foreach ($items as $item) {
     }
 }
 
-// Get overall discount from invoice
 $overall_discount = $invoice['overall_discount'] ?? 0;
 $grand_total = $invoice['total'];
 $is_tax_invoice = !empty($invoice['customer_gstin']) || ($total_cgst + $total_sgst + $total_igst) > 0;
 $invoice_date = date('d-m-Y', strtotime($invoice['created_at']));
-$invoice_time = date('h:i A', strtotime($invoice['created_at']));
-
-// Payment method from invoice
 $payment_method = $invoice['payment_method'] ?? 'Cash';
 $payment_status = $invoice['payment_status'] ?? 'Paid';
-
-// Place of supply
 $place_of_supply = 'Tamil Nadu (33)';
-
-// Customer details
 $customer_name = $invoice['customer_name'] ?? 'Walk-in Customer';
 $customer_phone = $invoice['customer_phone'] ?? '';
 $customer_address = $invoice['customer_address'] ?? '';
 $customer_gstin = $invoice['customer_gstin'] ?? '';
-
-// Transport and waybill details (from shipping)
 $transport = !empty($shipping_vehicle_number) ? 'Vehicle: ' . $shipping_vehicle_number : 'By Road';
 $waybill_no = $invoice['shipping_waybill_no'] ?? '';
 
-// ========== Include FPDF library ==========
+// Include FPDF
 require_once 'libs/fpdf.php';
 
-// ========== Helper functions ==========
+// Helper functions (same as classic)
 function money($v) { 
     return number_format((float)$v, 2, '.', ','); 
-}
-
-function money_rs($v) { 
-    return 'Rs. ' . money($v);
 }
 
 function format_quantity($v) {
@@ -224,12 +171,8 @@ function format_quantity($v) {
 
 function pdf_text_simple($s) {
     $s = (string)$s;
-    // Replace problematic characters
     $s = str_replace(["₹", "â‚¹", "€", "£", "¥"], ["Rs.", "Rs.", "EUR", "GBP", "JPY"], $s);
-    
-    // Remove any non-ASCII characters
     $s = preg_replace('/[^\x00-\x7F]/', '', $s);
-    
     return $s;
 }
 
@@ -289,8 +232,8 @@ function convert_number_to_words($num, $words) {
     }
 }
 
-// ========== PDF Class - New Template Design ==========
-class InvoicePDF extends FPDF
+// PDF Class for Modern Template
+class ModernInvoicePDF extends FPDF
 {
     public $company = [];
     public $invoice = [];
@@ -306,21 +249,17 @@ class InvoicePDF extends FPDF
     
     function Header()
     {
-        // Outer border
         $this->Rect(5, 5, 200, 287);
         
-        // Title - TAX INVOICE
         $this->SetFont('Arial','B',14);
         $this->SetXY(5,8);
         $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
         $this->Cell(200,8, $title, 0, 1, 'C');
         
-        // ========== ADD SHOP ADDRESS UNDER TITLE ==========
         $this->SetFont('Arial','',8);
         $this->SetY(14);
         $this->SetX(5);
         
-        // Shop/Business Name and Address
         $shopAddressText = $this->company['name'] . "\n" . $this->company['address'];
         if (!empty($this->company['phone'])) {
             $shopAddressText .= "\nPhone: " . $this->company['phone'];
@@ -331,7 +270,6 @@ class InvoicePDF extends FPDF
         
         $this->MultiCell(200, 4, pdf_text_simple($shopAddressText), 0, 'C');
         
-        // IRN and Ack details (if available)
         $this->SetFont('Arial','',7);
         
         if (!empty($this->invoice['irn_no'])) {
@@ -353,13 +291,11 @@ class InvoicePDF extends FPDF
     
     function LabelValue($label, $value, $totalWidth = 100)
     {
-        // Bold label
         $this->SetFont('Arial','B',9);
         $labelWidth = $this->GetStringWidth($label);
         
         $this->Cell($labelWidth, 5, pdf_text_simple($label), 0, 0);
         
-        // Normal value (tight join)
         $this->SetFont('Arial','',9);
         $this->Cell($totalWidth - $labelWidth, 5, pdf_text_simple($value), 0, 0);
     }
@@ -367,64 +303,52 @@ class InvoicePDF extends FPDF
     function TopSection()
     {
         $this->SetFont('Arial','',9);
-        
-        // Start below header dynamically
         $this->SetY($this->headerEndY + 3);
         
         $startY = $this->GetY();
         $midX = 105;
         
-        // -------- ROW 1 --------
         $this->SetX(5);
         $this->LabelValue('Invoice #: ', $this->invoice['number']);
         $this->LabelValue('Date: ', $this->invoice['date']);
         $this->Ln();
         
-        // -------- ROW 2 --------
         $this->SetX(5);
         $this->LabelValue('Transport: ', $this->transport);
         $this->LabelValue('Waybill No.: ', $this->waybill_no);
         $this->Ln();
         
-        // -------- ROW 3 --------
         $this->SetX(5);
         $this->LabelValue('Cust. Name: ', $this->customer['name']);
         $this->LabelValue('Cust. Number: ', $this->customer['phone']);
         $this->Ln();
         
-        // -------- ROW 4 --------
         $this->SetX(5);
         $buyerOrderNo = $this->invoice['buyer_order_no'] ?? 'By Phone | ' . date('d/m/y', strtotime($this->invoice['date']));
         $this->LabelValue("Buyer's Order No.: ", $buyerOrderNo);
         $this->LabelValue('Date of Supply: ', $this->invoice['date']);
         $this->Ln();
         
-        // -------- ROW 5 --------
         $this->SetX(5);
         $this->LabelValue('Terms of Payment: ', $this->invoice['payment_terms'] ?? 'Immediate');
         $this->LabelValue('Due Date: ', $this->invoice['due_date'] ?? $this->invoice['date']);
         $this->Ln();
         
-        // -------- ROW 6 --------
         $this->SetX(5);
         $this->LabelValue('Destination: ', $this->invoice['destination'] ?? '');
         $this->LabelValue('State / Code: ', $this->invoice['place_of_supply']);
         $this->Ln();
         
-        // -------- ROW 7 --------
         $this->SetX(5);
         $documentContact = !empty($this->company['email']) ? $this->company['name'] . '; ' . $this->company['email'] : $this->company['name'];
         $this->LabelValue('Document Contact: ', $documentContact);
         $this->Ln();
         
-        // End Y
         $endY = $this->GetY();
         
-        // -------- BORDERS --------
         $this->Rect(5, $startY, 200, $endY - $startY);
         $this->Line($midX, $startY, $midX, $endY);
         
-        // Move cursor below section
         $this->SetY($endY + 2);
     }
     
@@ -434,7 +358,6 @@ class InvoicePDF extends FPDF
         
         $this->SetFont('Arial','B',9);
         
-        // Header row
         $this->SetX(5);
         $this->Cell(100, 6, 'Details of Receiver (Billed to)', 1, 0, 'C');
         $this->Cell(100, 6, 'Details of Consignee (Shipped to)', 1, 1, 'C');
@@ -445,20 +368,16 @@ class InvoicePDF extends FPDF
         $rightX = 105;
         $y = $this->GetY();
         
-        // ================= LEFT BOX =================
         $this->SetXY($leftX, $y);
         
-        // Address
-        // Address - customer name bold, address normal
-$this->SetFont('Arial', 'B', 9);
-$this->SetX($leftX);
-$this->Cell(100, 5, pdf_text_simple($this->customer['name']), 0, 1, 'L');
-
-$this->SetFont('Arial', '', 9);
-$this->SetX($leftX);
-$this->MultiCell(100, 5, pdf_text_simple($this->customer['address']), 0);
+        $this->SetFont('Arial', 'B', 9);
+        $this->SetX($leftX);
+        $this->Cell(100, 5, pdf_text_simple($this->customer['name']), 0, 1, 'L');
         
-        // GSTIN (JOINED)
+        $this->SetFont('Arial', '', 9);
+        $this->SetX($leftX);
+        $this->MultiCell(100, 5, pdf_text_simple($this->customer['address']), 0);
+        
         $this->SetX($leftX);
         
         $this->SetFont('Arial','B',9);
@@ -473,29 +392,26 @@ $this->MultiCell(100, 5, pdf_text_simple($this->customer['address']), 0);
         
         $leftFinalY = $this->GetY();
         
-        // ================= RIGHT BOX =================
         $this->SetXY($rightX, $y);
         
-        // Address - shipping/customer name bold, address normal
-$hasShipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
-
-if ($hasShipping) {
-    $shipName = $this->shipping['name'];
-    $shipAddr = $this->shipping['address'];
-} else {
-    $shipName = $this->customer['name'];
-    $shipAddr = $this->customer['address'];
-}
-
-$this->SetFont('Arial', 'B', 9);
-$this->SetX($rightX);
-$this->Cell(100, 5, pdf_text_simple($shipName), 0, 1, 'L');
-
-$this->SetFont('Arial', '', 9);
-$this->SetX($rightX);
-$this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
+        $hasShipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
         
-        // GSTIN (JOINED)
+        if ($hasShipping) {
+            $shipName = $this->shipping['name'];
+            $shipAddr = $this->shipping['address'];
+        } else {
+            $shipName = $this->customer['name'];
+            $shipAddr = $this->customer['address'];
+        }
+        
+        $this->SetFont('Arial', 'B', 9);
+        $this->SetX($rightX);
+        $this->Cell(100, 5, pdf_text_simple($shipName), 0, 1, 'L');
+        
+        $this->SetFont('Arial', '', 9);
+        $this->SetX($rightX);
+        $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
+        
         $this->SetX($rightX);
         
         $this->SetFont('Arial','B',9);
@@ -514,14 +430,11 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         
         $rightFinalY = $this->GetY();
         
-        // ================= HEIGHT SYNC =================
         $boxEndY = max($leftFinalY, $rightFinalY);
         
-        // Draw borders AFTER content
         $this->Rect($leftX, $y, 100, $boxEndY - $y);
         $this->Rect($rightX, $y, 100, $boxEndY - $y);
         
-        // Move cursor below
         $this->SetY($boxEndY);
     }
     
@@ -529,7 +442,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
     {
         $this->SetFont('Arial','B',8);
         
-        // Header with borders
         $this->SetX(5);
         $this->Cell(10, 7, 'Sl.', 1, 0, 'C');
         $this->Cell(60, 7, 'Description of Goods', 1, 0, 'C');
@@ -586,7 +498,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
             $sn++;
         }
         
-        // Add total row
         $this->SetFont('Arial', 'B', 8);
         $this->SetX(5);
         $this->Cell(10, 7, '', 1, 0);
@@ -612,7 +523,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
     {
         $this->SetFont('Arial','B',9);
         
-        // First row: Header
         $this->SetX(5);
         $this->Cell(30, 7, 'GST Rate', 1, 0, 'C');
         $this->Cell(40, 7, 'Taxable Values', 1, 0, 'C');
@@ -629,7 +539,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         $totalSgst = 0;
         $totalIgst = 0;
         
-        // Display rows for each GST rate
         if (!empty($this->taxable_by_rate)) {
             foreach ($this->taxable_by_rate as $rate => $data) {
                 $cgstRate = $rate / 2;
@@ -651,7 +560,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
             }
         }
         
-        // Add: CGST row
         $this->SetX(5);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(40, 7, '', 1, 0);
@@ -662,7 +570,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 7, money($totalCgst), 1, 1, 'R');
         
-        // Add: SGST row
         $this->SetX(5);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(40, 7, '', 1, 0);
@@ -673,7 +580,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 7, money($totalSgst), 1, 1, 'R');
         
-        // Empty row
         $this->SetX(5);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(40, 7, '', 1, 0);
@@ -682,7 +588,6 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(30, 7, '', 1, 1);
         
-        // Add: IGST row
         $this->SetX(5);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(40, 7, '', 1, 0);
@@ -693,9 +598,8 @@ $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 7, money($totalIgst), 1, 1, 'R');
         
-        // Rounded Off row
         $calculatedTotal = $this->totals['taxable'] + $totalCgst + $totalSgst + $totalIgst;
-$roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
+        $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         $this->SetX(5);
         $this->Cell(30, 7, '', 1, 0);
         $this->Cell(40, 7, '', 1, 0);
@@ -706,7 +610,6 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 7, money($roundOff), 1, 1, 'R');
         
-        // Eighth row: Final totals
         $this->SetFont('Arial','B',9);
         $this->SetX(5);
         $this->Cell(30, 8, 'Total in INR', 1, 0, 'C');
@@ -727,51 +630,41 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         
         $startY = $this->GetY();
         
-        // Title
         $this->SetFont('Arial','B',10);
         $this->SetX(4);
         $this->Cell(200, 8, 'Bank Details', 0, 1, 'C');
         
         $this->SetFont('Arial','',9);
-        
         $this->SetX(5);
         
-        // -------- ROW 1 --------
-        // Name
         $this->SetFont('Arial','B',9);
         $this->Cell(25, 6, 'Name', 0, 0);
         $this->SetFont('Arial','',9);
         $bankName = !empty($this->account['account_name']) ? $this->account['account_name'] : $this->company['name'];
         $this->Cell(75, 6, ': ' . pdf_text_simple($bankName), 0, 0);
         
-        // Bank
         $this->SetFont('Arial','B',9);
         $this->Cell(20, 6, 'Bank', 0, 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['bank_name'] ?? ''), 0, 0);
         
-        // Branch
         $this->SetFont('Arial','B',9);
         $this->Cell(20, 6, 'Branch', 0, 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['branch'] ?? ''), 0, 1);
         
-        // -------- ROW 2 --------
         $this->SetX(5);
         
-        // A/c No.
         $this->SetFont('Arial','B',9);
         $this->Cell(25, 6, 'A/c No.', 0, 0);
         $this->SetFont('Arial','',9);
         $this->Cell(75, 6, ': ' . pdf_text_simple($this->account['account_number'] ?? ''), 0, 0);
         
-        // IFSC Code
         $this->SetFont('Arial','B',9);
         $this->Cell(20, 6, 'IFSC Code', 0, 0);
         $this->SetFont('Arial','',9);
         $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['ifsc'] ?? ''), 0, 0);
         
-        // Account Type
         $this->SetFont('Arial','B',9);
         $this->Cell(20, 6, 'Account', 0, 0);
         $this->SetFont('Arial','',9);
@@ -779,7 +672,6 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         
         $endY = $this->GetY();
         
-        // Border
         $this->Rect(5, $startY, 200, ($endY - $startY));
     }
     
@@ -788,28 +680,19 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         $startY = $this->GetY();
         $boxHeight = 30;
         
-        // Outer border
         $this->Rect(5, $startY, 200, $boxHeight);
         
-        // Columns
         $col1 = 50;
         $col2 = 90;
         $col3 = 60;
         
-        // Vertical lines
         $this->Line(5 + $col1, $startY, 5 + $col1, $startY + $boxHeight);
         $this->Line(5 + $col1 + $col2, $startY, 5 + $col1 + $col2, $startY + $boxHeight);
         
-        // =========================
-        // COLUMN 1 → RECEIVER
-        // =========================
         $this->SetFont('Arial','',8);
         $this->SetXY(5, $startY + 22);
         $this->Cell($col1, 5, 'Receivers Signature', 0, 0, 'C');
         
-        // =========================
-        // COLUMN 2 → TERMS
-        // =========================
         $centerX = 5 + $col1;
         
         $this->SetFont('Arial','B',9);
@@ -830,9 +713,6 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         }
         $this->SetTextColor(0, 0, 0);
         
-        // =========================
-        // COLUMN 3 → COMPANY
-        // =========================
         $rightX = 5 + $col1 + $col2;
         
         $this->SetXY($rightX, $startY + 6);
@@ -842,10 +722,8 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
         $this->Cell($col3, 5, 'Authorised Signatory', 0, 0, 'C');
     }
     
-    // Add custom footer to close the outer border properly
     function Footer()
     {
-        // The outer border is already drawn in Header
         if ($this->PageNo() > 1) {
             $this->SetY(-15);
             $this->SetFont('Arial','I',8);
@@ -854,11 +732,10 @@ $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
     }
 }
 
-// ========== Create PDF ==========
-$pdf = new InvoicePDF();
+// Create PDF
+$pdf = new ModernInvoicePDF();
 $pdf->AliasNbPages();
 
-// Set company info
 $pdf->company = [
     'name'    => $company_name,
     'address' => $company_address,
@@ -869,7 +746,6 @@ $pdf->company = [
     'logo'    => !empty($settings['logo_path']) ? $settings['logo_path'] : ''
 ];
 
-// Set invoice info
 $pdf->invoice = [
     'number'          => $invoice['invoice_number'],
     'date'            => $invoice_date,
@@ -886,7 +762,6 @@ $pdf->invoice = [
     'due_date'        => $invoice_date
 ];
 
-// Set customer info
 $pdf->customer = [
     'name'    => $customer_name,
     'phone'   => $customer_phone,
@@ -894,7 +769,6 @@ $pdf->customer = [
     'address' => $customer_address
 ];
 
-// Set shipping info
 $pdf->shipping = [
     'name'           => $shipping_name,
     'contact'        => $shipping_contact,
@@ -915,10 +789,8 @@ $pdf->totals = [
     'grand_total'     => $grand_total
 ];
 
-// Set taxable by rate for totals box
 $pdf->taxable_by_rate = $taxable_by_rate;
 
-// Set account details from first bank account
 if (!empty($bank_accounts)) {
     $bank = $bank_accounts[0];
     $pdf->account = [
@@ -933,14 +805,11 @@ if (!empty($bank_accounts)) {
     $pdf->account = [];
 }
 
-// Set items
 $pdf->items = $items;
-
-// Set transport and waybill
 $pdf->transport = !empty($shipping_vehicle_number) ? 'Vehicle: ' . $shipping_vehicle_number : 'By Road';
 $pdf->waybill_no = $invoice['shipping_waybill_no'] ?? '';
 
-// ========== Generate PDF ==========
+// Generate PDF
 $pdf->AddPage();
 $pdf->TopSection();
 $pdf->PartyBoxes();
@@ -951,25 +820,17 @@ $pdf->TotalsBox();
 $pdf->BankDetailsSection();
 $pdf->FinalFooterSection();
 
-// ========== Output PDF ==========
+// Output PDF
 while (ob_get_level()) ob_end_clean();
-
 $pdf_content = $pdf->Output('S', 'Invoice_' . $invoice['invoice_number'] . '.pdf');
 
-// Set headers for PDF download
 header('Content-Type: application/pdf');
 header('Content-Disposition: inline; filename="Invoice_' . $invoice['invoice_number'] . '.pdf"');
 header('Content-Length: ' . strlen($pdf_content));
 header('Cache-Control: private, max-age=0, must-revalidate');
 header('Pragma: public');
 
-// Output PDF content
 echo $pdf_content;
-
-// Add JavaScript for auto-print
-echo '<script type="text/javascript">
-    window.onload = function() { window.print(); }
-</script>';
-
+echo '<script type="text/javascript">window.onload = function() { window.print(); }</script>';
 exit;
 ?>
