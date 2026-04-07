@@ -12,7 +12,10 @@ if (!isset($_SESSION['user_id'])) {
 // Get current business and shop from session
 $current_business_id = $_SESSION['current_business_id'] ?? null;
 $current_shop_id = $_SESSION['current_shop_id'] ?? null;
-
+if ($current_business_id==28) {
+    header('Location: product_edit_28.php?id=' . $_GET['id']);
+    exit();
+}
 if (!$current_business_id || !$current_shop_id) {
     set_flash_message('error', 'Please select a business and shop first');
     header('Location: select_shop.php');

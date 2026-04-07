@@ -12,13 +12,17 @@ if (!isset($_SESSION['user_id'])) {
 // Get current business and shop from session
 $current_business_id = $_SESSION['current_business_id'] ?? null;
 $current_shop_id = $_SESSION['current_shop_id'] ?? null;
-if ($current_business_id==28) {
-    header('Location: product_add_28.php');
-    exit();
-}
+
 if (!$current_business_id || !$current_shop_id) {
     set_flash_message('error', 'Please select a business and shop first');
     header('Location: select_shop.php');
+    exit();
+}
+
+// Only allow business_id = 28
+if ($current_business_id != 28) {
+    set_flash_message('error', 'This page is only for specific business type');
+    header('Location: products.php');
     exit();
 }
 
@@ -110,9 +114,8 @@ function createThumbnail($source_path, $dest_path, $max_width = 200, $max_height
     }
 }
 
-// Check if wholesale price is required (hide for business_id = 28)
-$hide_wholesale = ($current_business_id == 28);
-$mrp_required = ($current_business_id != 28);
+$hide_wholesale = true;
+$mrp_required = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || !validate_csrf_token($_POST['csrf_token'])) {
@@ -143,14 +146,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $warranty_description = trim($_POST['warranty_description'] ?? '');
         $is_warranty_applicable = isset($_POST['is_warranty_applicable']) ? 1 : 0;
 
-        // MRP and GST Calculation
-        $mrp_input = (float)($_POST['mrp_input'] ?? 0);
-        $mrp = 0;
+        // Purchase Price (Base price without GST) - User enters this
+        $purchase_price_base = (float)($_POST['purchase_price_base'] ?? 0);
         
-        // Fetch GST rates if selected
+        // Fetch GST rates
         $gst_rate_percentage = 0;
         $gst_amount = 0;
         $hsn_code = '';
+        $final_purchase_price = $purchase_price_base;
         
         if ($gst_id) {
             $gst_stmt = $pdo->prepare("SELECT hsn_code, cgst_rate, sgst_rate, igst_rate FROM gst_rates WHERE id = ? AND business_id = ?");
@@ -160,49 +163,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hsn_code = $gst_row['hsn_code'] ?? '';
                 $gst_rate_percentage = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
                 
-                if ($mrp_input > 0) {
-                    if ($gst_type === 'exclusive') {
-                        $gst_amount = $mrp_input * ($gst_rate_percentage / 100);
-                        $mrp = $mrp_input + $gst_amount;
-                    } else {
-                        $mrp = $mrp_input;
-                        $gst_amount = ($mrp * $gst_rate_percentage) / (100 + $gst_rate_percentage);
-                    }
+                if ($gst_type === 'exclusive') {
+                    // GST Exclusive: Add GST to Purchase Price
+                    $gst_amount = $purchase_price_base * ($gst_rate_percentage / 100);
+                    $final_purchase_price = $purchase_price_base + $gst_amount;
+                } else {
+                    // GST Inclusive: Calculate GST from Purchase Price
+                    $gst_amount = ($purchase_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
+                    $final_purchase_price = $purchase_price_base;
                 }
             }
-        } else {
-            $mrp = $mrp_input;
         }
         
-        // Combined discount field handling
-        $discount_input = trim($_POST['discount'] ?? '');
-        $discount_type = 'percentage';
-        $discount_value = 0;
-        
-        if (!empty($discount_input)) {
-            if (strpos($discount_input, '%') !== false) {
-                $discount_type = 'percentage';
-                $discount_value = (float)str_replace('%', '', $discount_input);
-            } else {
-                $discount_type = 'fixed';
-                $discount_value = (float)$discount_input;
-            }
-        }
-        
-        $stock_price = (float)($_POST['stock_price'] ?? 0);
+        // Retail Price calculation based on markup on final purchase price (price with GST)
         $retail_price_type = $_POST['retail_price_type'] ?? 'percentage';
         $retail_price_value = (float)($_POST['retail_price_value'] ?? 0);
         $retail_price = (float)($_POST['retail_price'] ?? 0);
         
-        // Wholesale price - handle as optional/hidden for business_id = 28
-        $wholesale_price_type = $_POST['wholesale_price_type'] ?? 'percentage';
-        $wholesale_price_value = (float)($_POST['wholesale_price_value'] ?? 0);
-        $wholesale_price = (float)($_POST['wholesale_price'] ?? 0);
-        
-        // For business_id = 28, if wholesale price is not provided, set it to retail price or stock price
-        if ($hide_wholesale && $wholesale_price == 0) {
-            $wholesale_price = $retail_price > 0 ? $retail_price : $stock_price;
+        // Calculate retail price if not manually entered
+        if ($retail_price == 0 && $final_purchase_price > 0 && $retail_price_value > 0) {
+            if ($retail_price_type === 'percentage') {
+                $markup_amount = $final_purchase_price * $retail_price_value / 100;
+                $retail_price = $final_purchase_price + $markup_amount;
+            } else {
+                $retail_price = $final_purchase_price + $retail_price_value;
+            }
+        } elseif ($retail_price == 0 && $final_purchase_price > 0) {
+            $retail_price = $final_purchase_price;
         }
+        
+        // Wholesale price (hidden but stored same as retail)
+        $wholesale_price = $retail_price;
         
         $min_stock_level = (int)($_POST['min_stock_level'] ?? 10);
         $image_alt_text = trim($_POST['image_alt_text'] ?? '');
@@ -210,45 +201,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $referral_type = $_POST['referral_type'] ?? 'percentage';
         $referral_value = (float)($_POST['referral_value'] ?? 0);
         $initial_stock = !empty($_POST['initial_stock']) ? (int)$_POST['initial_stock'] : 0;
-
-        // Calculate stock price from MRP and discount
-        if ($mrp > 0 && $discount_value > 0) {
-            $calculated_stock_price = $discount_type === 'percentage' 
-                ? $mrp - ($mrp * $discount_value / 100)
-                : $mrp - $discount_value;
-            
-            if ($stock_price == 0) {
-                $stock_price = $calculated_stock_price;
-            }
-        } elseif ($mrp > 0 && $stock_price == 0) {
-            $stock_price = $mrp;
-        }
-
-        // Calculate retail price
-        if ($stock_price > 0 && $retail_price_value > 0) {
-            $retail_markup_amount = $retail_price_type === 'percentage' 
-                ? $stock_price * $retail_price_value / 100
-                : $retail_price_value;
-            $calculated_retail = $stock_price + $retail_markup_amount;
-            
-            if ($retail_price == 0) {
-                $retail_price = $calculated_retail;
-            }
-        } elseif ($stock_price > 0 && $retail_price == 0) {
-            $retail_price = $stock_price;
-        }
-
-        // Calculate wholesale price (only if not manually set for business_id 28)
-        if ($wholesale_price == 0 && $stock_price > 0 && $wholesale_price_value > 0) {
-            $wholesale_markup_amount = $wholesale_price_type === 'percentage' 
-                ? $stock_price * $wholesale_price_value / 100
-                : $wholesale_price_value;
-            $calculated_wholesale = $stock_price + $wholesale_markup_amount;
-            $wholesale_price = $calculated_wholesale;
-        } elseif ($wholesale_price == 0 && $stock_price > 0) {
-            $wholesale_price = $stock_price;
-        }
-
+        
+        // IMPORTANT: For business 28, store the FINAL purchase price (including GST)
+        // This is the actual cost price including tax
+        $stock_price = $final_purchase_price;
+        
         $image_path = $image_thumbnail_path = null;
 
         // Image upload handling
@@ -294,53 +251,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($error)) {
             $errors = [];
             if (empty($product_name)) $errors[] = "Product name required.";
-            
-            // MRP validation - only required if not business_id 28
-            if ($mrp_required && $mrp_input <= 0) {
-                $errors[] = "MRP is required and must be greater than 0.";
-            }
-            
-            if ($stock_price <= 0) $errors[] = "Stock price must be greater than 0.";
+            if ($purchase_price_base <= 0) $errors[] = "Purchase price must be greater than 0.";
             if ($retail_price <= 0) $errors[] = "Retail price must be greater than 0.";
-            
-            // Only validate wholesale price if not hidden
-            if (!$hide_wholesale && $wholesale_price <= 0) {
-                $errors[] = "Wholesale price must be greater than 0.";
-            }
-            
-            if ($mrp < 0) $errors[] = "MRP cannot be negative.";
             
             // GST validation
             if ($gst_type === 'exclusive' && !$gst_id) {
-                $errors[] = "Please select GST rate when product is GST Exclusive.";
+                $errors[] = "Please select GST rate when GST is Exclusive.";
             }
             
-            // Price hierarchy validation (skip wholesale for business_id 28 if hidden)
-            if ($stock_price > 0 && $retail_price > 0 && $retail_price <= $stock_price) {
-                $errors[] = "Retail price must be greater than Stock Price.";
+            // Price hierarchy validation
+            if ($final_purchase_price > 0 && $retail_price > 0 && $retail_price <= $final_purchase_price) {
+                $errors[] = "Retail price must be greater than Final Purchase Price.";
             }
-            
-            if (!$hide_wholesale && $stock_price > 0 && $wholesale_price > 0 && $wholesale_price < $stock_price) {
-                $errors[] = "Wholesale price must be equal to or greater than Stock Price.";
-            }
-            
-            if (!$hide_wholesale && $wholesale_price > 0 && $retail_price > 0 && $wholesale_price > $retail_price) {
-                $errors[] = "Wholesale price should be less than or equal to Retail Price.";
-            }
-            
-            // MRP validation
-            if ($mrp > 0) {
-                if ($retail_price > $mrp) $errors[] = "Retail price cannot be higher than MRP.";
-                if (!$hide_wholesale && $wholesale_price > $mrp) $errors[] = "Wholesale price cannot be higher than MRP.";
-                if ($stock_price > $mrp) $errors[] = "Stock price cannot be higher than MRP.";
-            }
-
-            if ($discount_value < 0) $errors[] = "Discount cannot be negative.";
-            if ($discount_type === 'percentage' && $discount_value > 100) $errors[] = "Discount % cannot exceed 100.";
-            if ($discount_type === 'fixed' && $discount_value > $mrp && $mrp > 0) $errors[] = "Discount amount cannot exceed MRP.";
 
             if ($retail_price_value < 0) $errors[] = "Retail markup cannot be negative.";
-            if (!$hide_wholesale && $wholesale_price_value < 0) $errors[] = "Wholesale markup cannot be negative.";
 
             if ($referral_enabled && $referral_value <= 0) $errors[] = "Referral value must be > 0.";
             if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $errors[] = "Referral % cannot exceed 100.";
@@ -351,12 +275,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!$secondary_unit && $sec_unit_conversion > 0) {
                 $errors[] = "Please specify secondary unit name if entering conversion rate.";
-            }
-            if ($sec_unit_conversion && $sec_unit_conversion > 1000000) {
-                $errors[] = "Conversion rate is too high. Please use a reasonable value.";
-            }
-            if ($sec_unit_conversion && $sec_unit_conversion < 0.0001) {
-                $errors[] = "Conversion rate is too small. Please use a reasonable value.";
             }
 
             // Warranty validation
@@ -370,11 +288,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($warranty_period > 120) {
                     $errors[] = "Warranty period cannot exceed 120 months/10 years.";
                 }
-            }
-
-            // Initial stock validation
-            if ($initial_stock < 0) {
-                $errors[] = "Initial stock cannot be negative.";
             }
 
             // Duplicate checks
@@ -399,7 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $pdo->beginTransaction();
 
-                    // Insert product
+                    // Insert product - stock_price now contains price WITH GST
                     $stmt = $pdo->prepare("
                         INSERT INTO products (
                             business_id, product_name, product_code, barcode,
@@ -437,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $sec_unit_conversion,
                         $sec_unit_price_type,
                         $sec_unit_extra_charge,
-                        $stock_price,
+                        $stock_price, // Price WITH GST (e.g., ₹118)
                         $retail_price,
                         $wholesale_price,
                         $min_stock_level,
@@ -448,13 +361,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $referral_enabled,
                         $referral_type,
                         $referral_value,
-                        $mrp,
-                        $discount_type,
-                        $discount_value,
+                        0, // mrp (not used)
+                        'percentage', // discount_type
+                        0, // discount_value
                         $retail_price_type,
                         $retail_price_value,
-                        $wholesale_price_type,
-                        $wholesale_price_value,
+                        'percentage', // wholesale_price_type
+                        0, // wholesale_price_value
                         $is_warranty_applicable ? $warranty_type : 'none',
                         $is_warranty_applicable ? $warranty_period : 0,
                         $is_warranty_applicable ? $warranty_unit : 'months',
@@ -647,7 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!doctype html>
 <html lang="en">
-<?php $page_title = "Add New Product"; ?>
+<?php $page_title = "Add New Product - Business 28"; ?>
 <?php include('includes/head.php'); ?>
 
 <body data-sidebar="dark">
@@ -668,12 +581,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="page-title-box d-flex align-items-center justify-content-between">
                             <h4 class="mb-0">
                                 <i class="bx bx-plus-circle me-2"></i> Add New Product
-                                <?php if ($hide_wholesale): ?>
-                                <span class="badge bg-info ms-2">Wholesale Price Hidden</span>
-                                <?php endif; ?>
-                                <?php if (!$mrp_required): ?>
-                                <span class="badge bg-warning ms-2">MRP Optional</span>
-                                <?php endif; ?>
+                                <span class="badge bg-info ms-2">Business Type 28</span>
+                                <span class="badge bg-warning ms-2">No MRP Required</span>
+                                <span class="badge bg-success ms-2">GST on Purchase Price</span>
                             </h4>
                             <a href="products.php" class="btn btn-outline-secondary">
                                 <i class="bx bx-arrow-back me-1"></i> Back to Products
@@ -977,33 +887,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <div class="form-check form-switch me-3">
                                                     <input class="form-check-input" type="checkbox" id="gstTypeToggle" 
                                                            name="gst_type" value="exclusive"
-                                                           <?= ($_POST['gst_type'] ?? 'inclusive') == 'exclusive' ? 'checked' : '' ?>
+                                                           <?= ($_POST['gst_type'] ?? 'exclusive') == 'exclusive' ? 'checked' : '' ?>
                                                            onchange="updateGSTType()">
                                                     <label class="form-check-label" for="gstTypeToggle">
-                                                        <span id="gstTypeLabel">GST Inclusive</span>
+                                                        <span id="gstTypeLabel">GST Exclusive</span>
                                                     </label>
                                                 </div>
                                                 <div id="gstTypeHelp" class="form-text">
                                                     <i class="bx bx-info-circle"></i>
-                                                    <span id="gstTypeDescription">GST is included in product price</span>
+                                                    <span id="gstTypeDescription">GST will be added to Purchase Price</span>
                                                 </div>
                                             </div>
-                                            <input type="hidden" name="gst_type" id="gstTypeHidden" value="<?= $_POST['gst_type'] ?? 'inclusive' ?>">
+                                            <input type="hidden" name="gst_type" id="gstTypeHidden" value="<?= $_POST['gst_type'] ?? 'exclusive' ?>">
                                         </div>
 
+                                        <!-- Purchase Price Section -->
                                         <div class="col-md-4">
-                                            <label class="form-label"><strong>Enter MRP <?php if ($mrp_required): ?><span class="text-danger">*</span><?php endif; ?></strong></label>
+                                            <label class="form-label"><strong>Base Purchase Price (Without GST) <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="mrp_input" 
+                                                <input type="number" step="0.01" min="0" name="purchase_price_base" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($_POST['mrp_input'] ?? '') ?>" 
-                                                       id="mrpInput" <?= $mrp_required ? 'required' : '' ?>
+                                                       value="<?= htmlspecialchars($_POST['purchase_price_base'] ?? '') ?>" 
+                                                       id="purchasePriceBase" required
                                                        oninput="calculateGST()">
+                                                <button type="button" class="btn btn-outline-secondary" onclick="clearPurchasePrice()" title="Clear">
+                                                    <i class="bx bx-refresh"></i>
+                                                </button>
                                             </div>
-                                            <div class="form-text" id="mrpHelpText">
-                                                <?= $mrp_required ? 'Enter Maximum Retail Price' : 'Enter MRP (optional - leave blank for no MRP)' ?>
-                                            </div>
+                                            <div class="form-text">Enter the base price without GST</div>
                                         </div>
 
                                         <!-- GST Calculation Preview -->
@@ -1013,8 +925,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <div class="col-md-6">
                                                         <h6 class="mb-2"><i class="bx bx-calculator me-1"></i> GST Calculation</h6>
                                                         <div class="d-flex justify-content-between mb-1">
-                                                            <span>Entered MRP:</span>
-                                                            <strong id="enteredMRP">₹0.00</strong>
+                                                            <span>Base Purchase Price:</span>
+                                                            <strong id="basePriceDisplay">₹0.00</strong>
                                                         </div>
                                                         <div class="d-flex justify-content-between mb-1">
                                                             <span>GST Rate:</span>
@@ -1026,10 +938,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                         </div>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-dollar me-1"></i> Final MRP</h6>
+                                                        <h6 class="mb-2"><i class="bx bx-dollar me-1"></i> Final Purchase Price (With GST)</h6>
                                                         <div class="d-flex justify-content-between mb-2">
-                                                            <span>Final MRP (Including GST):</span>
-                                                            <strong class="text-success" id="finalMRP">₹0.00</strong>
+                                                            <span>Final Price (Including GST) - <span class="text-danger">This will be stored as Stock Price</span>:</span>
+                                                            <strong class="text-success" id="finalPurchasePrice">₹0.00</strong>
                                                         </div>
                                                         <div class="d-flex justify-content-between">
                                                             <small class="text-muted" id="gstCalculationDescription">
@@ -1041,77 +953,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </div>
                                         </div>
 
-                                        <!-- MRP and Discount Section -->
-                                        <div class="col-md-12 mt-4">
-                                            <h6 class="border-bottom pb-2 mb-3">
-                                                <i class="bx bx-tag me-1"></i> Pricing Details
-                                            </h6>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Final MRP</strong></label>
-                                            <div class="input-group">
-                                                <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="mrp" 
-                                                       class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($_POST['mrp'] ?? '') ?>" 
-                                                       id="mrp" readonly>
-                                            </div>
-                                            <div class="form-text" id="finalMRPText">
-                                                Final MRP after GST calculation
-                                            </div>
-                                        </div>
-
-                                        <!-- Combined Discount Field -->
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Discount</strong></label>
-                                            <div class="input-group">
-                                                <input type="text" name="discount" 
-                                                       class="form-control text-end" 
-                                                       value="<?= htmlspecialchars($_POST['discount'] ?? '') ?>"
-                                                       id="discount"
-                                                       placeholder="e.g., 10% or 50">
-                                                <button type="button" class="btn btn-outline-secondary dropdown-toggle" 
-                                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                                    <span id="discountSymbol">%</span>
-                                                </button>
-                                                <ul class="dropdown-menu dropdown-menu-end">
-                                                    <li><a class="dropdown-item" href="#" onclick="setDiscountSymbol('%')">Percentage (%)</a></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="setDiscountSymbol('₹')">Fixed Amount (₹)</a></li>
-                                                    <li><hr class="dropdown-divider"></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="clearDiscount()">Clear Discount</a></li>
-                                                </ul>
-                                            </div>
-                                            <div class="form-text">Enter discount as percentage (10%) or fixed amount (50)</div>
-                                        </div>
-
-                                        <!-- Stock Price Section -->
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Purchase Price (Cost) <span class="text-danger">*</span></strong></label>
-                                            <div class="input-group">
-                                                <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="stock_price" 
-                                                       class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($_POST['stock_price'] ?? '') ?>" 
-                                                       id="stockPrice" required>
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearManualStockPrice()" title="Clear manual entry">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
-                                            </div>
-                                            <div class="form-text" id="stockPriceText">Calculated from Final MRP & Discount</div>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>You Save</strong></label>
-                                            <div class="input-group">
-                                                <input type="text" class="form-control text-end" id="youSave" readonly>
-                                                <span class="input-group-text">₹</span>
-                                            </div>
-                                            <div class="form-text" id="discountPercentageText">
-                                                Discount: 0%
-                                            </div>
-                                        </div>
-
                                         <!-- Retail Price Section -->
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
@@ -1120,20 +961,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </div>
 
                                         <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Type </strong></label>
-                                            <select name="retail_price_type" id="retailPriceType" class="form-select">
+                                            <label class="form-label"><strong>Markup Type</strong></label>
+                                            <select name="retail_price_type" id="retailPriceType" class="form-select" onchange="updateRetailPriceUnit(); calculateRetailPrice()">
                                                 <option value="percentage" <?= ($_POST['retail_price_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
                                                 <option value="fixed" <?= ($_POST['retail_price_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
                                             </select>
                                         </div>
 
                                         <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Value </strong></label>
+                                            <label class="form-label"><strong>Markup Value</strong></label>
                                             <div class="input-group">
                                                 <input type="number" step="0.01" min="0" name="retail_price_value" 
                                                        class="form-control text-end" 
                                                        value="<?= htmlspecialchars($_POST['retail_price_value'] ?? '0') ?>"
-                                                       id="retailPriceValue">
+                                                       id="retailPriceValue"
+                                                       oninput="calculateRetailPrice()">
                                                 <span class="input-group-text">
                                                     <span id="retailPriceUnit">%</span>
                                                 </span>
@@ -1150,13 +992,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <input type="number" step="0.01" min="0" name="retail_price" 
                                                        class="form-control form-control-lg text-end" 
                                                        value="<?= htmlspecialchars($_POST['retail_price'] ?? '') ?>" 
-                                                       id="retailPrice" required>
+                                                       id="retailPrice" required
+                                                       oninput="onManualRetailPriceChange()">
                                                 <button type="button" class="btn btn-outline-secondary" onclick="clearManualRetailPrice()" title="Clear manual entry">
                                                     <i class="bx bx-refresh"></i>
                                                 </button>
                                             </div>
                                             <div class="form-text" id="retailPriceText">
-                                                Based on stock price + markup
+                                                Based on Final Purchase Price (with GST) + markup
                                             </div>
                                         </div>
 
@@ -1170,68 +1013,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 Profit: ₹0.00
                                             </div>
                                         </div>
-
-                                        <!-- Wholesale Price Section - Hidden for business_id = 28 -->
-                                        <?php if (!$hide_wholesale): ?>
-                                        <div class="col-md-12 mt-4">
-                                            <h6 class="border-bottom pb-2 mb-3">
-                                                <i class="bx bx-building-house me-1"></i> Wholesale Price (For Customers)
-                                                <span class="text-danger ms-2">* Required</span>
-                                            </h6>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Type </strong></label>
-                                            <select name="wholesale_price_type" id="wholesalePriceType" class="form-select">
-                                                <option value="percentage" <?= ($_POST['wholesale_price_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
-                                                <option value="fixed" <?= ($_POST['wholesale_price_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Value</strong></label>
-                                            <div class="input-group">
-                                                <input type="number" step="0.01" min="0" name="wholesale_price_value" 
-                                                       class="form-control text-end" 
-                                                       value="<?= htmlspecialchars($_POST['wholesale_price_value'] ?? '0') ?>"
-                                                       id="wholesalePriceValue">
-                                                <span class="input-group-text">
-                                                    <span id="wholesalePriceUnit">%</span>
-                                                </span>
-                                            </div>
-                                            <div class="form-text" id="wholesaleMarkupText">
-                                                Markup: ₹0.00
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Wholesale Price <span class="text-danger">*</span></strong></label>
-                                            <div class="input-group">
-                                                <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="wholesale_price" 
-                                                       class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($_POST['wholesale_price'] ?? '') ?>"
-                                                       id="wholesalePrice" required>
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearManualWholesalePrice()" title="Clear manual entry">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
-                                            </div>
-                                            <div class="form-text" id="wholesalePriceText">
-                                                Based on stock price + markup
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Profit Margin</strong></label>
-                                            <div class="input-group">
-                                                <input type="text" class="form-control text-end" id="wholesaleProfitMargin" readonly>
-                                                <span class="input-group-text">%</span>
-                                            </div>
-                                            <div class="form-text" id="wholesaleProfitAmountText">
-                                                Profit: ₹0.00
-                                            </div>
-                                        </div>
-                                        <?php endif; ?>
 
                                         <!-- Warranty Section -->
                                         <div class="col-md-12 mt-4">
@@ -1303,7 +1084,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        min="0" placeholder="0">
                                                 <span class="input-group-text">units</span>
                                             </div>
-                                            <div class="form-text">Add initial stock to current shop</div>
+                                            <div class="form-text">Add initial stock to current shop (valued at Final Purchase Price with GST)</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1317,7 +1098,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                     <div class="form-check form-switch mb-3">
                                         <input class="form-check-input" type="checkbox" id="referralEnabled" 
-                                               name="referral_enabled" checked
+                                               name="referral_enabled"
                                                <?= isset($_POST['referral_enabled']) ? 'checked' : '' ?>>
                                         <label class="form-check-label fw-bold" for="referralEnabled">
                                             Enable referral commission for this product
@@ -1383,20 +1164,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="card-body">
                                     <h6 class="card-title mb-3"><i class="bx bx-info-circle me-1"></i> Quick Tips</h6>
                                     <ul class="list-unstyled mb-0">
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 1:</strong> Select GST rate and type (Inclusive/Exclusive)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter MRP (optional) - GST will be calculated automatically</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> Enter Discount → Stock Price auto-calculated</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> Retail markups are calculated based on Stock Price</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 1:</strong> Select GST rate and type (Exclusive/Inclusive)</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter Base Purchase Price (without GST)</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> GST will be calculated automatically</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 4:</strong> Final Purchase Price (with GST) will be stored as Stock Price</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 5:</strong> Enter Retail markup → Retail Price auto-calculated</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Example:</strong> Base Price ₹100 + 18% GST = ₹118 Final Price (Stored)</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Retail Price:</strong> ₹118 + 10% markup = ₹129.80</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Secondary Unit:</strong> Convert primary units (coil) to secondary units (mtr)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin Formula:</strong> ((Selling Price - Cost Price) / Selling Price) × 100</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> Click refresh buttons (⟳) to clear manual entries</li>
-                                        <li><i class="bx bx-check text-success me-1"></i> <strong>Price Hierarchy:</strong> Stock Price ≤ Retail Price ≤ MRP</li>
-                                        <?php if ($hide_wholesale): ?>
-                                        <li class="mt-2 text-info"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> Wholesale price is hidden for this business.</li>
-                                        <?php endif; ?>
-                                        <?php if (!$mrp_required): ?>
-                                        <li class="mt-2 text-warning"><i class="bx bx-info-circle me-1"></i> <strong>Note:</strong> MRP is optional for this business.</li>
-                                        <?php endif; ?>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin:</strong> ((Retail Price - Final Purchase Price) / Retail Price) × 100</li>
+                                        <li><i class="bx bx-check text-success me-1"></i> <strong>Note:</strong> MRP and Discount are not used for this business type</li>
                                     </ul>
                                 </div>
                             </div>
@@ -1538,24 +1315,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php include('includes/scripts.php'); ?>
 <script>
 // Track manual entries
-let manualStockPrice = false;
 let manualRetailPrice = false;
-let manualWholesalePrice = false;
-let discountSymbol = '%'; // Default symbol
-
-// Track calculation modes
-let stockPriceCalculationMode = 'auto'; // 'auto' or 'manual'
-let retailPriceCalculationMode = 'auto'; // 'auto' or 'manual'
-let wholesalePriceCalculationMode = 'auto'; // 'auto' or 'manual'
-
-// Business ID for conditional wholesale price
-const currentBusinessId = <?= $current_business_id ?>;
-const hideWholesale = <?= $hide_wholesale ? 'true' : 'false' ?>;
-const mrpRequired = <?= $mrp_required ? 'true' : 'false' ?>;
-
-// GST Calculation Variables
 let gstRate = 0;
-let gstType = 'inclusive'; // Default: GST Inclusive
+let gstType = 'exclusive';
 
 // Sweet Toast Alert Function
 function showSweetToast(title, message, type = 'info', duration = 3000) {
@@ -1566,8 +1328,8 @@ function showSweetToast(title, message, type = 'info', duration = 3000) {
         timer: duration,
         timerProgressBar: true,
         didOpen: (toast) => {
-            toast.addEventListener('mouseenter', Swal.stopTimer)
-            toast.addEventListener('mouseleave', Swal.resumeTimer)
+            toast.addEventListener('mouseenter', Swal.stopTimer);
+            toast.addEventListener('mouseleave', Swal.resumeTimer);
         }
     });
     
@@ -1578,21 +1340,6 @@ function showSweetToast(title, message, type = 'info', duration = 3000) {
     });
 }
 
-// Sweet Alert Confirmation Function
-function showSweetConfirm(title, text, confirmButtonText = 'Yes', cancelButtonText = 'Cancel') {
-    return Swal.fire({
-        title: title,
-        text: text,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: confirmButtonText,
-        cancelButtonText: cancelButtonText
-    });
-}
-
-// Sweet Alert Error Function
 function showSweetError(title, message) {
     Swal.fire({
         icon: 'error',
@@ -1602,7 +1349,6 @@ function showSweetError(title, message) {
     });
 }
 
-// Sweet Alert Success Function
 function showSweetSuccess(title, message, duration = 2000) {
     Swal.fire({
         icon: 'success',
@@ -1617,25 +1363,9 @@ function showSweetSuccess(title, message, duration = 2000) {
 function toggleWarrantyFields() {
     const checkbox = document.getElementById('warrantyCheckbox');
     const warrantyFields = document.getElementById('warrantyFields');
-    warrantyFields.style.display = checkbox.checked ? 'block' : 'none';
-}
-
-// Set initial warranty state
-document.addEventListener('DOMContentLoaded', function() {
-    toggleWarrantyFields();
-});
-
-function setDiscountSymbol(symbol) {
-    discountSymbol = symbol;
-    document.getElementById('discountSymbol').textContent = symbol;
-    calculateStockPrice();
-}
-
-function clearDiscount() {
-    document.getElementById('discount').value = '';
-    discountSymbol = '%';
-    document.getElementById('discountSymbol').textContent = '%';
-    calculateStockPrice();
+    if (warrantyFields) {
+        warrantyFields.style.display = checkbox.checked ? 'block' : 'none';
+    }
 }
 
 // Update GST Type based on toggle
@@ -1644,731 +1374,382 @@ function updateGSTType() {
     const gstTypeLabel = document.getElementById('gstTypeLabel');
     const gstTypeDescription = document.getElementById('gstTypeDescription');
     const gstTypeHidden = document.getElementById('gstTypeHidden');
-    const mrpHelpText = document.getElementById('mrpHelpText');
     
-    if (gstToggle.checked) {
+    if (gstToggle && gstToggle.checked) {
         gstType = 'exclusive';
-        gstTypeLabel.textContent = 'GST Exclusive';
-        gstTypeDescription.textContent = 'GST will be added to entered price';
-        gstTypeHidden.value = 'exclusive';
-        mrpHelpText.textContent = 'Enter price without GST';
+        if (gstTypeLabel) gstTypeLabel.textContent = 'GST Exclusive';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST will be added to Purchase Price';
+        if (gstTypeHidden) gstTypeHidden.value = 'exclusive';
     } else {
         gstType = 'inclusive';
-        gstTypeLabel.textContent = 'GST Inclusive';
-        gstTypeDescription.textContent = 'GST is included in product price';
-        gstTypeHidden.value = 'inclusive';
-        mrpHelpText.textContent = 'Enter price including GST';
+        if (gstTypeLabel) gstTypeLabel.textContent = 'GST Inclusive';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST is included in Purchase Price';
+        if (gstTypeHidden) gstTypeHidden.value = 'inclusive';
     }
     
-    // Recalculate GST
     calculateGST();
 }
 
 // Calculate GST based on selected rate and type
 function calculateGST() {
     const gstSelect = document.getElementById('gstSelect');
-    const selectedOption = gstSelect.options[gstSelect.selectedIndex];
-    const mrpInput = parseFloat(document.getElementById('mrpInput').value) || 0;
+    const selectedOption = gstSelect ? gstSelect.options[gstSelect.selectedIndex] : null;
+    const basePrice = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
     const gstPreview = document.getElementById('gstCalculationPreview');
-    const finalMRPInput = document.getElementById('mrp');
-    const finalMRPText = document.getElementById('finalMRPText');
+    const finalPurchasePriceSpan = document.getElementById('finalPurchasePrice');
+    const gstCalculationDescription = document.getElementById('gstCalculationDescription');
+    const gstAmountDisplay = document.getElementById('gstAmountDisplay');
+    const gstRateDisplay = document.getElementById('gstRateDisplay');
+    const basePriceDisplay = document.getElementById('basePriceDisplay');
     
-    // Reset GST rate
     gstRate = 0;
     
-    if (selectedOption && selectedOption.value && mrpInput > 0) {
-        // Get GST rate from data attribute
+    if (selectedOption && selectedOption.value && basePrice > 0) {
         gstRate = parseFloat(selectedOption.getAttribute('data-rate')) || 0;
         
-        // Show GST preview
-        gstPreview.style.display = 'block';
-        
-        // Update display values
-        document.getElementById('enteredMRP').textContent = '₹' + mrpInput.toFixed(2);
-        document.getElementById('gstRateDisplay').textContent = gstRate.toFixed(2) + '%';
+        if (gstPreview) gstPreview.style.display = 'block';
+        if (basePriceDisplay) basePriceDisplay.textContent = '₹' + basePrice.toFixed(2);
+        if (gstRateDisplay) gstRateDisplay.textContent = gstRate.toFixed(2) + '%';
         
         let gstAmount = 0;
-        let finalMRP = mrpInput;
+        let finalPrice = basePrice;
         
         if (gstType === 'exclusive') {
-            // GST Exclusive: GST will be added to entered price
-            gstAmount = mrpInput * (gstRate / 100);
-            finalMRP = mrpInput + gstAmount;
+            gstAmount = basePrice * (gstRate / 100);
+            finalPrice = basePrice + gstAmount;
             
-            document.getElementById('gstAmountDisplay').textContent = '₹' + gstAmount.toFixed(2);
-            document.getElementById('finalMRP').textContent = '₹' + finalMRP.toFixed(2);
-            document.getElementById('gstCalculationDescription').innerHTML = 
-                'Entered MRP (₹' + mrpInput.toFixed(2) + ') + GST (₹' + gstAmount.toFixed(2) + ') = Final MRP (₹' + finalMRP.toFixed(2) + ')';
-            
-            finalMRPText.innerHTML = `Final MRP (Including GST ₹${gstAmount.toFixed(2)})`;
-            finalMRPText.style.color = '#0d6efd';
+            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
+            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + finalPrice.toFixed(2);
+            if (gstCalculationDescription) {
+                gstCalculationDescription.innerHTML = 
+                    'Base Price (₹' + basePrice.toFixed(2) + ') + GST (₹' + gstAmount.toFixed(2) + ') = Final Price (₹' + finalPrice.toFixed(2) + ')';
+            }
         } else {
-            // GST Inclusive: GST is included in entered price
-            // GST amount = (MRP * GST%) / (100 + GST%)
-            gstAmount = (mrpInput * gstRate) / (100 + gstRate);
+            gstAmount = (basePrice * gstRate) / (100 + gstRate);
             
-            document.getElementById('gstAmountDisplay').textContent = '₹' + gstAmount.toFixed(2);
-            document.getElementById('finalMRP').textContent = '₹' + mrpInput.toFixed(2);
-            document.getElementById('gstCalculationDescription').innerHTML = 
-                'Entered MRP (₹' + mrpInput.toFixed(2) + ') includes GST of ₹' + gstAmount.toFixed(2) + ' (' + gstRate.toFixed(2) + '%)';
-            
-            finalMRPText.innerHTML = `MRP includes GST ₹${gstAmount.toFixed(2)}`;
-            finalMRPText.style.color = '#198754';
+            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
+            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
+            if (gstCalculationDescription) {
+                gstCalculationDescription.innerHTML = 
+                    'Base Price (₹' + basePrice.toFixed(2) + ') includes GST of ₹' + gstAmount.toFixed(2) + ' (' + gstRate.toFixed(2) + '%)';
+            }
         }
         
-        // Update final MRP field
-        finalMRPInput.value = finalMRP.toFixed(2);
+        calculateRetailPrice();
         
     } else {
-        // Hide GST preview if no GST selected or no MRP entered
-        gstPreview.style.display = 'none';
-        
-        // Update final MRP (same as input if no GST)
-        finalMRPInput.value = mrpInput.toFixed(2);
-        
-        if ((!selectedOption || !selectedOption.value) && mrpInput > 0) {
-            finalMRPText.innerHTML = 'No GST applied';
-            finalMRPText.style.color = '#6c757d';
-        } else if (mrpInput <= 0) {
-            finalMRPText.innerHTML = 'Enter MRP to see calculation';
-            finalMRPText.style.color = '#6c757d';
+        if (gstPreview) gstPreview.style.display = 'none';
+        if (finalPurchasePriceSpan && basePrice > 0) {
+            finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
         }
+        calculateRetailPrice();
     }
-    
-    // Trigger stock price calculation
-    calculateStockPrice();
 }
 
-// Clear manual stock price entry
-function clearManualStockPrice() {
-    manualStockPrice = false;
-    stockPriceCalculationMode = 'auto';
-    document.getElementById('stockPrice').value = '';
-    document.getElementById('stockPriceText').innerHTML = 'Will be calculated from Final MRP & Discount';
-    document.getElementById('stockPriceText').style.color = '#6c757d';
-    calculateStockPrice();
+function clearPurchasePrice() {
+    document.getElementById('purchasePriceBase').value = '';
+    calculateGST();
 }
 
-// Clear manual retail price entry
 function clearManualRetailPrice() {
     manualRetailPrice = false;
-    retailPriceCalculationMode = 'auto';
     document.getElementById('retailPrice').value = '';
     calculateRetailPrice();
 }
 
-// Clear manual wholesale price entry
-function clearManualWholesalePrice() {
-    manualWholesalePrice = false;
-    wholesalePriceCalculationMode = 'auto';
-    document.getElementById('wholesalePrice').value = '';
-    calculateWholesalePrice();
+function onManualRetailPriceChange() {
+    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    if (retailPrice > 0) {
+        manualRetailPrice = true;
+                document.getElementById('retailPriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
+        document.getElementById('retailPriceText').style.color = '#0d6efd';
+        calculateRetailPrice();
+    }
 }
 
-// Calculate Stock Price from Final MRP and discount
-function calculateStockPrice() {
-    const mrp = parseFloat(document.getElementById('mrp').value) || 0;
-    const discountInput = document.getElementById('discount').value.trim();
-    const stockPriceInput = document.getElementById('stockPrice');
-    const youSaveInput = document.getElementById('youSave');
-    const discountPercentageText = document.getElementById('discountPercentageText');
-    const stockPriceText = document.getElementById('stockPriceText');
-    
-    let discountValue = 0;
-    let discountAmount = 0;
-    let currentStockPrice = parseFloat(stockPriceInput.value) || 0;
-    let calculatedStockPrice = 0;
-    
-    // If in auto mode and MRP is provided, calculate stock price
-    if (mrp > 0 && !manualStockPrice) {
-        if (discountInput) {
-            if (discountSymbol === '%') {
-                discountValue = parseFloat(discountInput.replace('%', '')) || 0;
-                
-                if (discountValue > 100) {
-                    showSweetToast('Invalid Discount', 'Discount percentage cannot exceed 100%', 'warning');
-                    discountValue = 100;
-                    document.getElementById('discount').value = '100%';
-                }
-                
-                discountAmount = mrp * discountValue / 100;
-                calculatedStockPrice = mrp - discountAmount;
-            } else {
-                discountValue = parseFloat(discountInput) || 0;
-                
-                if (discountValue > mrp) {
-                    showSweetToast('Invalid Discount', 'Discount amount cannot exceed MRP', 'warning');
-                    discountValue = mrp;
-                    document.getElementById('discount').value = mrp.toFixed(2);
-                }
-                
-                discountAmount = discountValue;
-                calculatedStockPrice = mrp - discountValue;
-            }
-        } else {
-            // No discount, stock price equals MRP
-            calculatedStockPrice = mrp;
-        }
-        
-        // Ensure calculated stock price is not negative
-        if (calculatedStockPrice < 0) {
-            calculatedStockPrice = 0;
-        }
-        
-        // Update stock price field
-        stockPriceInput.value = calculatedStockPrice.toFixed(2);
-        
-        if (discountAmount > 0) {
-            stockPriceText.innerHTML = `Calculated from Final MRP (₹${mrp.toFixed(2)}) - Discount`;
-            stockPriceText.style.color = '#198754';
-        } else {
-            stockPriceText.innerHTML = `Same as Final MRP (no discount)`;
-            stockPriceText.style.color = '#6c757d';
-        }
-        
-        stockPriceCalculationMode = 'auto';
-    } 
-    // If in manual mode, just update discount based on stock price
-    else if (mrp > 0 && manualStockPrice) {
-        currentStockPrice = parseFloat(stockPriceInput.value) || 0;
-        discountAmount = mrp - currentStockPrice;
-        
-        // Update discount field based on manual stock price
-        if (discountAmount > 0) {
-            if (discountSymbol === '%') {
-                discountValue = (discountAmount / mrp) * 100;
-                document.getElementById('discount').value = discountValue.toFixed(2) + '%';
-            } else {
-                document.getElementById('discount').value = discountAmount.toFixed(2);
-            }
-        } else {
-            document.getElementById('discount').value = '';
-        }
-        
-        stockPriceText.innerHTML = `Manually entered - Discount calculated`;
-        stockPriceText.style.color = '#0d6efd';
-    }
-    
-    // Update "You Save" field
-    youSaveInput.value = discountAmount.toFixed(2);
-    
-    // Update discount percentage text
-    if (mrp > 0 && discountAmount > 0) {
-        const discountPercentage = (discountAmount / mrp) * 100;
-        discountPercentageText.innerHTML = `Discount: ${discountPercentage.toFixed(1)}%`;
-        discountPercentageText.style.color = '#198754';
-    } else {
-        discountPercentageText.innerHTML = `Discount: 0%`;
-        discountPercentageText.style.color = '#6c757d';
-    }
-    
-    // Trigger other calculations
-    calculateRetailPrice();
-    if (!hideWholesale) calculateWholesalePrice();
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-}
-
-// Calculate Retail Price based on Stock Price and Retail Markup
+// Calculate Retail Price based on Final Purchase Price and Retail Markup
 function calculateRetailPrice() {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const retailPriceType = document.getElementById('retailPriceType').value;
+    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
+    const retailPriceType = document.getElementById('retailPriceType');
     const retailPriceValue = parseFloat(document.getElementById('retailPriceValue').value) || 0;
     const retailPriceInput = document.getElementById('retailPrice');
     const retailMarkupText = document.getElementById('retailMarkupText');
     const retailPriceText = document.getElementById('retailPriceText');
     
     let markupAmount = 0;
-    let currentRetailPrice = parseFloat(retailPriceInput.value) || 0;
-    let calculatedRetailPrice = stockPrice;
+    let calculatedRetailPrice = finalPurchasePrice;
     
-    // If in auto mode and stock price is available
-    if (stockPrice > 0 && !manualRetailPrice) {
-        if (retailPriceValue > 0) {
-            if (retailPriceType === 'percentage') {
-                markupAmount = stockPrice * retailPriceValue / 100;
-                calculatedRetailPrice = stockPrice + markupAmount;
-                retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${retailPriceValue}%)`;
+    if (finalPurchasePrice > 0 && !manualRetailPrice) {
+        if (retailPriceValue > 0 && retailPriceType) {
+            if (retailPriceType.value === 'percentage') {
+                markupAmount = finalPurchasePrice * retailPriceValue / 100;
+                calculatedRetailPrice = finalPurchasePrice + markupAmount;
+                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${retailPriceValue}%)`;
             } else {
                 markupAmount = retailPriceValue;
-                calculatedRetailPrice = stockPrice + retailPriceValue;
-                retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
+                calculatedRetailPrice = finalPurchasePrice + retailPriceValue;
+                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
             }
             
-            retailPriceInput.value = calculatedRetailPrice.toFixed(2);
-            retailPriceText.innerHTML = `Based on stock price + markup`;
-            retailPriceText.style.color = '#198754';
-            retailPriceCalculationMode = 'auto';
+            if (retailPriceInput) retailPriceInput.value = calculatedRetailPrice.toFixed(2);
+            if (retailPriceText) {
+                retailPriceText.innerHTML = `Based on Final Purchase Price (with GST) + markup`;
+                retailPriceText.style.color = '#198754';
+            }
         } else {
-            retailPriceInput.value = stockPrice.toFixed(2);
-            retailMarkupText.innerHTML = `Markup: ₹0.00`;
-            retailPriceText.innerHTML = `Same as stock price (no markup)`;
-            retailPriceText.style.color = '#6c757d';
+            if (retailPriceInput) retailPriceInput.value = finalPurchasePrice.toFixed(2);
+            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
+            if (retailPriceText) {
+                retailPriceText.innerHTML = `Same as Final Purchase Price (no markup)`;
+                retailPriceText.style.color = '#6c757d';
+            }
         }
-    } 
-    // If in manual mode, calculate markup based on retail price
-    else if (stockPrice > 0 && manualRetailPrice) {
-        currentRetailPrice = parseFloat(retailPriceInput.value) || 0;
+    } else if (finalPurchasePrice > 0 && manualRetailPrice && retailPriceInput) {
+        const currentRetailPrice = parseFloat(retailPriceInput.value) || 0;
         
-        if (currentRetailPrice > stockPrice) {
-            markupAmount = currentRetailPrice - stockPrice;
+        if (currentRetailPrice > finalPurchasePrice) {
+            markupAmount = currentRetailPrice - finalPurchasePrice;
             
-            if (retailPriceType === 'percentage') {
-                const calculatedPercentage = (markupAmount / stockPrice) * 100;
-                document.getElementById('retailPriceValue').value = calculatedPercentage.toFixed(2);
-                retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${calculatedPercentage.toFixed(2)}%)`;
-            } else {
-                document.getElementById('retailPriceValue').value = markupAmount.toFixed(2);
-                retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
+            if (retailPriceType) {
+                if (retailPriceType.value === 'percentage') {
+                    const calculatedPercentage = (markupAmount / finalPurchasePrice) * 100;
+                    document.getElementById('retailPriceValue').value = calculatedPercentage.toFixed(2);
+                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${calculatedPercentage.toFixed(2)}%)`;
+                } else {
+                    document.getElementById('retailPriceValue').value = markupAmount.toFixed(2);
+                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
+                }
             }
         } else {
             document.getElementById('retailPriceValue').value = '0';
-            retailMarkupText.innerHTML = `Markup: ₹0.00`;
+            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
         }
         
-        retailPriceText.innerHTML = `Manually entered - Markup calculated`;
-        retailPriceText.style.color = '#0d6efd';
+        if (retailPriceText) {
+            retailPriceText.innerHTML = `Manually entered - Markup calculated`;
+            retailPriceText.style.color = '#0d6efd';
+        }
     }
     
-    // Calculate profit margin
     calculateProfitMargins();
     calculateSecondaryPrices();
     validatePriceHierarchy();
 }
 
-// Calculate Wholesale Price based on Stock Price and Wholesale Markup
-function calculateWholesalePrice() {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePriceType = document.getElementById('wholesalePriceType').value;
-    const wholesalePriceValue = parseFloat(document.getElementById('wholesalePriceValue').value) || 0;
-    const wholesalePriceInput = document.getElementById('wholesalePrice');
-    const wholesaleMarkupText = document.getElementById('wholesaleMarkupText');
-    const wholesalePriceText = document.getElementById('wholesalePriceText');
-    
-    let markupAmount = 0;
-    let currentWholesalePrice = parseFloat(wholesalePriceInput.value) || 0;
-    let calculatedWholesalePrice = stockPrice;
-    
-    // If in auto mode and stock price is available
-    if (stockPrice > 0 && !manualWholesalePrice) {
-        if (wholesalePriceValue > 0) {
-            if (wholesalePriceType === 'percentage') {
-                markupAmount = stockPrice * wholesalePriceValue / 100;
-                calculatedWholesalePrice = stockPrice + markupAmount;
-                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${wholesalePriceValue}%)`;
-            } else {
-                markupAmount = wholesalePriceValue;
-                calculatedWholesalePrice = stockPrice + wholesalePriceValue;
-                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
-            }
-            
-            wholesalePriceInput.value = calculatedWholesalePrice.toFixed(2);
-            wholesalePriceText.innerHTML = `Based on stock price + markup`;
-            wholesalePriceText.style.color = '#0d6efd';
-            wholesalePriceCalculationMode = 'auto';
-        } else {
-            wholesalePriceInput.value = stockPrice.toFixed(2);
-            wholesaleMarkupText.innerHTML = `Markup: ₹0.00`;
-            wholesalePriceText.innerHTML = `Same as stock price (no markup)`;
-            wholesalePriceText.style.color = '#6c757d';
-        }
-    } 
-    // If in manual mode, calculate markup based on wholesale price
-    else if (stockPrice > 0 && manualWholesalePrice) {
-        currentWholesalePrice = parseFloat(wholesalePriceInput.value) || 0;
-        
-        if (currentWholesalePrice > stockPrice) {
-            markupAmount = currentWholesalePrice - stockPrice;
-            
-            if (wholesalePriceType === 'percentage') {
-                const calculatedPercentage = (markupAmount / stockPrice) * 100;
-                document.getElementById('wholesalePriceValue').value = calculatedPercentage.toFixed(2);
-                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${calculatedPercentage.toFixed(2)}%)`;
-            } else {
-                document.getElementById('wholesalePriceValue').value = markupAmount.toFixed(2);
-                wholesaleMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
-            }
-        } else {
-            document.getElementById('wholesalePriceValue').value = '0';
-            wholesaleMarkupText.innerHTML = `Markup: ₹0.00`;
-        }
-        
-        wholesalePriceText.innerHTML = `Manually entered - Markup calculated`;
-        wholesalePriceText.style.color = '#0d6efd';
-    }
-    
-    // Calculate profit margin
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-}
-
-// Calculate Profit Margins based on selling prices
+// Calculate Profit Margins
 function calculateProfitMargins() {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
+    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
     const retailProfitMarginInput = document.getElementById('retailProfitMargin');
     const retailProfitAmountText = document.getElementById('retailProfitAmountText');
-    const wholesaleProfitMarginInput = document.getElementById('wholesaleProfitMargin');
-    const wholesaleProfitAmountText = document.getElementById('wholesaleProfitAmountText');
     
-    // Calculate Retail Profit Margin: ((Retail Price - Stock Price) / Retail Price) × 100
-    if (stockPrice > 0 && retailPrice > 0) {
-        const retailProfit = retailPrice - stockPrice;
+    if (finalPurchasePrice > 0 && retailPrice > 0) {
+        const retailProfit = retailPrice - finalPurchasePrice;
         const retailProfitMargin = retailPrice > 0 ? (retailProfit / retailPrice) * 100 : 0;
         
-        retailProfitMarginInput.value = retailProfitMargin.toFixed(2);
-        retailProfitAmountText.innerHTML = `Profit: ₹${retailProfit.toFixed(2)}`;
+        if (retailProfitMarginInput) retailProfitMarginInput.value = retailProfitMargin.toFixed(2);
+        if (retailProfitAmountText) retailProfitAmountText.innerHTML = `Profit: ₹${retailProfit.toFixed(2)}`;
         
-        // Color code based on profit margin
         if (retailProfitMargin > 20) {
-            retailProfitMarginInput.style.color = '#198754';
-            retailProfitAmountText.style.color = '#198754';
+            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#198754';
+            if (retailProfitAmountText) retailProfitAmountText.style.color = '#198754';
         } else if (retailProfitMargin > 10) {
-            retailProfitMarginInput.style.color = '#fd7e14';
-            retailProfitAmountText.style.color = '#fd7e14';
+            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#fd7e14';
+            if (retailProfitAmountText) retailProfitAmountText.style.color = '#fd7e14';
         } else if (retailProfitMargin > 0) {
-            retailProfitMarginInput.style.color = '#0d6efd';
-            retailProfitAmountText.style.color = '#0d6efd';
+            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#0d6efd';
+            if (retailProfitAmountText) retailProfitAmountText.style.color = '#0d6efd';
         } else {
-            retailProfitMarginInput.style.color = '#dc3545';
-            retailProfitAmountText.style.color = '#dc3545';
+            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#dc3545';
+            if (retailProfitAmountText) retailProfitAmountText.style.color = '#dc3545';
         }
     } else {
-        retailProfitMarginInput.value = '';
-        retailProfitAmountText.innerHTML = 'Profit: ₹0.00';
-        retailProfitMarginInput.style.color = '';
-        retailProfitAmountText.style.color = '';
-    }
-    
-    // Calculate Wholesale Profit Margin: ((Wholesale Price - Stock Price) / Wholesale Price) × 100
-    if (!hideWholesale && stockPrice > 0 && wholesalePrice > 0) {
-        const wholesaleProfit = wholesalePrice - stockPrice;
-        const wholesaleProfitMargin = wholesalePrice > 0 ? (wholesaleProfit / wholesalePrice) * 100 : 0;
-        
-        wholesaleProfitMarginInput.value = wholesaleProfitMargin.toFixed(2);
-        wholesaleProfitAmountText.innerHTML = `Profit: ₹${wholesaleProfit.toFixed(2)}`;
-        
-        if (wholesaleProfitMargin > 15) {
-            wholesaleProfitMarginInput.style.color = '#198754';
-            wholesaleProfitAmountText.style.color = '#198754';
-        } else if (wholesaleProfitMargin > 5) {
-            wholesaleProfitMarginInput.style.color = '#fd7e14';
-            wholesaleProfitAmountText.style.color = '#fd7e14';
-        } else if (wholesaleProfitMargin > 0) {
-            wholesaleProfitMarginInput.style.color = '#0d6efd';
-            wholesaleProfitAmountText.style.color = '#0d6efd';
-        } else {
-            wholesaleProfitMarginInput.style.color = '#dc3545';
-            wholesaleProfitAmountText.style.color = '#dc3545';
-        }
-    } else if (!hideWholesale) {
-        wholesaleProfitMarginInput.value = '';
-        wholesaleProfitAmountText.innerHTML = 'Profit: ₹0.00';
-        wholesaleProfitMarginInput.style.color = '';
-        wholesaleProfitAmountText.style.color = '';
+        if (retailProfitMarginInput) retailProfitMarginInput.value = '';
+        if (retailProfitAmountText) retailProfitAmountText.innerHTML = 'Profit: ₹0.00';
     }
 }
 
-// Enhanced: Calculate Secondary Unit Prices with detailed breakdown
+// Calculate Secondary Unit Prices
 function calculateSecondaryPrices() {
-    const secondaryUnit = document.querySelector('input[name="secondary_unit"]').value.trim();
-    const conversion = parseFloat(document.getElementById('secUnitConversion').value) || 0;
-    const extraType = document.getElementById('secUnitPriceType').value;
-    const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge').value) || 0;
+    const secondaryUnit = document.querySelector('input[name="secondary_unit"]')?.value.trim() || '';
+    const conversion = parseFloat(document.getElementById('secUnitConversion')?.value) || 0;
+    const extraType = document.getElementById('secUnitPriceType')?.value || 'fixed';
+    const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge')?.value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
     const extraChargeHelp = document.getElementById('extraChargeHelp');
 
-    // Update secondary unit label
-    secondaryUnitLabel.textContent = secondaryUnit || 'units';
+    if (secondaryUnitLabel) {
+        secondaryUnitLabel.textContent = secondaryUnit || 'units';
+    }
     
-    // Update help text based on extra charge type
-    extraChargeHelp.innerHTML = extraType === 'fixed' 
-        ? `Extra charge per ${secondaryUnit || 'secondary unit'}` 
-        : `Extra charge percentage per ${secondaryUnit || 'secondary unit'}`;
+    if (extraChargeHelp) {
+        extraChargeHelp.innerHTML = extraType === 'fixed' 
+            ? `Extra charge per ${secondaryUnit || 'secondary unit'}` 
+            : `Extra charge percentage per ${secondaryUnit || 'secondary unit'}`;
+    }
 
-    if (secondaryUnit && conversion > 0 && conversion < 1000000) {
+    if (secondaryUnit && conversion > 0 && conversion < 1000000 && previewBox) {
         previewBox.style.display = 'block';
 
-        // Calculate base prices (without extra charge)
         let retailBasePricePerUnit = retailPrice / conversion;
-        let wholesaleBasePricePerUnit = !hideWholesale ? (wholesalePrice / conversion) : 0;
-
-        // Calculate extra charges
         let retailExtraPerUnit = 0;
-        let wholesaleExtraPerUnit = 0;
 
         if (extraType === 'fixed') {
             retailExtraPerUnit = extraCharge;
-            wholesaleExtraPerUnit = extraCharge;
         } else {
             retailExtraPerUnit = retailBasePricePerUnit * (extraCharge / 100);
-            wholesaleExtraPerUnit = wholesaleBasePricePerUnit * (extraCharge / 100);
         }
 
-        // Calculate final prices with extra charge
         let retailPerUnit = retailBasePricePerUnit + retailExtraPerUnit;
-        let wholesalePerUnit = !hideWholesale ? (wholesaleBasePricePerUnit + wholesaleExtraPerUnit) : 0;
 
-        // Update display with detailed breakdown
-        document.getElementById('secRetailPricePerUnit').textContent = `₹${retailPerUnit.toFixed(2)}`;
-        document.getElementById('secRetailBasePrice').textContent = `₹${retailBasePricePerUnit.toFixed(2)}`;
-        document.getElementById('secRetailExtraCharge').textContent = extraType === 'fixed' 
-            ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
-            : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
-
-        if (!hideWholesale) {
-            document.getElementById('secWholesalePricePerUnit').textContent = `₹${wholesalePerUnit.toFixed(2)}`;
-            document.getElementById('secWholesaleBasePrice').textContent = `₹${wholesaleBasePricePerUnit.toFixed(2)}`;
-            document.getElementById('secWholesaleExtraCharge').textContent = extraType === 'fixed' 
-                ? `₹${wholesaleExtraPerUnit.toFixed(2)} (fixed)` 
-                : `₹${wholesaleExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
+        const secRetailPricePerUnit = document.getElementById('secRetailPricePerUnit');
+        const secRetailBasePrice = document.getElementById('secRetailBasePrice');
+        const secRetailExtraCharge = document.getElementById('secRetailExtraCharge');
+        
+        if (secRetailPricePerUnit) secRetailPricePerUnit.textContent = `₹${retailPerUnit.toFixed(2)}`;
+        if (secRetailBasePrice) secRetailBasePrice.textContent = `₹${retailBasePricePerUnit.toFixed(2)}`;
+        if (secRetailExtraCharge) {
+            secRetailExtraCharge.textContent = extraType === 'fixed' 
+                ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
+                : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
         }
 
-        // Validate conversion rate
         if (conversion === 0) {
             showSweetToast('Invalid Conversion', 'Conversion rate cannot be 0', 'warning');
-            document.getElementById('secUnitConversion').value = '';
+            const secUnitConversionField = document.getElementById('secUnitConversion');
+            if (secUnitConversionField) secUnitConversionField.value = '';
             previewBox.style.display = 'none';
         }
-        
-        // Warn about very high or low conversion rates
-        if (conversion > 10000) {
-            document.getElementById('secUnitConversion').style.borderColor = '#ffc107';
-            showSweetToast('High Conversion Rate', 'Conversion rate is very high. Please verify.', 'info');
-        } else {
-            document.getElementById('secUnitConversion').style.borderColor = '';
-        }
-    } else {
+    } else if (previewBox) {
         previewBox.style.display = 'none';
     }
 }
 
 // Validate price hierarchy
 function validatePriceHierarchy() {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
+    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const mrp = parseFloat(document.getElementById('mrp').value) || 0;
+    const retailPriceText = document.getElementById('retailPriceText');
     
-    // Clear previous warnings
-    document.getElementById('stockPriceText').style.color = '';
-    if (!hideWholesale) document.getElementById('wholesalePriceText').style.color = '';
-    document.getElementById('retailPriceText').style.color = '';
+    if (retailPriceText) retailPriceText.style.color = '';
     
-    if (stockPrice > 0 && retailPrice > 0) {
-        // Check hierarchy
-        if (retailPrice <= stockPrice) {
-            document.getElementById('retailPriceText').innerHTML = '<span class="text-danger">Error: Must be > Stock Price</span>';
-            document.getElementById('retailPriceText').style.color = '#dc3545';
-        }
-        
-        // Check MRP constraints
-        if (mrp > 0) {
-            if (retailPrice > mrp) {
-                document.getElementById('retailPriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
-                document.getElementById('retailPriceText').style.color = '#dc3545';
+    if (finalPurchasePrice > 0 && retailPrice > 0) {
+        if (retailPrice <= finalPurchasePrice) {
+            if (retailPriceText) {
+                retailPriceText.innerHTML = '<span class="text-danger">Error: Must be > Final Purchase Price (with GST)</span>';
+                retailPriceText.style.color = '#dc3545';
             }
-            
-            if (stockPrice > mrp) {
-                document.getElementById('stockPriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
-                document.getElementById('stockPriceText').style.color = '#dc3545';
-            }
-        }
-    }
-    
-    // Wholesale validation only if not hidden
-    if (!hideWholesale) {
-        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≥ Stock Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
-        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Should be ≤ Retail Price</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
-        }
-        
-        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
-            document.getElementById('wholesalePriceText').innerHTML = '<span class="text-danger">Error: Must be ≤ MRP</span>';
-            document.getElementById('wholesalePriceText').style.color = '#dc3545';
         }
     }
 }
 
 // Update retail price unit display
 function updateRetailPriceUnit() {
-    const retailPriceType = document.getElementById('retailPriceType').value;
-    document.getElementById('retailPriceUnit').textContent = retailPriceType === 'percentage' ? '%' : '₹';
-    calculateRetailPrice();
-}
-
-// Update wholesale price unit display
-function updateWholesalePriceUnit() {
-    const wholesalePriceType = document.getElementById('wholesalePriceType').value;
-    document.getElementById('wholesalePriceUnit').textContent = wholesalePriceType === 'percentage' ? '%' : '₹';
-    calculateWholesalePrice();
+    const retailPriceType = document.getElementById('retailPriceType');
+    const retailPriceUnit = document.getElementById('retailPriceUnit');
+    if (retailPriceType && retailPriceUnit) {
+        retailPriceUnit.textContent = retailPriceType.value === 'percentage' ? '%' : '₹';
+    }
 }
 
 // Update secondary unit extra charge unit
 function updateSecUnitExtraUnit() {
-    const extraType = document.getElementById('secUnitPriceType').value;
-    document.getElementById('secUnitExtraUnit').textContent = extraType === 'percentage' ? '%' : '₹';
+    const extraType = document.getElementById('secUnitPriceType');
+    const secUnitExtraUnit = document.getElementById('secUnitExtraUnit');
+    if (extraType && secUnitExtraUnit) {
+        secUnitExtraUnit.textContent = extraType.value === 'percentage' ? '%' : '₹';
+    }
     calculateSecondaryPrices();
 }
 
-// Detect manual entry of prices
-document.getElementById('stockPrice').addEventListener('input', function() {
-    const value = parseFloat(this.value) || 0;
-    if (value > 0) {
-        manualStockPrice = true;
-        stockPriceCalculationMode = 'manual';
-        document.getElementById('stockPriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('stockPriceText').style.color = '#0d6efd';
-        
-        // Recalculate discount based on manual stock price
-        calculateStockPrice();
-    }
-    calculateRetailPrice();
-    if (!hideWholesale) calculateWholesalePrice();
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-});
+// Generate random barcode
+function generateBarcode() {
+    const prefix = '89';
+    const random = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
+    const barcode = prefix + random;
+    const barcodeField = document.querySelector('input[name="barcode"]');
+    if (barcodeField) barcodeField.value = barcode;
+    showSweetToast('Barcode Generated', 'New barcode has been generated', 'success', 2000);
+}
 
-document.getElementById('retailPrice').addEventListener('input', function() {
-    const value = parseFloat(this.value) || 0;
-    if (value > 0) {
-        manualRetailPrice = true;
-        retailPriceCalculationMode = 'manual';
-        document.getElementById('retailPriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('retailPriceText').style.color = '#0d6efd';
-        
-        // Calculate markup based on manual retail price
-        calculateRetailPrice();
-    }
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-});
-
-if (!hideWholesale) {
-    document.getElementById('wholesalePrice').addEventListener('input', function() {
-        const value = parseFloat(this.value) || 0;
-        if (value > 0) {
-            manualWholesalePrice = true;
-            wholesalePriceCalculationMode = 'manual';
-            document.getElementById('wholesalePriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-            document.getElementById('wholesalePriceText').style.color = '#0d6efd';
-            
-            // Calculate markup based on manual wholesale price
-            calculateWholesalePrice();
-        }
-        calculateProfitMargins();
-        calculateSecondaryPrices();
-        validatePriceHierarchy();
+// Populate sample data
+async function populateSampleData() {
+    const result = await Swal.fire({
+        title: 'Populate Sample Data',
+        text: 'This will fill the form with sample data. Continue?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, populate',
+        cancelButtonText: 'Cancel'
     });
+    
+    if (result.isConfirmed) {
+        document.querySelector('input[name="product_name"]').value = 'Sample Product';
+        document.querySelector('input[name="product_code"]').value = 'PROD' + Math.floor(Math.random() * 10000);
+        document.querySelector('input[name="secondary_unit"]').value = 'mtr';
+        document.getElementById('secUnitConversion').value = '10';
+        document.getElementById('secUnitExtraCharge').value = '0.50';
+        document.getElementById('purchasePriceBase').value = '100.00';
+        document.getElementById('retailPriceValue').value = '10';
+        document.querySelector('input[name="min_stock_level"]').value = '20';
+        document.querySelector('textarea[name="description"]').value = 'Sample product with GST calculation and secondary unit conversion.';
+        document.querySelector('input[name="image_alt_text"]').value = 'Sample product';
+        
+        document.getElementById('warrantyCheckbox').checked = true;
+        toggleWarrantyFields();
+        document.getElementById('warrantyType').value = 'manufacturer';
+        document.querySelector('input[name="warranty_period"]').value = '12';
+        document.querySelector('select[name="warranty_unit"]').value = 'months';
+        document.querySelector('textarea[name="warranty_description"]').value = '1 year manufacturer warranty against manufacturing defects.';
+        
+        generateBarcode();
+        
+        manualRetailPrice = false;
+        
+        calculateGST();
+        calculateSecondaryPrices();
+        
+        await showSweetSuccess('Sample Data Loaded', 'Sample product data has been populated successfully!');
+    }
 }
 
-// Validate prices before submission
-document.getElementById('addProductForm').addEventListener('submit', async function(e) {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
+// Form submission validation
+document.getElementById('addProductForm')?.addEventListener('submit', async function(e) {
+    const purchasePriceBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
     const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const mrp = parseFloat(document.getElementById('mrp').value) || 0;
-    const mrpInput = parseFloat(document.getElementById('mrpInput').value) || 0;
-    const discountInput = document.getElementById('discount').value.trim();
-    const secondaryUnit = document.querySelector('input[name="secondary_unit"]').value.trim();
-    const conversion = parseFloat(document.getElementById('secUnitConversion').value) || 0;
     const gstSelect = document.getElementById('gstSelect');
     const gstToggle = document.getElementById('gstTypeToggle');
-    const gstType = gstToggle.checked ? 'exclusive' : 'inclusive';
+    const gstType = gstToggle && gstToggle.checked ? 'exclusive' : 'inclusive';
     const warrantyCheckbox = document.getElementById('warrantyCheckbox');
-    const warrantyType = document.getElementById('warrantyType').value;
-    const warrantyPeriod = parseFloat(document.querySelector('input[name="warranty_period"]').value) || 0;
+    const warrantyType = document.getElementById('warrantyType')?.value || 'none';
+    const warrantyPeriod = parseFloat(document.querySelector('input[name="warranty_period"]')?.value) || 0;
+    const secondaryUnit = document.querySelector('input[name="secondary_unit"]')?.value.trim() || '';
+    const conversion = parseFloat(document.getElementById('secUnitConversion')?.value) || 0;
     
     let errors = [];
     
-    // Check if MRP is entered - only if required
-    if (mrpRequired && mrpInput <= 0) {
-        errors.push('MRP is required and must be greater than 0.');
+    if (purchasePriceBase <= 0) {
+        errors.push('Base purchase price must be greater than 0.');
     }
     
-    // Check if stock price is valid
-    if (stockPrice <= 0) {
-        errors.push('Stock price is required and must be greater than 0.');
-    }
-    
-    // Check if retail price is valid
     if (retailPrice <= 0) {
-        errors.push('Retail price is required and must be greater than 0.');
+        errors.push('Retail price must be greater than 0.');
     }
     
-    // Wholesale price validation only if not hidden
-    if (!hideWholesale && wholesalePrice <= 0) {
-        errors.push('Wholesale price is required and must be greater than 0.');
+    if (gstType === 'exclusive' && gstSelect && gstSelect.value === '') {
+        errors.push('Please select GST rate when GST is Exclusive.');
     }
     
-    // GST validation
-    if (gstType === 'exclusive' && gstSelect.value === '') {
-        errors.push('Please select GST rate when product is GST Exclusive.');
+    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
+    if (finalPurchasePrice > 0 && retailPrice > 0 && retailPrice <= finalPurchasePrice) {
+        errors.push('Retail price must be greater than Final Purchase Price (with GST).');
     }
     
-    // Check price hierarchy
-    if (stockPrice > 0 && retailPrice > 0) {
-        if (retailPrice <= stockPrice) {
-            errors.push('Retail price must be greater than Stock Price.');
-        }
-        
-        // Check MRP constraints - only if MRP is provided
-        if (mrp > 0) {
-            if (retailPrice > mrp) {
-                errors.push('Retail price cannot be higher than MRP.');
-            }
-            
-            if (stockPrice > mrp) {
-                errors.push('Stock price cannot be higher than MRP.');
-            }
-        }
-    }
-    
-    // Wholesale validation only if not hidden
-    if (!hideWholesale) {
-        if (stockPrice > 0 && wholesalePrice > 0 && wholesalePrice < stockPrice) {
-            errors.push('Wholesale price must be equal to or greater than Stock Price.');
-        }
-        
-        if (wholesalePrice > 0 && retailPrice > 0 && wholesalePrice > retailPrice) {
-            errors.push('Wholesale price should be less than or equal to Retail Price.');
-        }
-        
-        if (mrp > 0 && wholesalePrice > 0 && wholesalePrice > mrp) {
-            errors.push('Wholesale price cannot be higher than MRP.');
-        }
-    }
-    
-    // Check discount if MRP provided
-    if (mrp > 0 && discountInput) {
-        if (discountSymbol === '%') {
-            const discountValue = parseFloat(discountInput.replace('%', '')) || 0;
-            if (discountValue > 100) {
-                errors.push('Discount percentage cannot exceed 100%.');
-            }
-        } else {
-            const discountValue = parseFloat(discountInput) || 0;
-            if (discountValue > mrp) {
-                errors.push('Discount amount cannot exceed MRP.');
-            }
-        }
-    }
-    
-    // Check secondary unit validation
     if (secondaryUnit && conversion <= 0) {
         errors.push('If secondary unit is specified, conversion rate must be greater than 0.');
     }
@@ -2377,18 +1758,7 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
         errors.push('Please specify a secondary unit name if entering conversion rate.');
     }
     
-    // Check conversion rate limits
-    if (conversion > 0) {
-        if (conversion > 1000000) {
-            errors.push('Conversion rate is too high. Please use a reasonable value.');
-        }
-        if (conversion < 0.0001) {
-            errors.push('Conversion rate is too small. Please use a reasonable value.');
-        }
-    }
-    
-    // Warranty validation
-    if (warrantyCheckbox.checked) {
+    if (warrantyCheckbox && warrantyCheckbox.checked) {
         if (warrantyType === 'none') {
             errors.push('Please select warranty type if warranty is applicable.');
         }
@@ -2400,18 +1770,16 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
         }
     }
     
-    // Show errors if any
     if (errors.length > 0) {
         e.preventDefault();
         await showSweetError('Validation Errors', errors.join('\n'));
         return;
     }
     
-    // Validate file size (client-side)
     const fileInput = document.getElementById('productImage');
-    if (fileInput.files.length > 0) {
+    if (fileInput && fileInput.files.length > 0) {
         const fileSize = fileInput.files[0].size;
-        const maxSize = 2 * 1024 * 1024; // 2MB
+        const maxSize = 2 * 1024 * 1024;
         if (fileSize > maxSize) {
             e.preventDefault();
             await showSweetError('File Too Large', 'File size exceeds 2MB limit. Please choose a smaller image.');
@@ -2420,69 +1788,51 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
     }
 });
 
-// Generate random barcode
-function generateBarcode() {
-    const prefix = '89'; // Country code for India
-    const random = Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
-    const barcode = prefix + random;
-    document.querySelector('input[name="barcode"]').value = barcode;
-    showSweetToast('Barcode Generated', 'New barcode has been generated', 'success', 2000);
-}
-
 // AJAX: Load subcategories when category changes
-document.getElementById('categorySelect').addEventListener('change', function() {
-    const categoryId = this.value;
-    const subcategorySelect = document.getElementById('subcategorySelect');
-    const loadingDiv = document.getElementById('subcategoryLoading');
-    
-    if (!categoryId) {
-        // Clear subcategories
-        subcategorySelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
-        return;
-    }
-    
-    // Show loading
-    loadingDiv.style.display = 'block';
-    subcategorySelect.disabled = true;
-    
-    // Make AJAX request
-    fetch(`ajax/get_subcategories.php?category_id=${categoryId}&business_id=<?= $current_business_id ?>`)
-        .then(response => response.json())
-        .then(data => {
-            // Clear existing options except first
-            subcategorySelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
-            
-            if (data.success && data.subcategories.length > 0) {
-                data.subcategories.forEach(subcat => {
+const categorySelect = document.getElementById('categorySelect');
+if (categorySelect) {
+    categorySelect.addEventListener('change', function() {
+        const categoryId = this.value;
+        const subcategorySelect = document.getElementById('subcategorySelect');
+        const loadingDiv = document.getElementById('subcategoryLoading');
+        
+        if (!categoryId || !subcategorySelect) {
+            if (subcategorySelect) subcategorySelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
+            return;
+        }
+        
+        if (loadingDiv) loadingDiv.style.display = 'block';
+        subcategorySelect.disabled = true;
+        
+        fetch(`ajax/get_subcategories.php?category_id=${categoryId}&business_id=<?= $current_business_id ?>`)
+            .then(response => response.json())
+            .then(data => {
+                subcategorySelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
+                
+                if (data.success && data.subcategories && data.subcategories.length > 0) {
+                    data.subcategories.forEach(subcat => {
+                        const option = document.createElement('option');
+                        option.value = subcat.id;
+                        option.textContent = subcat.subcategory_name;
+                        subcategorySelect.appendChild(option);
+                    });
+                } else {
                     const option = document.createElement('option');
-                    option.value = subcat.id;
-                    option.textContent = subcat.subcategory_name;
+                    option.textContent = 'No subcategories available';
+                    option.disabled = true;
                     subcategorySelect.appendChild(option);
-                });
-            } else {
-                const option = document.createElement('option');
-                option.textContent = 'No subcategories available';
-                option.disabled = true;
-                subcategorySelect.appendChild(option);
-            }
-            
-            // Preselect if previously selected
-            <?php if (isset($_POST['subcategory_id'])): ?>
-            if (document.querySelector('select[name="subcategory_id"] option[value="<?= $_POST['subcategory_id'] ?>"]')) {
-                document.querySelector('select[name="subcategory_id"]').value = "<?= $_POST['subcategory_id'] ?>";
-            }
-            <?php endif; ?>
-        })
-        .catch(error => {
-            console.error('Error loading subcategories:', error);
-            subcategorySelect.innerHTML = '<option value="">Error loading subcategories</option>';
-            showSweetError('Error', 'Failed to load subcategories. Please try again.');
-        })
-        .finally(() => {
-            loadingDiv.style.display = 'none';
-            subcategorySelect.disabled = false;
-        });
-});
+                }
+            })
+            .catch(error => {
+                console.error('Error loading subcategories:', error);
+                subcategorySelect.innerHTML = '<option value="">Error loading subcategories</option>';
+            })
+            .finally(() => {
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                subcategorySelect.disabled = false;
+            });
+    });
+}
 
 // Referral commission toggle
 const referralToggle = document.getElementById('referralEnabled');
@@ -2491,243 +1841,208 @@ const commissionUnit = document.getElementById('commissionUnit');
 const referralTypeSelect = document.querySelector('select[name="referral_type"]');
 
 function toggleReferralBox() {
-    referralBox.style.display = referralToggle.checked ? 'block' : 'none';
+    if (referralBox) {
+        referralBox.style.display = referralToggle && referralToggle.checked ? 'block' : 'none';
+    }
 }
 
 function updateCommissionUnit() {
-    commissionUnit.textContent = referralTypeSelect.value === 'percentage' ? '%' : '₹';
+    if (commissionUnit && referralTypeSelect) {
+        commissionUnit.textContent = referralTypeSelect.value === 'percentage' ? '%' : '₹';
+    }
 }
 
-referralToggle.addEventListener('change', toggleReferralBox);
-referralTypeSelect.addEventListener('change', updateCommissionUnit);
+if (referralToggle) {
+    referralToggle.addEventListener('change', toggleReferralBox);
+}
+if (referralTypeSelect) {
+    referralTypeSelect.addEventListener('change', updateCommissionUnit);
+}
 
 // Image preview
-document.getElementById('productImage').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    const preview = document.getElementById('imagePreview');
-    
-    if (file) {
-        const reader = new FileReader();
+const productImageInput = document.getElementById('productImage');
+if (productImageInput) {
+    productImageInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const preview = document.getElementById('imagePreview');
         
-        reader.onload = function(e) {
+        if (file && preview) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                preview.innerHTML = `
+                    <img src="${e.target.result}" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
+                    <p class="mt-2 mb-0"><small>${file.name} (${(file.size / 1024).toFixed(1)} KB)</small></p>
+                `;
+                showSweetToast('Image Loaded', 'Image preview is ready', 'success', 1500);
+            };
+            
+            reader.readAsDataURL(file);
+        } else if (preview) {
             preview.innerHTML = `
-                <img src="${e.target.result}" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
-                <p class="mt-2 mb-0"><small>${file.name} (${(file.size / 1024).toFixed(1)} KB)</small></p>
+                <i class="bx bx-image fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">Image preview will appear here</p>
             `;
-            showSweetToast('Image Loaded', 'Image preview is ready', 'success', 1500);
-        };
-        
-        reader.readAsDataURL(file);
-    } else {
-        preview.innerHTML = `
-            <i class="bx bx-image fs-1 text-muted"></i>
-            <p class="text-muted mt-2 mb-0">Image preview will appear here</p>
-        `;
-    }
-});
+        }
+    });
+}
 
-// Smart discount input handling
-document.getElementById('discount').addEventListener('input', function(e) {
-    let value = this.value.trim();
-    
-    // Auto-detect percentage symbol
-    if (value.includes('%')) {
-        discountSymbol = '%';
-        document.getElementById('discountSymbol').textContent = '%';
-        // Remove any extra % symbols
-        value = value.replace(/[%]/g, '');
-        // Keep only one % at the end
-        this.value = value + '%';
-    }
-    
-    // Reset manual stock price mode when discount is changed
-    if (manualStockPrice) {
-        manualStockPrice = false;
-        stockPriceCalculationMode = 'auto';
-    }
-    
-    // Calculate stock price on input
-    calculateStockPrice();
-});
-
-// Event listeners for price calculations
-document.getElementById('mrpInput').addEventListener('input', function() {
-    // Reset manual stock price mode when MRP is changed
-    if (manualStockPrice) {
-        manualStockPrice = false;
-        stockPriceCalculationMode = 'auto';
-    }
+// Event listeners
+document.getElementById('purchasePriceBase')?.addEventListener('input', function() {
     calculateGST();
 });
 
-document.getElementById('gstSelect').addEventListener('change', function() {
-    // Reset manual stock price mode when GST is changed
-    if (manualStockPrice) {
-        manualStockPrice = false;
-        stockPriceCalculationMode = 'auto';
-    }
+document.getElementById('gstSelect')?.addEventListener('change', function() {
     calculateGST();
 });
 
-document.getElementById('retailPriceValue').addEventListener('input', function() {
-    // Reset manual retail price mode when markup is changed
+document.getElementById('retailPriceValue')?.addEventListener('input', function() {
     if (manualRetailPrice) {
         manualRetailPrice = false;
-        retailPriceCalculationMode = 'auto';
     }
     calculateRetailPrice();
 });
 
-document.getElementById('retailPriceType').addEventListener('change', function() {
-    // Reset manual retail price mode when markup type is changed
+document.getElementById('retailPriceType')?.addEventListener('change', function() {
     if (manualRetailPrice) {
         manualRetailPrice = false;
-        retailPriceCalculationMode = 'auto';
     }
     updateRetailPriceUnit();
+    calculateRetailPrice();
 });
 
-if (!hideWholesale) {
-    document.getElementById('wholesalePriceValue').addEventListener('input', function() {
-        // Reset manual wholesale price mode when markup is changed
-        if (manualWholesalePrice) {
-            manualWholesalePrice = false;
-            wholesalePriceCalculationMode = 'auto';
-        }
-        calculateWholesalePrice();
-    });
-
-    document.getElementById('wholesalePriceType').addEventListener('change', function() {
-        // Reset manual wholesale price mode when markup type is changed
-        if (manualWholesalePrice) {
-            manualWholesalePrice = false;
-            wholesalePriceCalculationMode = 'auto';
-        }
-        updateWholesalePriceUnit();
-    });
-}
-
-// Enhanced secondary unit event listeners
-document.getElementById('secUnitPriceType').addEventListener('change', updateSecUnitExtraUnit);
-document.getElementById('secUnitConversion').addEventListener('input', calculateSecondaryPrices);
-document.getElementById('secUnitExtraCharge').addEventListener('input', calculateSecondaryPrices);
-document.querySelector('input[name="secondary_unit"]').addEventListener('input', function() {
+document.getElementById('secUnitPriceType')?.addEventListener('change', updateSecUnitExtraUnit);
+document.getElementById('secUnitConversion')?.addEventListener('input', calculateSecondaryPrices);
+document.getElementById('secUnitExtraCharge')?.addEventListener('input', calculateSecondaryPrices);
+document.querySelector('input[name="secondary_unit"]')?.addEventListener('input', function() {
     calculateSecondaryPrices();
-    // Update label
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
-    secondaryUnitLabel.textContent = this.value || 'units';
+    if (secondaryUnitLabel) {
+        secondaryUnitLabel.textContent = this.value || 'units';
+    }
 });
 
 // Initialize on page load
-updateGSTType();
-toggleReferralBox();
-updateCommissionUnit();
-updateRetailPriceUnit();
-if (!hideWholesale) updateWholesalePriceUnit();
-updateSecUnitExtraUnit();
-
-// Set initial discount symbol based on existing value
-<?php if (isset($_POST['discount'])): ?>
-    <?php if (strpos($_POST['discount'], '%') !== false): ?>
-        discountSymbol = '%';
-    <?php else: ?>
-        discountSymbol = '₹';
-    <?php endif; ?>
-<?php endif; ?>
-document.getElementById('discountSymbol').textContent = discountSymbol;
-
-// Check if prices were manually entered on page load
 document.addEventListener('DOMContentLoaded', function() {
-    const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const wholesalePrice = !hideWholesale ? (parseFloat(document.getElementById('wholesalePrice').value) || 0) : 0;
-    const discountInput = document.getElementById('discount').value.trim();
+    updateGSTType();
+    toggleReferralBox();
+    updateCommissionUnit();
+    updateRetailPriceUnit();
+    updateSecUnitExtraUnit();
+    toggleWarrantyFields();
     
-    if (stockPrice > 0) {
-        manualStockPrice = true;
-        stockPriceCalculationMode = 'manual';
-        document.getElementById('stockPriceText').innerHTML = 'Manually entered';
-        document.getElementById('stockPriceText').style.color = '#0d6efd';
+    const purchasePriceBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
+    if (purchasePriceBase > 0) {
+        calculateGST();
     }
     
+    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
     if (retailPrice > 0) {
         manualRetailPrice = true;
-        retailPriceCalculationMode = 'manual';
         document.getElementById('retailPriceText').innerHTML = 'Manually entered';
         document.getElementById('retailPriceText').style.color = '#0d6efd';
     }
     
-    if (!hideWholesale && wholesalePrice > 0) {
-        manualWholesalePrice = true;
-        wholesalePriceCalculationMode = 'manual';
-        document.getElementById('wholesalePriceText').innerHTML = 'Manually entered';
-        document.getElementById('wholesalePriceText').style.color = '#0d6efd';
-    }
-    
-    // Calculate GST and prices on page load
-    calculateGST();
-    
-    // If discount is present, ensure it's processed correctly
-    if (discountInput) {
-        if (discountInput.includes('%')) {
-            discountSymbol = '%';
-        } else {
-            discountSymbol = '₹';
-        }
-        document.getElementById('discountSymbol').textContent = discountSymbol;
-    }
-    
     calculateSecondaryPrices();
-    toggleWarrantyFields();
 });
 
 // Quick Add Category Functions
 function openCategoryModal() {
-    document.getElementById('categoryName').value = '';
-    document.getElementById('categoryCode').value = '';
-    document.getElementById('categoryDescription').value = '';
-    new bootstrap.Modal(document.getElementById('categoryModal')).show();
+    const categoryNameField = document.getElementById('categoryName');
+    if (categoryNameField) categoryNameField.value = '';
+    const categoryCodeField = document.getElementById('categoryCode');
+    if (categoryCodeField) categoryCodeField.value = '';
+    const categoryDescriptionField = document.getElementById('categoryDescription');
+    if (categoryDescriptionField) categoryDescriptionField.value = '';
+    const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
+    modal.show();
 }
 
-document.getElementById('quickCategoryForm').addEventListener('submit', async function(e) {
+function openSubcategoryModal() {
+    const categorySelect = document.getElementById('categorySelect');
+    if (!categorySelect || !categorySelect.value) {
+        showSweetToast('Select Category First', 'Please select a category before adding a subcategory', 'warning');
+        return;
+    }
+    
+    const subcategoryNameField = document.getElementById('subcategoryName');
+    if (subcategoryNameField) subcategoryNameField.value = '';
+    const subcategoryCodeField = document.getElementById('subcategoryCode');
+    if (subcategoryCodeField) subcategoryCodeField.value = '';
+    const subcategoryDescriptionField = document.getElementById('subcategoryDescription');
+    if (subcategoryDescriptionField) subcategoryDescriptionField.value = '';
+    const subcategoryParentCategoryField = document.getElementById('subcategoryParentCategory');
+    if (subcategoryParentCategoryField) subcategoryParentCategoryField.value = categorySelect.value;
+    const modal = new bootstrap.Modal(document.getElementById('subcategoryModal'));
+    modal.show();
+}
+
+function openGSTModal() {
+    const hsnCodeField = document.getElementById('hsnCode');
+    if (hsnCodeField) hsnCodeField.value = '';
+    const gstDescriptionField = document.getElementById('gstDescription');
+    if (gstDescriptionField) gstDescriptionField.value = '';
+    const cgstRateField = document.getElementById('cgstRate');
+    if (cgstRateField) cgstRateField.value = '0';
+    const sgstRateField = document.getElementById('sgstRate');
+    if (sgstRateField) sgstRateField.value = '0';
+    const igstRateField = document.getElementById('igstRate');
+    if (igstRateField) igstRateField.value = '0';
+    updateTotalGST();
+    const modal = new bootstrap.Modal(document.getElementById('gstModal'));
+    modal.show();
+}
+
+function updateTotalGST() {
+    const cgst = parseFloat(document.getElementById('cgstRate')?.value) || 0;
+    const sgst = parseFloat(document.getElementById('sgstRate')?.value) || 0;
+    const igst = parseFloat(document.getElementById('igstRate')?.value) || 0;
+    const total = cgst + sgst + igst;
+    const totalGSTRateSpan = document.getElementById('totalGSTRate');
+    if (totalGSTRateSpan) totalGSTRateSpan.textContent = total.toFixed(2);
+}
+
+// Quick Category Form Submit
+document.getElementById('quickCategoryForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const categoryName = document.getElementById('categoryName').value.trim();
+    const categoryName = document.getElementById('categoryName')?.value.trim();
     if (!categoryName) {
         await showSweetError('Missing Information', 'Please enter category name');
         return;
     }
     
     const saveBtn = document.getElementById('saveCategoryBtn');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    }
     
     fetch('ajax/quick_add_category.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `category_name=${encodeURIComponent(categoryName)}&category_code=${encodeURIComponent(document.getElementById('categoryCode').value)}&description=${encodeURIComponent(document.getElementById('categoryDescription').value)}&business_id=<?= $current_business_id ?>`
+        body: `category_name=${encodeURIComponent(categoryName)}&category_code=${encodeURIComponent(document.getElementById('categoryCode')?.value || '')}&description=${encodeURIComponent(document.getElementById('categoryDescription')?.value || '')}&business_id=<?= $current_business_id ?>`
     })
     .then(response => response.json())
     .then(async data => {
         if (data.success) {
-            // Add new option to category select
-            const categorySelect = document.getElementById('categorySelect');
-            const newOption = document.createElement('option');
-            newOption.value = data.category_id;
-            newOption.textContent = data.category_name;
-            categorySelect.appendChild(newOption);
-            categorySelect.value = data.category_id;
+            const categorySelectField = document.getElementById('categorySelect');
+            if (categorySelectField) {
+                const newOption = document.createElement('option');
+                newOption.value = data.category_id;
+                newOption.textContent = data.category_name;
+                categorySelectField.appendChild(newOption);
+                categorySelectField.value = data.category_id;
+            }
             
-            // Close modal
-            bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
-            
-            // Show success message
+            bootstrap.Modal.getInstance(document.getElementById('categoryModal'))?.hide();
             await showSweetSuccess('Success!', 'Category added successfully!');
             
-            // Trigger category change to load subcategories
-            categorySelect.dispatchEvent(new Event('change'));
+            if (categorySelectField) {
+                categorySelectField.dispatchEvent(new Event('change'));
+            }
         } else {
             await showSweetError('Error', data.message || 'Failed to add category');
         }
@@ -2737,31 +2052,19 @@ document.getElementById('quickCategoryForm').addEventListener('submit', async fu
         await showSweetError('Error', 'Failed to add category. Please try again.');
     })
     .finally(() => {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Category';
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Category';
+        }
     });
 });
 
-// Quick Add Subcategory Functions
-function openSubcategoryModal() {
-    const categorySelect = document.getElementById('categorySelect');
-    if (!categorySelect.value) {
-        showSweetToast('Select Category First', 'Please select a category before adding a subcategory', 'warning');
-        return;
-    }
-    
-    document.getElementById('subcategoryName').value = '';
-    document.getElementById('subcategoryCode').value = '';
-    document.getElementById('subcategoryDescription').value = '';
-    document.getElementById('subcategoryParentCategory').value = categorySelect.value;
-    new bootstrap.Modal(document.getElementById('subcategoryModal')).show();
-}
-
-document.getElementById('quickSubcategoryForm').addEventListener('submit', async function(e) {
+// Quick Subcategory Form Submit
+document.getElementById('quickSubcategoryForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const categoryId = document.getElementById('subcategoryParentCategory').value;
-    const subcategoryName = document.getElementById('subcategoryName').value.trim();
+    const categoryId = document.getElementById('subcategoryParentCategory')?.value;
+    const subcategoryName = document.getElementById('subcategoryName')?.value.trim();
     
     if (!categoryId) {
         await showSweetError('Missing Information', 'Please select a parent category');
@@ -2774,31 +2077,31 @@ document.getElementById('quickSubcategoryForm').addEventListener('submit', async
     }
     
     const saveBtn = document.getElementById('saveSubcategoryBtn');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    }
     
     fetch('ajax/quick_add_subcategory.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `subcategory_name=${encodeURIComponent(subcategoryName)}&category_id=${categoryId}&subcategory_code=${encodeURIComponent(document.getElementById('subcategoryCode').value)}&description=${encodeURIComponent(document.getElementById('subcategoryDescription').value)}&business_id=<?= $current_business_id ?>`
+        body: `subcategory_name=${encodeURIComponent(subcategoryName)}&category_id=${categoryId}&subcategory_code=${encodeURIComponent(document.getElementById('subcategoryCode')?.value || '')}&description=${encodeURIComponent(document.getElementById('subcategoryDescription')?.value || '')}&business_id=<?= $current_business_id ?>`
     })
     .then(response => response.json())
     .then(async data => {
         if (data.success) {
-            // Add new option to subcategory select
-            const subcategorySelect = document.getElementById('subcategorySelect');
-            const newOption = document.createElement('option');
-            newOption.value = data.subcategory_id;
-            newOption.textContent = data.subcategory_name;
-            subcategorySelect.appendChild(newOption);
-            subcategorySelect.value = data.subcategory_id;
+            const subcategorySelectField = document.getElementById('subcategorySelect');
+            if (subcategorySelectField) {
+                const newOption = document.createElement('option');
+                newOption.value = data.subcategory_id;
+                newOption.textContent = data.subcategory_name;
+                subcategorySelectField.appendChild(newOption);
+                subcategorySelectField.value = data.subcategory_id;
+            }
             
-            // Close modal
-            bootstrap.Modal.getInstance(document.getElementById('subcategoryModal')).hide();
-            
-            // Show success message
+            bootstrap.Modal.getInstance(document.getElementById('subcategoryModal'))?.hide();
             await showSweetSuccess('Success!', 'Subcategory added successfully!');
         } else {
             await showSweetError('Error', data.message || 'Failed to add subcategory');
@@ -2809,42 +2112,26 @@ document.getElementById('quickSubcategoryForm').addEventListener('submit', async
         await showSweetError('Error', 'Failed to add subcategory. Please try again.');
     })
     .finally(() => {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Subcategory';
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Subcategory';
+        }
     });
 });
 
-// Quick Add GST Functions
-function openGSTModal() {
-    document.getElementById('hsnCode').value = '';
-    document.getElementById('gstDescription').value = '';
-    document.getElementById('cgstRate').value = '0';
-    document.getElementById('sgstRate').value = '0';
-    document.getElementById('igstRate').value = '0';
-    updateTotalGST();
-    new bootstrap.Modal(document.getElementById('gstModal')).show();
-}
-
-function updateTotalGST() {
-    const cgst = parseFloat(document.getElementById('cgstRate').value) || 0;
-    const sgst = parseFloat(document.getElementById('sgstRate').value) || 0;
-    const igst = parseFloat(document.getElementById('igstRate').value) || 0;
-    const total = cgst + sgst + igst;
-    document.getElementById('totalGSTRate').textContent = total.toFixed(2);
-}
-
-document.getElementById('quickGSTForm').addEventListener('submit', async function(e) {
+// Quick GST Form Submit
+document.getElementById('quickGSTForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const hsnCode = document.getElementById('hsnCode').value.trim();
+    const hsnCode = document.getElementById('hsnCode')?.value.trim();
     if (!hsnCode) {
         await showSweetError('Missing Information', 'Please enter HSN code');
         return;
     }
     
-    const cgstRate = parseFloat(document.getElementById('cgstRate').value) || 0;
-    const sgstRate = parseFloat(document.getElementById('sgstRate').value) || 0;
-    const igstRate = parseFloat(document.getElementById('igstRate').value) || 0;
+    const cgstRate = parseFloat(document.getElementById('cgstRate')?.value) || 0;
+    const sgstRate = parseFloat(document.getElementById('sgstRate')?.value) || 0;
+    const igstRate = parseFloat(document.getElementById('igstRate')?.value) || 0;
     
     if (cgstRate === 0 && sgstRate === 0 && igstRate === 0) {
         await showSweetError('Missing Information', 'Please enter at least one GST rate');
@@ -2852,35 +2139,33 @@ document.getElementById('quickGSTForm').addEventListener('submit', async functio
     }
     
     const saveBtn = document.getElementById('saveGSTBtn');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
+    }
     
     fetch('ajax/quick_add_gst.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `hsn_code=${encodeURIComponent(hsnCode)}&description=${encodeURIComponent(document.getElementById('gstDescription').value)}&cgst_rate=${cgstRate}&sgst_rate=${sgstRate}&igst_rate=${igstRate}&business_id=<?= $current_business_id ?>`
+        body: `hsn_code=${encodeURIComponent(hsnCode)}&description=${encodeURIComponent(document.getElementById('gstDescription')?.value || '')}&cgst_rate=${cgstRate}&sgst_rate=${sgstRate}&igst_rate=${igstRate}&business_id=<?= $current_business_id ?>`
     })
     .then(response => response.json())
     .then(async data => {
         if (data.success) {
-            // Add new option to GST select
-            const gstSelect = document.getElementById('gstSelect');
-            const newOption = document.createElement('option');
-            newOption.value = data.gst_id;
-            newOption.setAttribute('data-rate', data.total_gst_rate);
-            newOption.textContent = `${data.hsn_code} - Total GST: ${data.total_gst_rate}% (CGST: ${data.cgst_rate}%, SGST: ${data.sgst_rate}%, IGST: ${data.igst_rate}%)`;
-            gstSelect.appendChild(newOption);
-            gstSelect.value = data.gst_id;
+            const gstSelectField = document.getElementById('gstSelect');
+            if (gstSelectField) {
+                const newOption = document.createElement('option');
+                newOption.value = data.gst_id;
+                newOption.setAttribute('data-rate', data.total_gst_rate);
+                newOption.textContent = `${data.hsn_code} - Total GST: ${data.total_gst_rate}% (CGST: ${data.cgst_rate}%, SGST: ${data.sgst_rate}%, IGST: ${data.igst_rate}%)`;
+                gstSelectField.appendChild(newOption);
+                gstSelectField.value = data.gst_id;
+            }
             
-            // Close modal
-            bootstrap.Modal.getInstance(document.getElementById('gstModal')).hide();
-            
-            // Show success message
+            bootstrap.Modal.getInstance(document.getElementById('gstModal'))?.hide();
             await showSweetSuccess('Success!', 'GST rate added successfully!');
-            
-            // Trigger GST calculation
             calculateGST();
         } else {
             await showSweetError('Error', data.message || 'Failed to add GST rate');
@@ -2891,61 +2176,20 @@ document.getElementById('quickGSTForm').addEventListener('submit', async functio
         await showSweetError('Error', 'Failed to add GST rate. Please try again.');
     })
     .finally(() => {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="bx bx-save"></i> Save GST Rate';
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save GST Rate';
+        }
     });
 });
-
-// Toast notification function (keeping for backward compatibility)
-function showToast(type, message) {
-    showSweetToast(type === 'success' ? 'Success' : (type === 'error' ? 'Error' : 'Info'), message, type, 3000);
-}
-
-// Enhanced sample data with warranty
-async function populateSampleData() {
-    const result = await showSweetConfirm('Populate Sample Data', 'This will fill the form with sample data. Continue?', 'Yes, populate', 'Cancel');
-    
-    if (result.isConfirmed) {
-        document.querySelector('input[name="product_name"]').value = 'Sample Wire Coil';
-        document.querySelector('input[name="product_code"]').value = 'PROD' + Math.floor(Math.random() * 10000);
-        document.querySelector('input[name="secondary_unit"]').value = 'mtr';
-        document.getElementById('secUnitConversion').value = '90';
-        document.getElementById('secUnitExtraCharge').value = '0.50';
-        document.getElementById('mrpInput').value = '1000.00';
-        document.getElementById('discount').value = '10%';
-        setDiscountSymbol('%');
-        document.getElementById('retailPriceValue').value = '20';
-        if (!hideWholesale) document.getElementById('wholesalePriceValue').value = '10';
-        document.querySelector('input[name="min_stock_level"]').value = '20';
-        document.querySelector('textarea[name="description"]').value = 'Sample product with GST calculation and secondary unit conversion.';
-        document.querySelector('input[name="image_alt_text"]').value = 'Sample wire coil product';
-        
-        // Set warranty sample
-        document.getElementById('warrantyCheckbox').checked = true;
-        toggleWarrantyFields();
-        document.getElementById('warrantyType').value = 'manufacturer';
-        document.querySelector('input[name="warranty_period"]').value = '12';
-        document.querySelector('select[name="warranty_unit"]').value = 'months';
-        document.querySelector('textarea[name="warranty_description"]').value = '1 year manufacturer warranty against manufacturing defects.';
-        
-        generateBarcode();
-        
-        // Reset manual flags
-        manualStockPrice = false;
-        manualRetailPrice = false;
-        if (!hideWholesale) manualWholesalePrice = false;
-        
-        calculateGST();
-        calculateSecondaryPrices();
-        
-        await showSweetSuccess('Sample Data Loaded', 'Sample product data has been populated successfully!');
-    }
-}
 
 // Trigger category change on page load if category is already selected
 <?php if (isset($_POST['category_id']) && $_POST['category_id']): ?>
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('categorySelect').dispatchEvent(new Event('change'));
+    const categorySelectField = document.getElementById('categorySelect');
+    if (categorySelectField) {
+        categorySelectField.dispatchEvent(new Event('change'));
+    }
 });
 <?php endif; ?>
 </script>
@@ -2984,13 +2228,9 @@ document.addEventListener('DOMContentLoaded', function() {
     max-width: 100%;
     max-height: 200px;
 }
-#stockPriceText, #retailMarkupText, #retailPriceText, 
-#retailProfitAmountText, #wholesaleMarkupText, #wholesalePriceText, #wholesaleProfitAmountText {
+#retailMarkupText, #retailPriceText, #retailProfitAmountText {
     font-size: 0.875rem;
     font-weight: 500;
-}
-#stockPriceText {
-    color: #0d6efd;
 }
 #retailMarkupText {
     color: #fd7e14;
@@ -3001,23 +2241,10 @@ document.addEventListener('DOMContentLoaded', function() {
 #retailProfitAmountText {
     color: #20c997;
 }
-#wholesaleMarkupText {
-    color: #0dcaf0;
-}
-#wholesalePriceText {
-    color: #6610f2;
-}
-#wholesaleProfitAmountText {
-    color: #17a2b8;
-}
-#discountPercentageText {
-    color: #198754;
-    font-weight: 500;
-}
 .border-bottom {
     border-color: #dee2e6 !important;
 }
-#youSave, #retailProfitMargin, #wholesaleProfitMargin {
+#retailProfitMargin {
     background-color: #f8f9fa;
     cursor: not-allowed;
 }
@@ -3027,7 +2254,6 @@ document.addEventListener('DOMContentLoaded', function() {
 .btn-outline-secondary {
     border-color: #dee2e6;
 }
-/* Secondary unit preview styling */
 #secondaryPricePreview .alert-info {
     background-color: #f0f9ff;
     border: 1px solid #b6e0fe;
@@ -3036,19 +2262,18 @@ document.addEventListener('DOMContentLoaded', function() {
     color: #0d6efd;
     font-size: 0.9rem;
 }
-#secRetailPricePerUnit, #secWholesalePricePerUnit {
+#secRetailPricePerUnit {
     color: #198754;
     font-size: 1.1rem;
 }
-#secRetailBasePrice, #secWholesaleBasePrice {
+#secRetailBasePrice {
     color: #6c757d;
     font-size: 0.85rem;
 }
-#secRetailExtraCharge, #secWholesaleExtraCharge {
+#secRetailExtraCharge {
     color: #fd7e14;
     font-size: 0.85rem;
 }
-/* GST preview styling */
 #gstCalculationPreview .alert-info {
     background-color: #f0f9ff;
     border: 1px solid #b6e0fe;
@@ -3057,16 +2282,15 @@ document.addEventListener('DOMContentLoaded', function() {
     color: #0d6efd;
     font-size: 0.9rem;
 }
-#enteredMRP, #gstRateDisplay, #gstAmountDisplay {
+#basePriceDisplay, #gstRateDisplay, #gstAmountDisplay {
     color: #6c757d;
     font-weight: 500;
 }
-#finalMRP {
+#finalPurchasePrice {
     color: #198754;
     font-size: 1.2rem;
     font-weight: 600;
 }
-/* GST toggle styling */
 .form-check.form-switch .form-check-input {
     width: 3.5em;
     height: 1.8em;
@@ -3082,7 +2306,6 @@ document.addEventListener('DOMContentLoaded', function() {
 #gstTypeHelp {
     color: #6c757d;
 }
-/* Warranty fields styling */
 #warrantyFields {
     background-color: #f8f9fa;
     padding: 15px;
