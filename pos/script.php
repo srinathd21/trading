@@ -2317,180 +2317,182 @@ document.addEventListener('keydown', function(e) {
     }
 
     function toggleUnitConversion() {
-        try {
-            if (!CURRENT_PRODUCT) {
-                showToast('Please select a product first', 'warning');
-                return;
-            }
-
-            const product = CURRENT_PRODUCT;
-
-            // Debug info
-            console.log('Toggling unit conversion for product:', {
-                id: product.id,
-                name: product.product_name,
-                unit_of_measure: product.unit_of_measure,
-                secondary_unit: product.secondary_unit,
-                sec_unit_conversion: product.sec_unit_conversion,
-                retail_price: product.retail_price,
-                wholesale_price: product.wholesale_price
-            });
-
-            if (!product.secondary_unit || !product.sec_unit_conversion || product.sec_unit_conversion <= 0) {
-                showToast('This product has no valid secondary unit configuration', 'info');
-                return;
-            }
-
-            const currentUnit = document.getElementById('qty-unit').textContent;
-            const qtyInput = document.getElementById('qty-input');
-            const sellingPriceInput = document.getElementById('selling-price');
-            const discountInput = document.getElementById('discount');
-
-            if (currentUnit === product.unit_of_measure) {
-                // Switch FROM primary unit TO secondary unit
-                console.log('Switching to secondary unit');
-                CURRENT_UNIT_IS_SECONDARY = true;
-                document.getElementById('qty-unit').textContent = product.secondary_unit;
-                document.getElementById('unit-convert').innerHTML = '<i class="fas fa-undo me-1"></i> ';
-                document.getElementById('unit-convert').title = `Convert to ${product.unit_of_measure}`;
-
-                // Get base price
-                let basePrice = 0;
-                if (GLOBAL_PRICE_TYPE === 'wholesale') {
-                    basePrice = parseFloat(product.wholesale_price) || parseFloat(product.retail_price) || 0;
-                } else {
-                    basePrice = parseFloat(product.retail_price) || 0;
-                }
-
-                console.log('Base price for conversion:', basePrice);
-
-                // Convert quantity: primary to secondary
-                const currentQty = parseFloat(qtyInput.value) || 1;
-                const conversion = parseFloat(product.sec_unit_conversion) || 1;
-                const convertedQty = currentQty * conversion;
-                qtyInput.value = convertedQty.toFixed(2);
-
-                // Reset discount when switching units
-                discountInput.value = '0';
-
-                // Update secondary unit price
-                updateSecondaryUnitPrice();
-
-                showToast(`Converted to ${product.secondary_unit} (1 ${product.unit_of_measure} = ${product.sec_unit_conversion} ${product.secondary_unit})`, 'info');
-
-            } else {
-                // Switch FROM secondary unit TO primary unit
-                console.log('Switching to primary unit');
-                CURRENT_UNIT_IS_SECONDARY = false;
-                document.getElementById('qty-unit').textContent = product.unit_of_measure;
-                document.getElementById('unit-convert').innerHTML = '<i class="fas fa-exchange-alt me-1"></i> ';
-                document.getElementById('unit-convert').title = `Convert to ${product.secondary_unit}`;
-
-                // Convert quantity: secondary to primary
-                const currentQty = parseFloat(qtyInput.value) || 1;
-                const conversion = parseFloat(product.sec_unit_conversion) || 1;
-                const convertedQty = currentQty / conversion;
-                qtyInput.value = convertedQty.toFixed(3);
-
-                // Reset discount
-                discountInput.value = '0';
-
-                // Get original price based on price type
-                const originalPrice = GLOBAL_PRICE_TYPE === 'wholesale' ?
-                    (parseFloat(product.wholesale_price) || 0) : (parseFloat(product.retail_price) || 0);
-                sellingPriceInput.value = Math.round(originalPrice);
-
-                showToast(`Converted to ${product.unit_of_measure}`, 'info');
-            }
-
-            // Always update the price display after conversion
-            updateProductPriceDisplay();
-
-        } catch (error) {
-            console.error('POS System: Error toggling unit conversion:', error);
-            showToast('Error converting unit. Please try again.', 'danger');
+    try {
+        if (!CURRENT_PRODUCT) {
+            showToast('Please select a product first', 'warning');
+            return;
         }
+
+        const product = CURRENT_PRODUCT;
+
+        // Debug info
+        console.log('Toggling unit conversion for product:', {
+            id: product.id,
+            name: product.product_name,
+            unit_of_measure: product.unit_of_measure,
+            secondary_unit: product.secondary_unit,
+            sec_unit_conversion: product.sec_unit_conversion,
+            retail_price: product.retail_price,
+            wholesale_price: product.wholesale_price
+        });
+
+        if (!product.secondary_unit || !product.sec_unit_conversion || product.sec_unit_conversion <= 0) {
+            showToast('This product has no valid secondary unit configuration', 'info');
+            return;
+        }
+
+        const currentUnit = document.getElementById('qty-unit').textContent;
+        const qtyInput = document.getElementById('qty-input');
+        const sellingPriceInput = document.getElementById('selling-price');
+        const discountInput = document.getElementById('discount');
+
+        if (currentUnit === product.unit_of_measure) {
+            // Switch FROM primary unit TO secondary unit
+            console.log('Switching to secondary unit');
+            CURRENT_UNIT_IS_SECONDARY = true;
+            document.getElementById('qty-unit').textContent = product.secondary_unit;
+            document.getElementById('unit-convert').innerHTML = '<i class="fas fa-undo me-1"></i> ';
+            document.getElementById('unit-convert').title = `Convert to ${product.unit_of_measure}`;
+
+            // Convert quantity: primary to secondary
+            const currentQty = parseFloat(qtyInput.value) || 1;
+            const conversion = parseFloat(product.sec_unit_conversion) || 1;
+            const convertedQty = currentQty * conversion;
+            qtyInput.value = convertedQty.toFixed(2);
+
+            // Reset discount when switching units
+            discountInput.value = '0';
+
+            // Update secondary unit price (this will now calculate correctly)
+            updateSecondaryUnitPrice();
+
+            showToast(`Converted to ${product.secondary_unit} (1 ${product.unit_of_measure} = ${product.sec_unit_conversion} ${product.secondary_unit})`, 'info');
+
+        } else {
+            // Switch FROM secondary unit TO primary unit
+            console.log('Switching to primary unit');
+            CURRENT_UNIT_IS_SECONDARY = false;
+            document.getElementById('qty-unit').textContent = product.unit_of_measure;
+            document.getElementById('unit-convert').innerHTML = '<i class="fas fa-exchange-alt me-1"></i> ';
+            document.getElementById('unit-convert').title = `Convert to ${product.secondary_unit}`;
+
+            // Convert quantity: secondary to primary
+            const currentQty = parseFloat(qtyInput.value) || 1;
+            const conversion = parseFloat(product.sec_unit_conversion) || 1;
+            const convertedQty = currentQty / conversion;
+            qtyInput.value = convertedQty.toFixed(3);
+
+            // Reset discount
+            discountInput.value = '0';
+
+            // Get original price based on price type
+            const originalPrice = GLOBAL_PRICE_TYPE === 'wholesale' ?
+                (parseFloat(product.wholesale_price) || 0) : (parseFloat(product.retail_price) || 0);
+            sellingPriceInput.value = Math.round(originalPrice);
+
+            showToast(`Converted to ${product.unit_of_measure}`, 'info');
+        }
+
+        // Always update the price display after conversion
+        updateProductPriceDisplay();
+
+    } catch (error) {
+        console.error('POS System: Error toggling unit conversion:', error);
+        showToast('Error converting unit. Please try again.', 'danger');
     }
+}
     function updateSecondaryUnitPrice() {
-        try {
-            console.log('Updating secondary unit price...', {
-                CURRENT_PRODUCT: CURRENT_PRODUCT,
-                CURRENT_UNIT_IS_SECONDARY: CURRENT_UNIT_IS_SECONDARY,
-                product: CURRENT_PRODUCT ? {
-                    id: CURRENT_PRODUCT.id,
-                    name: CURRENT_PRODUCT.product_name,
-                    sec_unit_price_type: CURRENT_PRODUCT.sec_unit_price_type,
-                    sec_unit_extra_charge: CURRENT_PRODUCT.sec_unit_extra_charge,
-                    sec_unit_conversion: CURRENT_PRODUCT.sec_unit_conversion
-                } : null
-            });
+    try {
+        console.log('Updating secondary unit price...', {
+            CURRENT_PRODUCT: CURRENT_PRODUCT,
+            CURRENT_UNIT_IS_SECONDARY: CURRENT_UNIT_IS_SECONDARY,
+            product: CURRENT_PRODUCT ? {
+                id: CURRENT_PRODUCT.id,
+                name: CURRENT_PRODUCT.product_name,
+                sec_unit_price_type: CURRENT_PRODUCT.sec_unit_price_type,
+                sec_unit_extra_charge: CURRENT_PRODUCT.sec_unit_extra_charge,
+                sec_unit_conversion: CURRENT_PRODUCT.sec_unit_conversion
+            } : null
+        });
 
-            if (!CURRENT_PRODUCT || !CURRENT_UNIT_IS_SECONDARY) {
-                console.log('No current product or not secondary unit');
-                return;
-            }
-
-            const product = CURRENT_PRODUCT;
-
-            // Get base price based on current price type
-            let basePrice = 0;
-            if (GLOBAL_PRICE_TYPE === 'wholesale') {
-                basePrice = parseFloat(product.wholesale_price) || parseFloat(product.retail_price) || 0;
-            } else {
-                basePrice = parseFloat(product.retail_price) || 0;
-            }
-
-            console.log('Base price:', basePrice, 'Price type:', GLOBAL_PRICE_TYPE);
-
-            // Default to product properties if not set
-            const secUnitPriceType = product.sec_unit_price_type || 'fixed';
-            const secUnitExtraCharge = parseFloat(product.sec_unit_extra_charge) || 0;
-            const secUnitConversion = parseFloat(product.sec_unit_conversion) || 1;
-
-            console.log('Secondary unit details:', {
-                secUnitPriceType,
-                secUnitExtraCharge,
-                secUnitConversion
-            });
-
-            if (secUnitConversion <= 0) {
-                console.error('Invalid conversion factor:', secUnitConversion);
-                showToast('Invalid unit conversion factor', 'danger');
-                return;
-            }
-
-            let sellingPrice = basePrice;
-
-            if (secUnitPriceType === 'percentage') {
-                // Percentage extra charge on base price, then divide by conversion
-                const extraAmount = basePrice * (secUnitExtraCharge / 100);
-                sellingPrice = (basePrice + extraAmount) / secUnitConversion;
-            } else {
-                // Fixed extra charge, then divide by conversion
-                const extraAmount = secUnitExtraCharge || 0;
-                sellingPrice = (basePrice + extraAmount) / secUnitConversion;
-            }
-
-            console.log('Calculated selling price:', sellingPrice);
-
-            // Format to 2 decimal places
-            sellingPrice = parseFloat(sellingPrice.toFixed(2));
-
-            // Update the selling price input
-            const sellingPriceInput = document.getElementById('selling-price');
-            if (sellingPriceInput) {
-                sellingPriceInput.value = sellingPrice;
-                console.log('Updated selling price input:', sellingPriceInput.value);
-            }
-
-            // Update discount display
-            updateProductPriceDisplay();
-
-        } catch (error) {
-            console.error('Error updating secondary unit price:', error);
-            showToast('Error calculating secondary unit price. Please check product configuration.', 'danger');
+        if (!CURRENT_PRODUCT || !CURRENT_UNIT_IS_SECONDARY) {
+            console.log('No current product or not secondary unit');
+            return;
         }
+
+        const product = CURRENT_PRODUCT;
+
+        // Get base price based on current price type
+        let basePrice = 0;
+        if (GLOBAL_PRICE_TYPE === 'wholesale') {
+            basePrice = parseFloat(product.wholesale_price) || parseFloat(product.retail_price) || 0;
+        } else {
+            basePrice = parseFloat(product.retail_price) || 0;
+        }
+
+        console.log('Base price:', basePrice, 'Price type:', GLOBAL_PRICE_TYPE);
+
+        // Get secondary unit configuration
+        const secUnitPriceType = product.sec_unit_price_type || 'fixed';
+        const secUnitExtraCharge = parseFloat(product.sec_unit_extra_charge) || 0;
+        const secUnitConversion = parseFloat(product.sec_unit_conversion) || 1;
+
+        console.log('Secondary unit details:', {
+            secUnitPriceType,
+            secUnitExtraCharge,
+            secUnitConversion
+        });
+
+        if (secUnitConversion <= 0) {
+            console.error('Invalid conversion factor:', secUnitConversion);
+            showToast('Invalid unit conversion factor', 'danger');
+            return;
+        }
+
+        let sellingPrice = 0;
+        
+        // FIRST: Calculate price per secondary unit
+        // Primary price per unit is for the primary unit (e.g., ₹300 per box)
+        // We need to get price per secondary unit (e.g., per PCS)
+        
+        // Step 1: Calculate price per secondary unit from primary price
+        // For example: ₹300 per box / 3 PCS per box = ₹100 per PCS
+        let pricePerSecondaryUnit = basePrice / secUnitConversion;
+        
+        console.log('Price per secondary unit before extra charge:', pricePerSecondaryUnit);
+        
+        // Step 2: Add extra charge based on type
+        if (secUnitPriceType === 'percentage') {
+            // Percentage extra charge on the price per secondary unit
+            const extraAmount = pricePerSecondaryUnit * (secUnitExtraCharge / 100);
+            sellingPrice = pricePerSecondaryUnit + extraAmount;
+            console.log(`Added ${secUnitExtraCharge}% extra: ₹${extraAmount}, new price: ₹${sellingPrice}`);
+        } else {
+            // Fixed extra charge per secondary unit
+            sellingPrice = pricePerSecondaryUnit + secUnitExtraCharge;
+            console.log(`Added fixed extra ₹${secUnitExtraCharge}, new price: ₹${sellingPrice}`);
+        }
+
+        console.log('Calculated selling price per secondary unit:', sellingPrice);
+
+        // Format to 2 decimal places
+        sellingPrice = parseFloat(sellingPrice.toFixed(2));
+
+        // Update the selling price input
+        const sellingPriceInput = document.getElementById('selling-price');
+        if (sellingPriceInput) {
+            sellingPriceInput.value = sellingPrice;
+            console.log('Updated selling price input:', sellingPriceInput.value);
+        }
+
+        // Update discount display
+        updateProductPriceDisplay();
+
+    } catch (error) {
+        console.error('Error updating secondary unit price:', error);
+        showToast('Error calculating secondary unit price. Please check product configuration.', 'danger');
     }
+}
 
 
     // ==================== UPDATE ADD TO CART FOR SECONDARY UNITS ====================
