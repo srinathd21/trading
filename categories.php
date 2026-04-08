@@ -2,25 +2,32 @@
 date_default_timezone_set('Asia/Kolkata');
 session_start();
 require_once 'config/database.php';
+
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
+
 // Role check
-if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager', 'shop_manager','stock_manager'])) {
+if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager', 'shop_manager', 'stock_manager'])) {
     header('Location: dashboard.php');
     exit();
 }
 
 $current_business_id = (int)$_SESSION['current_business_id'];
-
 $success = $error = '';
 
-// Handle toggle status
+/* -----------------------------
+   Single toggle status
+----------------------------- */
 if (isset($_GET['toggle'])) {
     $id = (int)$_GET['toggle'];
     try {
-        $stmt = $pdo->prepare("UPDATE categories SET status = IF(status = 'active', 'inactive', 'active') WHERE id = ? AND business_id = ?");
+        $stmt = $pdo->prepare("
+            UPDATE categories
+            SET status = IF(status = 'active', 'inactive', 'active')
+            WHERE id = ? AND business_id = ?
+        ");
         $stmt->execute([$id, $current_business_id]);
         $success = "Category status updated!";
     } catch (Exception $e) {
@@ -28,7 +35,9 @@ if (isset($_GET['toggle'])) {
     }
 }
 
-// Delete Category
+/* -----------------------------
+   Single delete
+----------------------------- */
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
     try {
@@ -40,11 +49,13 @@ if (isset($_GET['delete'])) {
     }
 }
 
-// Save (Add or Update) Category
+/* -----------------------------
+   Save category (add/update)
+----------------------------- */
 if (isset($_POST['save_category'])) {
     $id = !empty($_POST['id']) ? (int)$_POST['id'] : 0;
-    $name = trim($_POST['category_name']);
-    $parent_id = $_POST['parent_id'] == 0 ? null : (int)$_POST['parent_id'];
+    $name = trim($_POST['category_name'] ?? '');
+    $parent_id = (isset($_POST['parent_id']) && $_POST['parent_id'] == 0) ? null : (int)($_POST['parent_id'] ?? 0);
     $description = trim($_POST['description'] ?? '');
 
     if (empty($name)) {
@@ -52,13 +63,18 @@ if (isset($_POST['save_category'])) {
     } else {
         try {
             if ($id > 0) {
-                // Update
-                $stmt = $pdo->prepare("UPDATE categories SET category_name = ?, parent_id = ?, description = ? WHERE id = ? AND business_id = ?");
+                $stmt = $pdo->prepare("
+                    UPDATE categories
+                    SET category_name = ?, parent_id = ?, description = ?
+                    WHERE id = ? AND business_id = ?
+                ");
                 $stmt->execute([$name, $parent_id, $description, $id, $current_business_id]);
                 $success = "Category updated successfully!";
             } else {
-                // Insert
-                $stmt = $pdo->prepare("INSERT INTO categories (category_name, parent_id, description, created_by, business_id, status) VALUES (?, ?, ?, ?, ?, 'active')");
+                $stmt = $pdo->prepare("
+                    INSERT INTO categories (category_name, parent_id, description, created_by, business_id, status)
+                    VALUES (?, ?, ?, ?, ?, 'active')
+                ");
                 $stmt->execute([$name, $parent_id, $description, $_SESSION['user_id'], $current_business_id]);
                 $success = "Category '$name' added successfully!";
             }
@@ -72,7 +88,82 @@ if (isset($_POST['save_category'])) {
     }
 }
 
-// Fetch all categories (for list)
+/* -----------------------------
+   Bulk actions
+----------------------------- */
+if (isset($_POST['bulk_action'])) {
+    $action = $_POST['bulk_action'] ?? '';
+    $selected_ids = [];
+
+    if (!empty($_POST['selected_ids']) && is_array($_POST['selected_ids'])) {
+        $selected_ids = array_map('intval', $_POST['selected_ids']);
+    } elseif (!empty($_POST['selected_ids_json'])) {
+        $decoded = json_decode($_POST['selected_ids_json'], true);
+        if (is_array($decoded)) {
+            $selected_ids = array_map('intval', $decoded);
+        }
+    }
+
+    $selected_ids = array_values(array_filter($selected_ids, function ($id) {
+        return $id > 0;
+    }));
+
+    if (empty($selected_ids)) {
+        $error = "Please select at least one category.";
+    } else {
+        $placeholders = implode(',', array_fill(0, count($selected_ids), '?'));
+
+        try {
+            switch ($action) {
+                case 'activate':
+                    $stmt = $pdo->prepare("
+                        UPDATE categories
+                        SET status = 'active'
+                        WHERE id IN ($placeholders) AND business_id = ?
+                    ");
+                    $params = array_merge($selected_ids, [$current_business_id]);
+                    $stmt->execute($params);
+                    $success = count($selected_ids) . " category(s) activated.";
+                    break;
+
+                case 'deactivate':
+                    $stmt = $pdo->prepare("
+                        UPDATE categories
+                        SET status = 'inactive'
+                        WHERE id IN ($placeholders) AND business_id = ?
+                    ");
+                    $params = array_merge($selected_ids, [$current_business_id]);
+                    $stmt->execute($params);
+                    $success = count($selected_ids) . " category(s) deactivated.";
+                    break;
+
+                case 'delete':
+                    $stmt = $pdo->prepare("
+                        DELETE FROM categories
+                        WHERE id IN ($placeholders) AND business_id = ?
+                    ");
+                    $params = array_merge($selected_ids, [$current_business_id]);
+                    $stmt->execute($params);
+                    $success = count($selected_ids) . " category(s) deleted successfully!";
+                    break;
+
+                default:
+                    $error = "Please select a valid bulk action.";
+                    break;
+            }
+        } catch (Exception $e) {
+            if ($action === 'delete') {
+                $error = "Cannot delete selected categories: some have sub-categories or associated products.";
+            } else {
+                $error = "Bulk action failed.";
+            }
+        }
+    }
+}
+
+/* -----------------------------
+   Fetch categories
+----------------------------- */
 $categories_stmt = $pdo->prepare("
     SELECT c.*,
            p.category_name as parent_name,
@@ -85,11 +176,13 @@ $categories_stmt = $pdo->prepare("
 $categories_stmt->execute([$current_business_id, $current_business_id]);
 $categories = $categories_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch main categories (active only) for parent dropdown
+/* -----------------------------
+   Fetch main categories
+----------------------------- */
 $main_cats_stmt = $pdo->prepare("
-    SELECT id, category_name 
-    FROM categories 
-    WHERE parent_id IS NULL AND status = 'active' AND business_id = ? 
+    SELECT id, category_name
+    FROM categories
+    WHERE parent_id IS NULL AND status = 'active' AND business_id = ?
     ORDER BY category_name
 ");
 $main_cats_stmt->execute([$current_business_id]);
@@ -99,21 +192,26 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
 <html lang="en">
 <?php $page_title = "Product Categories"; ?>
 <?php include('includes/head.php') ?>
+
 <body data-sidebar="dark">
 <div id="layout-wrapper">
     <?php include('includes/topbar.php') ?>
+
     <div class="vertical-menu">
         <div data-simplebar class="h-100">
             <?php include('includes/sidebar.php') ?>
         </div>
     </div>
+
     <div class="main-content">
         <div class="page-content">
             <div class="container-fluid">
+
                 <div class="row">
                     <div class="col-12">
                         <div class="card">
                             <div class="card-body">
+
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <h4 class="card-title mb-0">
                                         <i class="bx bx-category me-2"></i> Product Categories
@@ -125,90 +223,142 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </div>
 
                                 <?php if ($success): ?>
-                                <div class="alert alert-success alert-dismissible fade show">
-                                    <i class="bx bx-check-circle me-2"></i><?= htmlspecialchars($success) ?>
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                </div>
+                                    <div class="alert alert-success alert-dismissible fade show">
+                                        <i class="bx bx-check-circle me-2"></i><?= htmlspecialchars($success) ?>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
                                 <?php endif; ?>
 
                                 <?php if ($error): ?>
-                                <div class="alert alert-danger alert-dismissible fade show">
-                                    <i class="bx bx-error-circle me-2"></i><?= htmlspecialchars($error) ?>
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                </div>
+                                    <div class="alert alert-danger alert-dismissible fade show">
+                                        <i class="bx bx-error-circle me-2"></i><?= htmlspecialchars($error) ?>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
                                 <?php endif; ?>
+
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div></div>
+                                    <form method="POST" class="d-flex gap-2" id="bulkActionForm">
+                                        <input type="hidden" name="selected_ids_json" id="selectedIdsJson">
+
+                                        <select name="bulk_action" class="form-select form-select-sm" style="width:auto;">
+                                            <option value="">Bulk Actions</option>
+                                            <option value="activate">Activate Selected</option>
+                                            <option value="deactivate">Deactivate Selected</option>
+                                            <option value="delete">Delete Selected</option>
+                                        </select>
+
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            <i class="bx bx-play-circle me-1"></i> Apply
+                                        </button>
+
+                                        <button type="button" class="btn btn-sm btn-outline-danger" id="deleteSelectedBtn">
+                                            <i class="bx bx-trash me-1"></i> Delete Selected
+                                        </button>
+                                    </form>
+                                </div>
 
                                 <div class="table-responsive">
                                     <table id="categoriesTable" class="table table-hover table-bordered align-middle w-100">
                                         <thead class="table-light">
-                                            <tr>
-                                                <th>Category Name</th>
-                                                <th>Parent Category</th>
-                                                <th class="text-center">Status</th>
-                                                <th class="text-center">Products</th>
-                                                <th>Description</th>
-                                                <th class="text-center">Actions</th>
-                                            </tr>
+                                        <tr>
+                                            <th style="width:50px;">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="selectAll">
+                                                </div>
+                                            </th>
+                                            <th>Category Name</th>
+                                            <th>Parent Category</th>
+                                            <th class="text-center">Status</th>
+                                            <th class="text-center">Products</th>
+                                            <th>Description</th>
+                                            <th class="text-center">Actions</th>
+                                        </tr>
                                         </thead>
                                         <tbody>
-                                            <?php if (count($categories) > 0): ?>
-                                                <?php foreach ($categories as $cat): ?>
+                                        <?php if (count($categories) > 0): ?>
+                                            <?php foreach ($categories as $cat): ?>
                                                 <tr>
+                                                    <td>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input select-checkbox"
+                                                                   type="checkbox"
+                                                                   value="<?= (int)$cat['id'] ?>">
+                                                        </div>
+                                                    </td>
+
                                                     <td>
                                                         <div class="d-flex align-items-center">
                                                             <?php if ($cat['parent_id']): ?>
-                                                            <i class="bx bx-subdirectory-right text-muted me-2"></i>
+                                                                <i class="bx bx-subdirectory-right text-muted me-2"></i>
                                                             <?php endif; ?>
                                                             <strong><?= htmlspecialchars($cat['category_name']) ?></strong>
                                                             <?php if ($cat['parent_id']): ?>
-                                                            <span class="badge bg-info ms-2">Sub-category</span>
+                                                                <span class="badge bg-info ms-2">Sub-category</span>
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
+
                                                     <td>
                                                         <?= $cat['parent_name'] ? htmlspecialchars($cat['parent_name']) : '<em class="text-muted">Main Category</em>' ?>
                                                     </td>
+
                                                     <td class="text-center">
                                                         <span class="badge bg-<?= ($cat['status'] ?? 'active') === 'active' ? 'success' : 'secondary' ?> rounded-pill">
                                                             <?= ucfirst($cat['status'] ?? 'active') ?>
                                                         </span>
                                                     </td>
+
                                                     <td class="text-center">
                                                         <span class="badge bg-<?= $cat['product_count'] > 0 ? 'success' : 'secondary' ?> rounded-pill">
-                                                            <?= $cat['product_count'] ?>
+                                                            <?= (int)$cat['product_count'] ?>
                                                         </span>
                                                     </td>
+
                                                     <td class="text-muted small">
-                                                        <?= $cat['description'] ? htmlspecialchars($cat['description']) : '—' ?>
+                                                        <?php
+                                                        $desc = $cat['description'] ?? '';
+                                                        if (!empty($desc)) {
+                                                            echo htmlspecialchars(mb_substr($desc, 0, 60));
+                                                            echo (mb_strlen($desc) > 60) ? '...' : '';
+                                                        } else {
+                                                            echo '—';
+                                                        }
+                                                        ?>
                                                     </td>
+
                                                     <td class="text-center">
                                                         <div class="btn-group btn-group-sm">
                                                             <button class="btn btn-outline-warning"
-                                                                    onclick="editCategory(<?= $cat['id'] ?>, '<?= addslashes(htmlspecialchars($cat['category_name'])) ?>', <?= $cat['parent_id'] ?: '0' ?>, '<?= addslashes(htmlspecialchars($cat['description'] ?? '')) ?>')">
+                                                                    type="button"
+                                                                    onclick="editCategory(<?= (int)$cat['id'] ?>, '<?= addslashes(htmlspecialchars($cat['category_name'])) ?>', <?= $cat['parent_id'] ?: '0' ?>, '<?= addslashes(htmlspecialchars($cat['description'] ?? '')) ?>')">
                                                                 <i class="bx bx-edit"></i>
                                                             </button>
-                                                            <a href="?toggle=<?= $cat['id'] ?>" class="btn btn-outline-info toggle-status" title="Toggle Status">
+
+                                                            <a href="?toggle=<?= (int)$cat['id'] ?>" class="btn btn-outline-info toggle-status" title="Toggle Status">
                                                                 <i class="bx <?= ($cat['status'] ?? 'active') === 'active' ? 'bx-hide' : 'bx-show' ?>"></i>
                                                             </a>
-                                                            <a href="?delete=<?= $cat['id'] ?>" class="btn btn-outline-danger delete-category">
+
+                                                            <a href="?delete=<?= (int)$cat['id'] ?>" class="btn btn-outline-danger delete-category">
                                                                 <i class="bx bx-trash"></i>
                                                             </a>
                                                         </div>
                                                     </td>
                                                 </tr>
-                                                <?php endforeach; ?>
-                                            <?php else: ?>
-                                                
-                                            <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
                                         </tbody>
                                     </table>
                                 </div>
+
                             </div>
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
+
         <?php include('includes/footer.php') ?>
     </div>
 </div>
@@ -216,33 +366,38 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
 <!-- Add/Edit Modal -->
 <div class="modal fade" id="categoryModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" class="modal-content">
+        <form method="POST" class="modal-content" id="categoryForm">
             <input type="hidden" name="id" id="editId">
+
             <div class="modal-header">
                 <h5 class="modal-title" id="modalTitle">
                     <i class="bx bx-plus-circle"></i> Add Category
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
+
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label"><strong>Category Name <span class="text-danger">*</span></strong></label>
                     <input type="text" name="category_name" id="catName" class="form-control" required>
                 </div>
+
                 <div class="mb-3">
                     <label class="form-label">Parent Category</label>
                     <select name="parent_id" id="catParent" class="form-select">
                         <option value="0">None (Main Category)</option>
                         <?php foreach ($main_cats as $c): ?>
-                        <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['category_name']) ?></option>
+                            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['category_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
+
                 <div class="mb-3">
                     <label class="form-label">Description</label>
                     <textarea name="description" id="catDesc" class="form-control" rows="3"></textarea>
                 </div>
             </div>
+
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="submit" name="save_category" id="saveCategoryBtn" class="btn btn-primary">
@@ -255,15 +410,15 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <?php include('includes/rightbar.php') ?>
 <?php include('includes/scripts.php') ?>
+
 <script>
 $(document).ready(function() {
-    // Initialize DataTables
-    $('#categoriesTable').DataTable({
+    var table = $('#categoriesTable').DataTable({
         responsive: true,
         pageLength: 25,
-        order: [[0, 'asc']], // Sort by Category Name
+        order: [[1, 'asc']],
         columnDefs: [
-            { orderable: false, targets: [5] } // Disable sorting on Actions column
+            { orderable: false, targets: [0, 6] }
         ],
         language: {
             search: "Search categories:",
@@ -277,11 +432,133 @@ $(document).ready(function() {
         }
     });
 
-    // SweetAlert for delete confirmation
-    $('.delete-category').on('click', function(e) {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer);
+            toast.addEventListener('mouseleave', Swal.resumeTimer);
+        }
+    });
+
+    function getSelectedIds() {
+        let ids = [];
+        $('.select-checkbox:checked').each(function() {
+            ids.push($(this).val());
+        });
+        return ids;
+    }
+
+    function updateSelectAllState() {
+        let total = $('.select-checkbox').length;
+        let checked = $('.select-checkbox:checked').length;
+
+        if (checked === 0) {
+            $('#selectAll').prop('checked', false).prop('indeterminate', false);
+        } else if (checked === total) {
+            $('#selectAll').prop('checked', true).prop('indeterminate', false);
+        } else {
+            $('#selectAll').prop('checked', false).prop('indeterminate', true);
+        }
+    }
+
+    $('#selectAll').on('change', function() {
+        $('.select-checkbox').prop('checked', this.checked);
+        updateSelectAllState();
+    });
+
+    $(document).on('change', '.select-checkbox', function() {
+        updateSelectAllState();
+    });
+
+    table.on('draw', function() {
+        updateSelectAllState();
+    });
+
+    $('#bulkActionForm').on('submit', function(e) {
+        const action = $('select[name="bulk_action"]').val();
+        const selectedIds = getSelectedIds();
+        const selectedCount = selectedIds.length;
+
+        if (!action) {
+            e.preventDefault();
+            Toast.fire({
+                icon: 'warning',
+                title: 'Please select a bulk action'
+            });
+            return false;
+        }
+
+        if (selectedCount === 0) {
+            e.preventDefault();
+            Toast.fire({
+                icon: 'warning',
+                title: 'Please select at least one category'
+            });
+            return false;
+        }
+
+        $('#selectedIdsJson').val(JSON.stringify(selectedIds));
+
+        if (action === 'delete') {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Are you sure?',
+                text: `You are about to delete ${selectedCount} category(s)`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete them!',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $('#selectedIdsJson').val(JSON.stringify(selectedIds));
+                    document.getElementById('bulkActionForm').submit();
+                }
+            });
+
+            return false;
+        }
+
+        if (action === 'activate' || action === 'deactivate') {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Confirm Action',
+                text: `You are about to ${action} ${selectedCount} category(s)`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yes, continue',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $('#selectedIdsJson').val(JSON.stringify(selectedIds));
+                    document.getElementById('bulkActionForm').submit();
+                }
+            });
+
+            return false;
+        }
+
+        return true;
+    });
+
+    $('#deleteSelectedBtn').on('click', function() {
+        $('select[name="bulk_action"]').val('delete');
+        $('#bulkActionForm').trigger('submit');
+    });
+
+    $(document).on('click', '.delete-category', function(e) {
         e.preventDefault();
         let deleteUrl = $(this).attr('href');
-        
+
         Swal.fire({
             title: 'Are you sure?',
             text: "Delete this category? Associated products will become uncategorized.",
@@ -290,15 +567,7 @@ $(document).ready(function() {
             confirmButtonColor: '#d33',
             cancelButtonColor: '#3085d6',
             confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'Cancel',
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: true,
-            timer: 3000,
-            timerProgressBar: true,
-            customClass: {
-                container: 'swal-toast-small'
-            }
+            cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
                 window.location.href = deleteUrl;
@@ -306,13 +575,10 @@ $(document).ready(function() {
         });
     });
 
-    // SweetAlert for toggle status confirmation
-    $('.toggle-status').on('click', function(e) {
+    $(document).on('click', '.toggle-status', function(e) {
         e.preventDefault();
         let toggleUrl = $(this).attr('href');
-        let currentIcon = $(this).find('i');
-        let newStatus = currentIcon.hasClass('bx-hide') ? 'inactive' : 'active';
-        
+
         Swal.fire({
             title: 'Toggle Status',
             text: "Are you sure you want to change this category's status?",
@@ -321,15 +587,7 @@ $(document).ready(function() {
             confirmButtonColor: '#3085d6',
             cancelButtonColor: '#d33',
             confirmButtonText: 'Yes, toggle it!',
-            cancelButtonText: 'Cancel',
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: true,
-            timer: 3000,
-            timerProgressBar: true,
-            customClass: {
-                container: 'swal-toast-small'
-            }
+            cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
                 window.location.href = toggleUrl;
@@ -337,36 +595,17 @@ $(document).ready(function() {
         });
     });
 
-    // Show success/error messages as SweetAlert toasts
     <?php if ($success): ?>
-    Swal.fire({
+    Toast.fire({
         icon: 'success',
-        title: 'Success!',
-        text: '<?= addslashes($success) ?>',
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
-        customClass: {
-            container: 'swal-toast-small'
-        }
+        title: '<?= addslashes($success) ?>'
     });
     <?php endif; ?>
 
     <?php if ($error): ?>
-    Swal.fire({
+    Toast.fire({
         icon: 'error',
-        title: 'Error!',
-        text: '<?= addslashes($error) ?>',
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
-        customClass: {
-            container: 'swal-toast-small'
-        }
+        title: '<?= addslashes($error) ?>'
     });
     <?php endif; ?>
 });
@@ -381,7 +620,6 @@ function editCategory(id, name, parent, desc) {
     new bootstrap.Modal(document.getElementById('categoryModal')).show();
 }
 
-// Reset modal when closed
 document.getElementById('categoryModal').addEventListener('hidden.bs.modal', function () {
     document.getElementById('modalTitle').innerHTML = '<i class="bx bx-plus-circle"></i> Add Category';
     document.querySelector('#categoryModal form').reset();
@@ -389,11 +627,11 @@ document.getElementById('categoryModal').addEventListener('hidden.bs.modal', fun
     document.getElementById('saveCategoryBtn').innerHTML = '<i class="bx bx-save me-2"></i> Save Category';
 });
 </script>
+
 <style>
 .table th { font-weight: 600; background-color: #f8f9fa; }
 .btn-group .btn { padding: 0.375rem 0.75rem; }
 
-/* SweetAlert2 small toast customization */
 .swal-toast-small {
     font-size: 0.875rem !important;
 }
