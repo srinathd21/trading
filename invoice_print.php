@@ -311,51 +311,61 @@ if ($business_id == 28) {
         public $headerEndY = 0;
         
         function Header()
-        {
-            // Outer border
-            $this->Rect(5, 5, 200, 287);
-            
-            // Title - TAX INVOICE
-            $this->SetFont('Arial','B',14);
-            $this->SetXY(5,8);
-            $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
-            $this->Cell(200,8, $title, 0, 1, 'C');
-            
-            // ========== ADD SHOP ADDRESS UNDER TITLE ==========
-            $this->SetFont('Arial','',8);
-            $this->SetY(14);
-            $this->SetX(5);
-            
-            // Shop/Business Name and Address
-            $shopAddressText = $this->company['name'] . "\n" . $this->company['address'];
-            if (!empty($this->company['phone'])) {
-                $shopAddressText .= "\nPhone: " . $this->company['phone'];
-            }
-            if (!empty($this->company['gstin'])) {
-                $shopAddressText .= "\nGSTIN: " . $this->company['gstin'];
-            }
-            
-            $this->MultiCell(200, 4, pdf_text_simple($shopAddressText), 0, 'C');
-            
-            // IRN and Ack details (if available)
-            $this->SetFont('Arial','',7);
-            
-            if (!empty($this->invoice['irn_no'])) {
-                $irnText = "IRN No.: " . $this->invoice['irn_no'];
-                $this->SetY($this->GetY() + 2);
-                $this->SetX(5);
-                $this->MultiCell(200, 4, $irnText, 0, 'C');
-            }
-            
-            if (!empty($this->invoice['ack_no']) && !empty($this->invoice['ack_date'])) {
-                $this->SetFont('Arial','',7);
-                $this->SetY($this->GetY() + 1);
-                $this->SetX(5);
-                $this->Cell(200,4, 'Ack No.: ' . $this->invoice['ack_no'] . ' | Ack Date: ' . $this->invoice['ack_date'], 0, 1, 'C');
-            }
-            
-            $this->headerEndY = $this->GetY();
-        }
+{
+    // Outer border
+    $this->Rect(5, 5, 200, 287);
+    
+    // Title - TAX INVOICE
+    $this->SetFont('Arial','B',10);
+    $this->SetXY(5,5);
+    $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
+    $this->Cell(200,8, $title, 0, 1, 'C');
+    
+    // ========== ADD SHOP ADDRESS UNDER TITLE ==========
+    $this->SetY(12);
+    $this->SetX(5);
+    
+    // Shop/Business Name - Bold
+    $this->SetFont('Arial','B',14);
+    $this->Cell(200, 4, pdf_text_simple($this->company['name']), 0, 1, 'C');
+    
+    // Shop Address - Normal
+    $this->SetFont('Arial','',8);
+    $this->SetX(5);
+    $this->SetY(17);
+    $this->MultiCell(200, 4, pdf_text_simple($this->company['address']), 0, 'C');
+    
+    // Phone (if available)
+    if (!empty($this->company['phone'])) {
+        $this->SetX(5);
+        $this->MultiCell(200, 4, pdf_text_simple("Phone: " . $this->company['phone']), 0, 'C');
+    }
+    
+    // GSTIN (if available)
+    if (!empty($this->company['gstin'])) {
+        $this->SetX(5);
+        $this->MultiCell(200, 4, pdf_text_simple("GSTIN: " . $this->company['gstin']), 0, 'C');
+    }
+    
+    // IRN and Ack details (if available)
+    $this->SetFont('Arial','',7);
+    
+    if (!empty($this->invoice['irn_no'])) {
+        $irnText = "IRN No.: " . $this->invoice['irn_no'];
+        $this->SetY($this->GetY() + 2);
+        $this->SetX(5);
+        $this->MultiCell(200, 4, $irnText, 0, 'C');
+    }
+    
+    if (!empty($this->invoice['ack_no']) && !empty($this->invoice['ack_date'])) {
+        $this->SetFont('Arial','',7);
+        $this->SetY($this->GetY() + 1);
+        $this->SetX(5);
+        $this->Cell(200, 4, 'Ack No.: ' . $this->invoice['ack_no'] . ' | Ack Date: ' . $this->invoice['ack_date'], 0, 1, 'C');
+    }
+    
+    $this->headerEndY = $this->GetY();
+}
         
         function LabelValue($label, $value, $totalWidth = 100)
         {

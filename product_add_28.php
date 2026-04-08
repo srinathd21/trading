@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit = $_POST['unit'] ?? 'pcs';
         
         // GST fields
-        $gst_type = $_POST['gst_type'] ?? 'inclusive';
+        $gst_type = $_POST['gst_type'] ?? 'exclusive';
         $gst_id = !empty($_POST['gst_id']) ? (int)$_POST['gst_id'] : null;
 
         // Secondary unit fields
@@ -149,11 +149,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Purchase Price (Base price without GST) - User enters this
         $purchase_price_base = (float)($_POST['purchase_price_base'] ?? 0);
         
+        // Retail Price (Base price without GST) - User enters this
+        $retail_price_base = (float)($_POST['retail_price_base'] ?? 0);
+        
         // Fetch GST rates
         $gst_rate_percentage = 0;
-        $gst_amount = 0;
         $hsn_code = '';
+        
+        // Final purchase price with GST
+        $purchase_gst_amount = 0;
         $final_purchase_price = $purchase_price_base;
+        
+        // Final retail price with GST
+        $retail_gst_amount = 0;
+        $final_retail_price = $retail_price_base;
         
         if ($gst_id) {
             $gst_stmt = $pdo->prepare("SELECT hsn_code, cgst_rate, sgst_rate, igst_rate FROM gst_rates WHERE id = ? AND business_id = ?");
@@ -163,37 +172,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hsn_code = $gst_row['hsn_code'] ?? '';
                 $gst_rate_percentage = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
                 
+                // Calculate purchase price with GST
                 if ($gst_type === 'exclusive') {
-                    // GST Exclusive: Add GST to Purchase Price
-                    $gst_amount = $purchase_price_base * ($gst_rate_percentage / 100);
-                    $final_purchase_price = $purchase_price_base + $gst_amount;
+                    $purchase_gst_amount = $purchase_price_base * ($gst_rate_percentage / 100);
+                    $final_purchase_price = $purchase_price_base + $purchase_gst_amount;
+                    
+                    $retail_gst_amount = $retail_price_base * ($gst_rate_percentage / 100);
+                    $final_retail_price = $retail_price_base + $retail_gst_amount;
                 } else {
-                    // GST Inclusive: Calculate GST from Purchase Price
-                    $gst_amount = ($purchase_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
+                    $purchase_gst_amount = ($purchase_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
                     $final_purchase_price = $purchase_price_base;
+                    
+                    $retail_gst_amount = ($retail_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
+                    $final_retail_price = $retail_price_base;
                 }
             }
         }
         
-        // Retail Price calculation based on markup on final purchase price (price with GST)
-        $retail_price_type = $_POST['retail_price_type'] ?? 'percentage';
-        $retail_price_value = (float)($_POST['retail_price_value'] ?? 0);
-        $retail_price = (float)($_POST['retail_price'] ?? 0);
-        
-        // Calculate retail price if not manually entered
-        if ($retail_price == 0 && $final_purchase_price > 0 && $retail_price_value > 0) {
-            if ($retail_price_type === 'percentage') {
-                $markup_amount = $final_purchase_price * $retail_price_value / 100;
-                $retail_price = $final_purchase_price + $markup_amount;
-            } else {
-                $retail_price = $final_purchase_price + $retail_price_value;
-            }
-        } elseif ($retail_price == 0 && $final_purchase_price > 0) {
-            $retail_price = $final_purchase_price;
-        }
-        
         // Wholesale price (hidden but stored same as retail)
-        $wholesale_price = $retail_price;
+        $wholesale_price = $final_retail_price;
         
         $min_stock_level = (int)($_POST['min_stock_level'] ?? 10);
         $image_alt_text = trim($_POST['image_alt_text'] ?? '');
@@ -202,8 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $referral_value = (float)($_POST['referral_value'] ?? 0);
         $initial_stock = !empty($_POST['initial_stock']) ? (int)$_POST['initial_stock'] : 0;
         
-        // IMPORTANT: For business 28, store the FINAL purchase price (including GST)
-        // This is the actual cost price including tax
+        // Store the FINAL purchase price (including GST) as stock price
         $stock_price = $final_purchase_price;
         
         $image_path = $image_thumbnail_path = null;
@@ -252,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors = [];
             if (empty($product_name)) $errors[] = "Product name required.";
             if ($purchase_price_base <= 0) $errors[] = "Purchase price must be greater than 0.";
-            if ($retail_price <= 0) $errors[] = "Retail price must be greater than 0.";
+            if ($retail_price_base <= 0) $errors[] = "Retail price must be greater than 0.";
             
             // GST validation
             if ($gst_type === 'exclusive' && !$gst_id) {
@@ -260,11 +256,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Price hierarchy validation
-            if ($final_purchase_price > 0 && $retail_price > 0 && $retail_price <= $final_purchase_price) {
-                $errors[] = "Retail price must be greater than Final Purchase Price.";
+            if ($final_purchase_price > 0 && $final_retail_price > 0 && $final_retail_price <= $final_purchase_price) {
+                $errors[] = "Final Retail Price (with GST) must be greater than Final Purchase Price (with GST).";
             }
-
-            if ($retail_price_value < 0) $errors[] = "Retail markup cannot be negative.";
 
             if ($referral_enabled && $referral_value <= 0) $errors[] = "Referral value must be > 0.";
             if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $errors[] = "Referral % cannot exceed 100.";
@@ -351,21 +345,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $sec_unit_price_type,
                         $sec_unit_extra_charge,
                         $stock_price, // Price WITH GST (e.g., ₹118)
-                        $retail_price,
+                        $final_retail_price, // Final retail price WITH GST
                         $wholesale_price,
                         $min_stock_level,
                         $gst_id,
                         $hsn_code,
                         $gst_type,
-                        $gst_amount,
+                        $retail_gst_amount, // Store retail GST amount
                         $referral_enabled,
                         $referral_type,
                         $referral_value,
                         0, // mrp (not used)
                         'percentage', // discount_type
                         0, // discount_value
-                        $retail_price_type,
-                        $retail_price_value,
+                        'manual', // retail_price_type
+                        0, // retail_price_value
                         'percentage', // wholesale_price_type
                         0, // wholesale_price_value
                         $is_warranty_applicable ? $warranty_type : 'none',
@@ -583,7 +577,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="bx bx-plus-circle me-2"></i> Add New Product
                                 <span class="badge bg-info ms-2">Business Type 28</span>
                                 <span class="badge bg-warning ms-2">No MRP Required</span>
-                                <span class="badge bg-success ms-2">GST on Purchase Price</span>
+                                <span class="badge bg-success ms-2">GST on Purchase & Retail Price</span>
                             </h4>
                             <a href="products.php" class="btn btn-outline-secondary">
                                 <i class="bx bx-arrow-back me-1"></i> Back to Products
@@ -861,7 +855,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                         <div class="col-md-4">
                                             <label class="form-label"><strong>GST Rate</strong></label>
-                                            <select name="gst_id" id="gstSelect" class="form-select" onchange="calculateGST()">
+                                            <select name="gst_id" id="gstSelect" class="form-select" onchange="calculateAllGST()">
                                                 <option value="">-- Select GST Rate --</option>
                                                 <?php foreach($gst_rates as $g): ?>
                                                 <option value="<?= $g['id'] ?>" 
@@ -895,14 +889,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 </div>
                                                 <div id="gstTypeHelp" class="form-text">
                                                     <i class="bx bx-info-circle"></i>
-                                                    <span id="gstTypeDescription">GST will be added to Purchase Price</span>
+                                                    <span id="gstTypeDescription">GST will be added to prices</span>
                                                 </div>
                                             </div>
                                             <input type="hidden" name="gst_type" id="gstTypeHidden" value="<?= $_POST['gst_type'] ?? 'exclusive' ?>">
                                         </div>
 
                                         <!-- Purchase Price Section -->
-                                        <div class="col-md-4">
+                                        <div class="col-md-12 mt-3">
+                                            <h6 class="border-bottom pb-2 mb-3">
+                                                <i class="bx bx-cart me-1"></i> Purchase Price
+                                            </h6>
+                                        </div>
+
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Base Purchase Price (Without GST) <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
@@ -910,45 +910,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        class="form-control form-control-lg text-end" 
                                                        value="<?= htmlspecialchars($_POST['purchase_price_base'] ?? '') ?>" 
                                                        id="purchasePriceBase" required
-                                                       oninput="calculateGST()">
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearPurchasePrice()" title="Clear">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
+                                                       oninput="calculateAllGST()">
                                             </div>
-                                            <div class="form-text">Enter the base price without GST</div>
+                                            <div class="form-text">Enter the base purchase price without GST</div>
                                         </div>
 
-                                        <!-- GST Calculation Preview -->
-                                        <div class="col-md-12 mt-3" id="gstCalculationPreview" style="display:none;">
-                                            <div class="alert alert-info py-3">
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-calculator me-1"></i> GST Calculation</h6>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>Base Purchase Price:</span>
-                                                            <strong id="basePriceDisplay">₹0.00</strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>GST Rate:</span>
-                                                            <strong id="gstRateDisplay">0%</strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>GST Amount:</span>
-                                                            <strong id="gstAmountDisplay">₹0.00</strong>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-dollar me-1"></i> Final Purchase Price (With GST)</h6>
-                                                        <div class="d-flex justify-content-between mb-2">
-                                                            <span>Final Price (Including GST) - <span class="text-danger">This will be stored as Stock Price</span>:</span>
-                                                            <strong class="text-success" id="finalPurchasePrice">₹0.00</strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between">
-                                                            <small class="text-muted" id="gstCalculationDescription">
-                                                                GST calculation details will appear here
-                                                            </small>
-                                                        </div>
-                                                    </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Final Purchase Price (With GST)</strong></label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="text" class="form-control form-control-lg text-end" 
+                                                       id="finalPurchasePriceDisplay" readonly disabled>
+                                            </div>
+                                            <div class="form-text">
+                                                <span class="text-danger">This will be stored as Stock Price</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Purchase GST Calculation Preview -->
+                                        <div class="col-md-12 mt-2" id="purchaseGstPreview" style="display:none;">
+                                            <div class="alert alert-info py-2">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Base Purchase Price:</span>
+                                                    <strong id="purchaseBaseDisplay">₹0.00</strong>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <span>GST Amount (<?= $gst_rate_percentage ?? 0 ?>%):</span>
+                                                    <strong id="purchaseGstAmountDisplay">₹0.00</strong>
+                                                </div>
+                                                <hr class="my-1">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Final Purchase Price:</span>
+                                                    <strong class="text-success" id="purchaseFinalDisplay">₹0.00</strong>
                                                 </div>
                                             </div>
                                         </div>
@@ -960,57 +953,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </h6>
                                         </div>
 
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Type</strong></label>
-                                            <select name="retail_price_type" id="retailPriceType" class="form-select" onchange="updateRetailPriceUnit(); calculateRetailPrice()">
-                                                <option value="percentage" <?= ($_POST['retail_price_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
-                                                <option value="fixed" <?= ($_POST['retail_price_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Value</strong></label>
-                                            <div class="input-group">
-                                                <input type="number" step="0.01" min="0" name="retail_price_value" 
-                                                       class="form-control text-end" 
-                                                       value="<?= htmlspecialchars($_POST['retail_price_value'] ?? '0') ?>"
-                                                       id="retailPriceValue"
-                                                       oninput="calculateRetailPrice()">
-                                                <span class="input-group-text">
-                                                    <span id="retailPriceUnit">%</span>
-                                                </span>
-                                            </div>
-                                            <div class="form-text" id="retailMarkupText">
-                                                Markup: ₹0.00
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Sale Price / Retail Price <span class="text-danger">*</span></strong></label>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Base Retail Price (Without GST) <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="retail_price" 
+                                                <input type="number" step="0.01" min="0" name="retail_price_base" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($_POST['retail_price'] ?? '') ?>" 
-                                                       id="retailPrice" required
-                                                       oninput="onManualRetailPriceChange()">
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearManualRetailPrice()" title="Clear manual entry">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
+                                                       value="<?= htmlspecialchars($_POST['retail_price_base'] ?? '') ?>" 
+                                                       id="retailPriceBase" required
+                                                       oninput="calculateAllGST()">
                                             </div>
-                                            <div class="form-text" id="retailPriceText">
-                                                Based on Final Purchase Price (with GST) + markup
+                                            <div class="form-text">Enter the base retail price without GST</div>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Final Retail Price (With GST)</strong></label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="text" class="form-control form-control-lg text-end" 
+                                                       id="finalRetailPriceDisplay" readonly disabled>
+                                            </div>
+                                            <div class="form-text">
+                                                <span class="text-success">This will be the selling price</span>
                                             </div>
                                         </div>
 
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Profit Margin</strong></label>
-                                            <div class="input-group">
-                                                <input type="text" class="form-control text-end" id="retailProfitMargin" readonly>
-                                                <span class="input-group-text">%</span>
+                                        <!-- Retail GST Calculation Preview -->
+                                        <div class="col-md-12 mt-2" id="retailGstPreview" style="display:none;">
+                                            <div class="alert alert-info py-2">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Base Retail Price:</span>
+                                                    <strong id="retailBaseDisplay">₹0.00</strong>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <span>GST Amount (<?= $gst_rate_percentage ?? 0 ?>%):</span>
+                                                    <strong id="retailGstAmountDisplay">₹0.00</strong>
+                                                </div>
+                                                <hr class="my-1">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Final Retail Price:</span>
+                                                    <strong class="text-success" id="retailFinalDisplay">₹0.00</strong>
+                                                </div>
                                             </div>
-                                            <div class="form-text" id="retailProfitAmountText">
-                                                Profit: ₹0.00
+                                        </div>
+
+                                        <!-- Profit Margin Display -->
+                                        <div class="col-md-12 mt-3">
+                                            <div class="alert alert-success py-2">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span><i class="bx bx-trending-up me-1"></i> Profit Margin:</span>
+                                                    <div>
+                                                        <span class="fw-bold" id="profitMarginDisplay">0.00%</span>
+                                                        <span class="ms-3">Profit Amount: <strong id="profitAmountDisplay">₹0.00</strong></span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -1166,13 +1162,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <ul class="list-unstyled mb-0">
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 1:</strong> Select GST rate and type (Exclusive/Inclusive)</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter Base Purchase Price (without GST)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> GST will be calculated automatically</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 4:</strong> Final Purchase Price (with GST) will be stored as Stock Price</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 5:</strong> Enter Retail markup → Retail Price auto-calculated</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Example:</strong> Base Price ₹100 + 18% GST = ₹118 Final Price (Stored)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Retail Price:</strong> ₹118 + 10% markup = ₹129.80</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> Enter Base Retail Price (without GST)</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 4:</strong> GST will be calculated automatically for both prices</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 5:</strong> Final Purchase Price (with GST) will be stored as Stock Price</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Example:</strong> Base Purchase ₹100, Base Retail ₹150 + 18% GST = Purchase ₹118, Retail ₹177</li>
+                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin:</strong> ((Final Retail - Final Purchase) / Final Retail) × 100</li>
                                         <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Secondary Unit:</strong> Convert primary units (coil) to secondary units (mtr)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin:</strong> ((Retail Price - Final Purchase Price) / Retail Price) × 100</li>
                                         <li><i class="bx bx-check text-success me-1"></i> <strong>Note:</strong> MRP and Discount are not used for this business type</li>
                                     </ul>
                                 </div>
@@ -1314,8 +1309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php include('includes/rightbar.php'); ?>
 <?php include('includes/scripts.php'); ?>
 <script>
-// Track manual entries
-let manualRetailPrice = false;
+// Global variables
 let gstRate = 0;
 let gstType = 'exclusive';
 
@@ -1378,194 +1372,157 @@ function updateGSTType() {
     if (gstToggle && gstToggle.checked) {
         gstType = 'exclusive';
         if (gstTypeLabel) gstTypeLabel.textContent = 'GST Exclusive';
-        if (gstTypeDescription) gstTypeDescription.textContent = 'GST will be added to Purchase Price';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST will be added to prices';
         if (gstTypeHidden) gstTypeHidden.value = 'exclusive';
     } else {
         gstType = 'inclusive';
         if (gstTypeLabel) gstTypeLabel.textContent = 'GST Inclusive';
-        if (gstTypeDescription) gstTypeDescription.textContent = 'GST is included in Purchase Price';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST is included in prices';
         if (gstTypeHidden) gstTypeHidden.value = 'inclusive';
     }
     
-    calculateGST();
+    calculateAllGST();
 }
 
-// Calculate GST based on selected rate and type
-function calculateGST() {
+// Calculate all GST (both purchase and retail)
+function calculateAllGST() {
     const gstSelect = document.getElementById('gstSelect');
     const selectedOption = gstSelect ? gstSelect.options[gstSelect.selectedIndex] : null;
-    const basePrice = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
-    const gstPreview = document.getElementById('gstCalculationPreview');
-    const finalPurchasePriceSpan = document.getElementById('finalPurchasePrice');
-    const gstCalculationDescription = document.getElementById('gstCalculationDescription');
-    const gstAmountDisplay = document.getElementById('gstAmountDisplay');
-    const gstRateDisplay = document.getElementById('gstRateDisplay');
-    const basePriceDisplay = document.getElementById('basePriceDisplay');
+    const purchaseBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
+    const retailBase = parseFloat(document.getElementById('retailPriceBase').value) || 0;
     
     gstRate = 0;
     
-    if (selectedOption && selectedOption.value && basePrice > 0) {
+    if (selectedOption && selectedOption.value) {
         gstRate = parseFloat(selectedOption.getAttribute('data-rate')) || 0;
-        
-        if (gstPreview) gstPreview.style.display = 'block';
-        if (basePriceDisplay) basePriceDisplay.textContent = '₹' + basePrice.toFixed(2);
-        if (gstRateDisplay) gstRateDisplay.textContent = gstRate.toFixed(2) + '%';
+    }
+    
+    // Calculate Purchase GST
+    calculatePurchaseGST(purchaseBase, gstRate);
+    
+    // Calculate Retail GST
+    calculateRetailGST(retailBase, gstRate);
+    
+    // Calculate Profit Margin
+    calculateProfitMargin();
+    
+    // Calculate Secondary Prices
+    calculateSecondaryPrices();
+}
+
+// Calculate Purchase GST
+function calculatePurchaseGST(basePrice, rate) {
+    const purchasePreview = document.getElementById('purchaseGstPreview');
+    const purchaseBaseDisplay = document.getElementById('purchaseBaseDisplay');
+    const purchaseGstAmountDisplay = document.getElementById('purchaseGstAmountDisplay');
+    const purchaseFinalDisplay = document.getElementById('purchaseFinalDisplay');
+    const finalPurchasePriceDisplay = document.getElementById('finalPurchasePriceDisplay');
+    
+    if (basePrice > 0 && rate > 0) {
+        if (purchasePreview) purchasePreview.style.display = 'block';
         
         let gstAmount = 0;
         let finalPrice = basePrice;
         
         if (gstType === 'exclusive') {
-            gstAmount = basePrice * (gstRate / 100);
+            gstAmount = basePrice * (rate / 100);
             finalPrice = basePrice + gstAmount;
-            
-            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
-            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + finalPrice.toFixed(2);
-            if (gstCalculationDescription) {
-                gstCalculationDescription.innerHTML = 
-                    'Base Price (₹' + basePrice.toFixed(2) + ') + GST (₹' + gstAmount.toFixed(2) + ') = Final Price (₹' + finalPrice.toFixed(2) + ')';
-            }
         } else {
-            gstAmount = (basePrice * gstRate) / (100 + gstRate);
-            
-            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
-            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
-            if (gstCalculationDescription) {
-                gstCalculationDescription.innerHTML = 
-                    'Base Price (₹' + basePrice.toFixed(2) + ') includes GST of ₹' + gstAmount.toFixed(2) + ' (' + gstRate.toFixed(2) + '%)';
-            }
+            gstAmount = (basePrice * rate) / (100 + rate);
+            finalPrice = basePrice;
         }
         
-        calculateRetailPrice();
-        
+        if (purchaseBaseDisplay) purchaseBaseDisplay.textContent = '₹' + basePrice.toFixed(2);
+        if (purchaseGstAmountDisplay) purchaseGstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
+        if (purchaseFinalDisplay) purchaseFinalDisplay.textContent = '₹' + finalPrice.toFixed(2);
+        if (finalPurchasePriceDisplay) finalPurchasePriceDisplay.value = '₹' + finalPrice.toFixed(2);
     } else {
-        if (gstPreview) gstPreview.style.display = 'none';
-        if (finalPurchasePriceSpan && basePrice > 0) {
-            finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
+        if (purchasePreview) purchasePreview.style.display = 'none';
+        if (finalPurchasePriceDisplay && basePrice > 0) {
+            finalPurchasePriceDisplay.value = '₹' + basePrice.toFixed(2);
+        } else if (finalPurchasePriceDisplay) {
+            finalPurchasePriceDisplay.value = '';
         }
-        calculateRetailPrice();
     }
 }
 
-function clearPurchasePrice() {
-    document.getElementById('purchasePriceBase').value = '';
-    calculateGST();
-}
-
-function clearManualRetailPrice() {
-    manualRetailPrice = false;
-    document.getElementById('retailPrice').value = '';
-    calculateRetailPrice();
-}
-
-function onManualRetailPriceChange() {
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    if (retailPrice > 0) {
-        manualRetailPrice = true;
-                document.getElementById('retailPriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('retailPriceText').style.color = '#0d6efd';
-        calculateRetailPrice();
-    }
-}
-
-// Calculate Retail Price based on Final Purchase Price and Retail Markup
-function calculateRetailPrice() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPriceType = document.getElementById('retailPriceType');
-    const retailPriceValue = parseFloat(document.getElementById('retailPriceValue').value) || 0;
-    const retailPriceInput = document.getElementById('retailPrice');
-    const retailMarkupText = document.getElementById('retailMarkupText');
-    const retailPriceText = document.getElementById('retailPriceText');
+// Calculate Retail GST
+function calculateRetailGST(basePrice, rate) {
+    const retailPreview = document.getElementById('retailGstPreview');
+    const retailBaseDisplay = document.getElementById('retailBaseDisplay');
+    const retailGstAmountDisplay = document.getElementById('retailGstAmountDisplay');
+    const retailFinalDisplay = document.getElementById('retailFinalDisplay');
+    const finalRetailPriceDisplay = document.getElementById('finalRetailPriceDisplay');
     
-    let markupAmount = 0;
-    let calculatedRetailPrice = finalPurchasePrice;
-    
-    if (finalPurchasePrice > 0 && !manualRetailPrice) {
-        if (retailPriceValue > 0 && retailPriceType) {
-            if (retailPriceType.value === 'percentage') {
-                markupAmount = finalPurchasePrice * retailPriceValue / 100;
-                calculatedRetailPrice = finalPurchasePrice + markupAmount;
-                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${retailPriceValue}%)`;
-            } else {
-                markupAmount = retailPriceValue;
-                calculatedRetailPrice = finalPurchasePrice + retailPriceValue;
-                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
-            }
-            
-            if (retailPriceInput) retailPriceInput.value = calculatedRetailPrice.toFixed(2);
-            if (retailPriceText) {
-                retailPriceText.innerHTML = `Based on Final Purchase Price (with GST) + markup`;
-                retailPriceText.style.color = '#198754';
-            }
-        } else {
-            if (retailPriceInput) retailPriceInput.value = finalPurchasePrice.toFixed(2);
-            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
-            if (retailPriceText) {
-                retailPriceText.innerHTML = `Same as Final Purchase Price (no markup)`;
-                retailPriceText.style.color = '#6c757d';
-            }
-        }
-    } else if (finalPurchasePrice > 0 && manualRetailPrice && retailPriceInput) {
-        const currentRetailPrice = parseFloat(retailPriceInput.value) || 0;
+    if (basePrice > 0 && rate > 0) {
+        if (retailPreview) retailPreview.style.display = 'block';
         
-        if (currentRetailPrice > finalPurchasePrice) {
-            markupAmount = currentRetailPrice - finalPurchasePrice;
+        let gstAmount = 0;
+        let finalPrice = basePrice;
+        
+        if (gstType === 'exclusive') {
+            gstAmount = basePrice * (rate / 100);
+            finalPrice = basePrice + gstAmount;
+        } else {
+            gstAmount = (basePrice * rate) / (100 + rate);
+            finalPrice = basePrice;
+        }
+        
+        if (retailBaseDisplay) retailBaseDisplay.textContent = '₹' + basePrice.toFixed(2);
+        if (retailGstAmountDisplay) retailGstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
+        if (retailFinalDisplay) retailFinalDisplay.textContent = '₹' + finalPrice.toFixed(2);
+        if (finalRetailPriceDisplay) finalRetailPriceDisplay.value = '₹' + finalPrice.toFixed(2);
+    } else {
+        if (retailPreview) retailPreview.style.display = 'none';
+        if (finalRetailPriceDisplay && basePrice > 0) {
+            finalRetailPriceDisplay.value = '₹' + basePrice.toFixed(2);
+        } else if (finalRetailPriceDisplay) {
+            finalRetailPriceDisplay.value = '';
+        }
+    }
+}
+
+// Calculate Profit Margin
+function calculateProfitMargin() {
+    const finalPurchaseDisplay = document.getElementById('finalPurchasePriceDisplay');
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const profitMarginDisplay = document.getElementById('profitMarginDisplay');
+    const profitAmountDisplay = document.getElementById('profitAmountDisplay');
+    
+    if (finalPurchaseDisplay && finalRetailDisplay) {
+        const purchasePrice = parseFloat(finalPurchaseDisplay.value.replace('₹', '')) || 0;
+        const retailPrice = parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0;
+        
+        if (purchasePrice > 0 && retailPrice > 0) {
+            const profitAmount = retailPrice - purchasePrice;
+            const profitMargin = retailPrice > 0 ? (profitAmount / retailPrice) * 100 : 0;
             
-            if (retailPriceType) {
-                if (retailPriceType.value === 'percentage') {
-                    const calculatedPercentage = (markupAmount / finalPurchasePrice) * 100;
-                    document.getElementById('retailPriceValue').value = calculatedPercentage.toFixed(2);
-                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${calculatedPercentage.toFixed(2)}%)`;
+            if (profitMarginDisplay) {
+                profitMarginDisplay.textContent = profitMargin.toFixed(2) + '%';
+                // Color coding
+                if (profitMargin > 20) {
+                    profitMarginDisplay.style.color = '#198754';
+                } else if (profitMargin > 10) {
+                    profitMarginDisplay.style.color = '#fd7e14';
+                } else if (profitMargin > 0) {
+                    profitMarginDisplay.style.color = '#0d6efd';
                 } else {
-                    document.getElementById('retailPriceValue').value = markupAmount.toFixed(2);
-                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
+                    profitMarginDisplay.style.color = '#dc3545';
+                }
+            }
+            
+            if (profitAmountDisplay) {
+                profitAmountDisplay.textContent = '₹' + profitAmount.toFixed(2);
+                if (profitAmount > 0) {
+                    profitAmountDisplay.style.color = '#198754';
+                } else {
+                    profitAmountDisplay.style.color = '#dc3545';
                 }
             }
         } else {
-            document.getElementById('retailPriceValue').value = '0';
-            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
+            if (profitMarginDisplay) profitMarginDisplay.textContent = '0.00%';
+            if (profitAmountDisplay) profitAmountDisplay.textContent = '₹0.00';
         }
-        
-        if (retailPriceText) {
-            retailPriceText.innerHTML = `Manually entered - Markup calculated`;
-            retailPriceText.style.color = '#0d6efd';
-        }
-    }
-    
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
-}
-
-// Calculate Profit Margins
-function calculateProfitMargins() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const retailProfitMarginInput = document.getElementById('retailProfitMargin');
-    const retailProfitAmountText = document.getElementById('retailProfitAmountText');
-    
-    if (finalPurchasePrice > 0 && retailPrice > 0) {
-        const retailProfit = retailPrice - finalPurchasePrice;
-        const retailProfitMargin = retailPrice > 0 ? (retailProfit / retailPrice) * 100 : 0;
-        
-        if (retailProfitMarginInput) retailProfitMarginInput.value = retailProfitMargin.toFixed(2);
-        if (retailProfitAmountText) retailProfitAmountText.innerHTML = `Profit: ₹${retailProfit.toFixed(2)}`;
-        
-        if (retailProfitMargin > 20) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#198754';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#198754';
-        } else if (retailProfitMargin > 10) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#fd7e14';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#fd7e14';
-        } else if (retailProfitMargin > 0) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#0d6efd';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#0d6efd';
-        } else {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#dc3545';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#dc3545';
-        }
-    } else {
-        if (retailProfitMarginInput) retailProfitMarginInput.value = '';
-        if (retailProfitAmountText) retailProfitAmountText.innerHTML = 'Profit: ₹0.00';
     }
 }
 
@@ -1575,7 +1532,8 @@ function calculateSecondaryPrices() {
     const conversion = parseFloat(document.getElementById('secUnitConversion')?.value) || 0;
     const extraType = document.getElementById('secUnitPriceType')?.value || 'fixed';
     const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge')?.value) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const retailPrice = finalRetailDisplay ? parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0 : 0;
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
@@ -1616,42 +1574,8 @@ function calculateSecondaryPrices() {
                 ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
                 : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
         }
-
-        if (conversion === 0) {
-            showSweetToast('Invalid Conversion', 'Conversion rate cannot be 0', 'warning');
-            const secUnitConversionField = document.getElementById('secUnitConversion');
-            if (secUnitConversionField) secUnitConversionField.value = '';
-            previewBox.style.display = 'none';
-        }
     } else if (previewBox) {
         previewBox.style.display = 'none';
-    }
-}
-
-// Validate price hierarchy
-function validatePriceHierarchy() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const retailPriceText = document.getElementById('retailPriceText');
-    
-    if (retailPriceText) retailPriceText.style.color = '';
-    
-    if (finalPurchasePrice > 0 && retailPrice > 0) {
-        if (retailPrice <= finalPurchasePrice) {
-            if (retailPriceText) {
-                retailPriceText.innerHTML = '<span class="text-danger">Error: Must be > Final Purchase Price (with GST)</span>';
-                retailPriceText.style.color = '#dc3545';
-            }
-        }
-    }
-}
-
-// Update retail price unit display
-function updateRetailPriceUnit() {
-    const retailPriceType = document.getElementById('retailPriceType');
-    const retailPriceUnit = document.getElementById('retailPriceUnit');
-    if (retailPriceType && retailPriceUnit) {
-        retailPriceUnit.textContent = retailPriceType.value === 'percentage' ? '%' : '₹';
     }
 }
 
@@ -1695,9 +1619,9 @@ async function populateSampleData() {
         document.getElementById('secUnitConversion').value = '10';
         document.getElementById('secUnitExtraCharge').value = '0.50';
         document.getElementById('purchasePriceBase').value = '100.00';
-        document.getElementById('retailPriceValue').value = '10';
+        document.getElementById('retailPriceBase').value = '150.00';
         document.querySelector('input[name="min_stock_level"]').value = '20';
-        document.querySelector('textarea[name="description"]').value = 'Sample product with GST calculation and secondary unit conversion.';
+        document.querySelector('textarea[name="description"]').value = 'Sample product with GST calculation on both purchase and retail prices.';
         document.querySelector('input[name="image_alt_text"]').value = 'Sample product';
         
         document.getElementById('warrantyCheckbox').checked = true;
@@ -1709,9 +1633,7 @@ async function populateSampleData() {
         
         generateBarcode();
         
-        manualRetailPrice = false;
-        
-        calculateGST();
+        calculateAllGST();
         calculateSecondaryPrices();
         
         await showSweetSuccess('Sample Data Loaded', 'Sample product data has been populated successfully!');
@@ -1721,7 +1643,7 @@ async function populateSampleData() {
 // Form submission validation
 document.getElementById('addProductForm')?.addEventListener('submit', async function(e) {
     const purchasePriceBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    const retailPriceBase = parseFloat(document.getElementById('retailPriceBase').value) || 0;
     const gstSelect = document.getElementById('gstSelect');
     const gstToggle = document.getElementById('gstTypeToggle');
     const gstType = gstToggle && gstToggle.checked ? 'exclusive' : 'inclusive';
@@ -1737,17 +1659,21 @@ document.getElementById('addProductForm')?.addEventListener('submit', async func
         errors.push('Base purchase price must be greater than 0.');
     }
     
-    if (retailPrice <= 0) {
-        errors.push('Retail price must be greater than 0.');
+    if (retailPriceBase <= 0) {
+        errors.push('Base retail price must be greater than 0.');
     }
     
     if (gstType === 'exclusive' && gstSelect && gstSelect.value === '') {
         errors.push('Please select GST rate when GST is Exclusive.');
     }
     
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    if (finalPurchasePrice > 0 && retailPrice > 0 && retailPrice <= finalPurchasePrice) {
-        errors.push('Retail price must be greater than Final Purchase Price (with GST).');
+    const finalPurchaseDisplay = document.getElementById('finalPurchasePriceDisplay');
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const finalPurchasePrice = finalPurchaseDisplay ? parseFloat(finalPurchaseDisplay.value.replace('₹', '')) || 0 : 0;
+    const finalRetailPrice = finalRetailDisplay ? parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0 : 0;
+    
+    if (finalPurchasePrice > 0 && finalRetailPrice > 0 && finalRetailPrice <= finalPurchasePrice) {
+        errors.push('Final Retail Price (with GST) must be greater than Final Purchase Price (with GST).');
     }
     
     if (secondaryUnit && conversion <= 0) {
@@ -1888,29 +1814,9 @@ if (productImageInput) {
 }
 
 // Event listeners
-document.getElementById('purchasePriceBase')?.addEventListener('input', function() {
-    calculateGST();
-});
-
-document.getElementById('gstSelect')?.addEventListener('change', function() {
-    calculateGST();
-});
-
-document.getElementById('retailPriceValue')?.addEventListener('input', function() {
-    if (manualRetailPrice) {
-        manualRetailPrice = false;
-    }
-    calculateRetailPrice();
-});
-
-document.getElementById('retailPriceType')?.addEventListener('change', function() {
-    if (manualRetailPrice) {
-        manualRetailPrice = false;
-    }
-    updateRetailPriceUnit();
-    calculateRetailPrice();
-});
-
+document.getElementById('purchasePriceBase')?.addEventListener('input', calculateAllGST);
+document.getElementById('retailPriceBase')?.addEventListener('input', calculateAllGST);
+document.getElementById('gstSelect')?.addEventListener('change', calculateAllGST);
 document.getElementById('secUnitPriceType')?.addEventListener('change', updateSecUnitExtraUnit);
 document.getElementById('secUnitConversion')?.addEventListener('input', calculateSecondaryPrices);
 document.getElementById('secUnitExtraCharge')?.addEventListener('input', calculateSecondaryPrices);
@@ -1927,20 +1833,13 @@ document.addEventListener('DOMContentLoaded', function() {
     updateGSTType();
     toggleReferralBox();
     updateCommissionUnit();
-    updateRetailPriceUnit();
     updateSecUnitExtraUnit();
     toggleWarrantyFields();
     
     const purchasePriceBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
-    if (purchasePriceBase > 0) {
-        calculateGST();
-    }
-    
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    if (retailPrice > 0) {
-        manualRetailPrice = true;
-        document.getElementById('retailPriceText').innerHTML = 'Manually entered';
-        document.getElementById('retailPriceText').style.color = '#0d6efd';
+    const retailPriceBase = parseFloat(document.getElementById('retailPriceBase').value) || 0;
+    if (purchasePriceBase > 0 || retailPriceBase > 0) {
+        calculateAllGST();
     }
     
     calculateSecondaryPrices();
@@ -2166,7 +2065,7 @@ document.getElementById('quickGSTForm')?.addEventListener('submit', async functi
             
             bootstrap.Modal.getInstance(document.getElementById('gstModal'))?.hide();
             await showSweetSuccess('Success!', 'GST rate added successfully!');
-            calculateGST();
+            calculateAllGST();
         } else {
             await showSweetError('Error', data.message || 'Failed to add GST rate');
         }
@@ -2228,25 +2127,8 @@ document.addEventListener('DOMContentLoaded', function() {
     max-width: 100%;
     max-height: 200px;
 }
-#retailMarkupText, #retailPriceText, #retailProfitAmountText {
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-#retailMarkupText {
-    color: #fd7e14;
-}
-#retailPriceText {
-    color: #6f42c1;
-}
-#retailProfitAmountText {
-    color: #20c997;
-}
 .border-bottom {
     border-color: #dee2e6 !important;
-}
-#retailProfitMargin {
-    background-color: #f8f9fa;
-    cursor: not-allowed;
 }
 .alert-info {
     border-left: 4px solid #0dcaf0;
@@ -2274,22 +2156,19 @@ document.addEventListener('DOMContentLoaded', function() {
     color: #fd7e14;
     font-size: 0.85rem;
 }
-#gstCalculationPreview .alert-info {
+#purchaseGstPreview .alert-info, #retailGstPreview .alert-info {
     background-color: #f0f9ff;
     border: 1px solid #b6e0fe;
 }
-#gstCalculationPreview h6 {
-    color: #0d6efd;
-    font-size: 0.9rem;
-}
-#basePriceDisplay, #gstRateDisplay, #gstAmountDisplay {
-    color: #6c757d;
-    font-weight: 500;
-}
-#finalPurchasePrice {
-    color: #198754;
-    font-size: 1.2rem;
+#finalPurchasePriceDisplay, #finalRetailPriceDisplay {
+    background-color: #f8f9fa !important;
     font-weight: 600;
+}
+#finalPurchasePriceDisplay {
+    color: #dc3545 !important;
+}
+#finalRetailPriceDisplay {
+    color: #198754 !important;
 }
 .form-check.form-switch .form-check-input {
     width: 3.5em;
@@ -2321,6 +2200,12 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 .modal-header .btn-close {
     filter: brightness(0) invert(1);
+}
+#profitMarginDisplay {
+    font-size: 1.2rem;
+}
+#profitAmountDisplay {
+    font-size: 1rem;
 }
 </style>
 </body>

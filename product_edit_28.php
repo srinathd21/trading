@@ -32,6 +32,7 @@ if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager','stock_manager', 
     exit();
 }
 
+// Get product ID from URL
 $product_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if (!$product_id) {
@@ -40,31 +41,9 @@ if (!$product_id) {
     exit();
 }
 
-// Fetch product data
-try {
-    $stmt = $pdo->prepare("
-        SELECT p.*, c.category_name, sc.subcategory_name 
-        FROM products p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
-        WHERE p.id = ? AND p.business_id = ?
-    ");
-    $stmt->execute([$product_id, $current_business_id]);
-    $product = $stmt->fetch();
-
-    if (!$product) {
-        set_flash_message('error', 'Product not found');
-        header('Location: products.php');
-        exit();
-    }
-} catch (Exception $e) {
-    set_flash_message('error', 'Failed to load product data');
-    header('Location: products.php');
-    exit();
-}
-
 $success = $error = '';
 $categories = $gst_rates = [];
+$product = null;
 
 // Image upload configuration
 $upload_dir = 'uploads/products/';
@@ -96,81 +75,77 @@ try {
     ");
     $gst_rates->execute([$current_business_id]);
     $gst_rates = $gst_rates->fetchAll();
-} catch (Exception $e) {
-    $error = "Failed to load categories/GST rates: " . $e->getMessage();
-}
-
-// Thumbnail function
-function createThumbnail($source_path, $dest_path, $max_width = 200, $max_height = 200) {
-    try {
-        $image_info = getimagesize($source_path);
-        if (!$image_info) return false;
-        list($orig_width, $orig_height, $image_type) = $image_info;
-
-        $ratio = min($max_width / $orig_width, $max_height / $orig_height);
-        $new_width = (int)($orig_width * $ratio);
-        $new_height = (int)($orig_height * $ratio);
-
-        switch ($image_type) {
-            case IMAGETYPE_JPEG: $source_image = imagecreatefromjpeg($source_path); break;
-            case IMAGETYPE_PNG: $source_image = imagecreatefrompng($source_path); break;
-            case IMAGETYPE_GIF: $source_image = imagecreatefromgif($source_path); break;
-            case IMAGETYPE_WEBP: $source_image = imagecreatefromwebp($source_path); break;
-            default: return false;
-        }
-
-        $thumbnail = imagecreatetruecolor($new_width, $new_height);
-
-        if ($image_type == IMAGETYPE_PNG || $image_type == IMAGETYPE_GIF) {
-            imagecolortransparent($thumbnail, imagecolorallocatealpha($thumbnail, 0, 0, 0, 127));
-            imagealphablending($thumbnail, false);
-            imagesavealpha($thumbnail, true);
-        }
-
-        imagecopyresampled($thumbnail, $source_image, 0, 0, 0, 0, $new_width, $new_height, $orig_width, $orig_height);
-
-        switch ($image_type) {
-            case IMAGETYPE_JPEG: imagejpeg($thumbnail, $dest_path, 85); break;
-            case IMAGETYPE_PNG: imagepng($thumbnail, $dest_path, 9); break;
-            case IMAGETYPE_GIF: imagegif($thumbnail, $dest_path); break;
-            case IMAGETYPE_WEBP: imagewebp($thumbnail, $dest_path, 85); break;
-        }
-
-        imagedestroy($source_image);
-        imagedestroy($thumbnail);
-        return true;
-    } catch (Exception $e) {
-        error_log("Thumbnail error: " . $e->getMessage());
-        return false;
+    
+    // Fetch product data
+    $product_stmt = $pdo->prepare("
+        SELECT p.*, 
+               c.category_name,
+               s.subcategory_name,
+               g.hsn_code,
+               g.cgst_rate, g.sgst_rate, g.igst_rate,
+               (g.cgst_rate + g.sgst_rate + g.igst_rate) as total_gst_rate
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN subcategories s ON p.subcategory_id = s.id
+        LEFT JOIN gst_rates g ON p.gst_id = g.id
+        WHERE p.id = ? AND p.business_id = ?
+    ");
+    $product_stmt->execute([$product_id, $current_business_id]);
+    $product = $product_stmt->fetch();
+    
+    if (!$product) {
+        set_flash_message('error', 'Product not found');
+        header('Location: products.php');
+        exit();
     }
-}
-
-// Calculate base price from stock price (reverse GST calculation)
-$stock_price_with_gst = $product['stock_price'];
-$gst_rate_percentage = 0;
-$gst_amount = 0;
-$base_price = $stock_price_with_gst;
-$final_purchase_price = $stock_price_with_gst;
-
-if ($product['gst_id']) {
-    $gst_stmt = $pdo->prepare("SELECT cgst_rate, sgst_rate, igst_rate FROM gst_rates WHERE id = ?");
-    $gst_stmt->execute([$product['gst_id']]);
-    $gst_row = $gst_stmt->fetch();
-    if ($gst_row) {
-        $gst_rate_percentage = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
-        
-        if ($product['gst_type'] === 'exclusive') {
-            // Reverse: Stock price includes GST, calculate base price
-            $base_price = $stock_price_with_gst / (1 + ($gst_rate_percentage / 100));
-            $gst_amount = $stock_price_with_gst - $base_price;
-            $final_purchase_price = $stock_price_with_gst;
+    
+    // Calculate base prices from stored final prices (with GST)
+    $gst_rate = $product['total_gst_rate'] ?? 0;
+    $gst_type = $product['gst_type'] ?? 'exclusive';
+    
+    if ($gst_rate > 0) {
+        if ($gst_type === 'exclusive') {
+            // Final price = Base price + GST
+            // Base price = Final price / (1 + GST rate/100)
+            $purchase_price_base = $product['stock_price'] / (1 + ($gst_rate / 100));
+            $retail_price_base = $product['retail_price'] / (1 + ($gst_rate / 100));
         } else {
-            // GST Inclusive
-            $gst_amount = ($stock_price_with_gst * $gst_rate_percentage) / (100 + $gst_rate_percentage);
-            $base_price = $stock_price_with_gst - $gst_amount;
-            $final_purchase_price = $stock_price_with_gst;
+            // Final price = Base price (GST included)
+            // Base price = Final price
+            $purchase_price_base = $product['stock_price'];
+            $retail_price_base = $product['retail_price'];
         }
+    } else {
+        $purchase_price_base = $product['stock_price'];
+        $retail_price_base = $product['retail_price'];
     }
+    
+    // Fetch subcategories for the selected category
+    $subcategories = [];
+    if ($product['category_id']) {
+        $subcat_stmt = $pdo->prepare("
+            SELECT id, subcategory_name 
+            FROM subcategories 
+            WHERE category_id = ? AND business_id = ? AND status = 'active'
+            ORDER BY subcategory_name
+        ");
+        $subcat_stmt->execute([$product['category_id'], $current_business_id]);
+        $subcategories = $subcat_stmt->fetchAll();
+    }
+    
+    // Get current stock quantity
+    $stock_stmt = $pdo->prepare("
+        SELECT quantity, total_secondary_units 
+        FROM product_stocks 
+        WHERE product_id = ? AND shop_id = ?
+    ");
+    $stock_stmt->execute([$product_id, $current_shop_id]);
+    $current_stock = $stock_stmt->fetch();
+    $current_quantity = $current_stock['quantity'] ?? 0;
+    $current_secondary_units = $current_stock['total_secondary_units'] ?? null;
+    
+} catch (Exception $e) {
+    $error = "Failed to load product data: " . $e->getMessage();
 }
 
 $hide_wholesale = true;
@@ -189,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit = $_POST['unit'] ?? 'pcs';
         
         // GST fields
-        $gst_type = $_POST['gst_type'] ?? 'inclusive';
+        $gst_type = $_POST['gst_type'] ?? 'exclusive';
         $gst_id = !empty($_POST['gst_id']) ? (int)$_POST['gst_id'] : null;
 
         // Secondary unit fields
@@ -205,14 +180,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $warranty_description = trim($_POST['warranty_description'] ?? '');
         $is_warranty_applicable = isset($_POST['is_warranty_applicable']) ? 1 : 0;
 
-        // Purchase Price (Base price without GST) - User enters this
+        // Purchase Price (Base price without GST)
         $purchase_price_base = (float)($_POST['purchase_price_base'] ?? 0);
         
+        // Retail Price (Base price without GST)
+        $retail_price_base = (float)($_POST['retail_price_base'] ?? 0);
+        
         // Fetch GST rates
-        $gst_rate_percentage_new = 0;
-        $gst_amount_new = 0;
+        $gst_rate_percentage = 0;
         $hsn_code = '';
-        $final_purchase_price_new = $purchase_price_base;
+        
+        // Final purchase price with GST
+        $purchase_gst_amount = 0;
+        $final_purchase_price = $purchase_price_base;
+        
+        // Final retail price with GST
+        $retail_gst_amount = 0;
+        $final_retail_price = $retail_price_base;
         
         if ($gst_id) {
             $gst_stmt = $pdo->prepare("SELECT hsn_code, cgst_rate, sgst_rate, igst_rate FROM gst_rates WHERE id = ? AND business_id = ?");
@@ -220,39 +204,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $gst_row = $gst_stmt->fetch();
             if ($gst_row) {
                 $hsn_code = $gst_row['hsn_code'] ?? '';
-                $gst_rate_percentage_new = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
+                $gst_rate_percentage = $gst_row['cgst_rate'] + $gst_row['sgst_rate'] + $gst_row['igst_rate'];
                 
                 if ($gst_type === 'exclusive') {
-                    // GST Exclusive: Add GST to Purchase Price
-                    $gst_amount_new = $purchase_price_base * ($gst_rate_percentage_new / 100);
-                    $final_purchase_price_new = $purchase_price_base + $gst_amount_new;
+                    $purchase_gst_amount = $purchase_price_base * ($gst_rate_percentage / 100);
+                    $final_purchase_price = $purchase_price_base + $purchase_gst_amount;
+                    
+                    $retail_gst_amount = $retail_price_base * ($gst_rate_percentage / 100);
+                    $final_retail_price = $retail_price_base + $retail_gst_amount;
                 } else {
-                    // GST Inclusive: Calculate GST from Purchase Price
-                    $gst_amount_new = ($purchase_price_base * $gst_rate_percentage_new) / (100 + $gst_rate_percentage_new);
-                    $final_purchase_price_new = $purchase_price_base;
+                    $purchase_gst_amount = ($purchase_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
+                    $final_purchase_price = $purchase_price_base;
+                    
+                    $retail_gst_amount = ($retail_price_base * $gst_rate_percentage) / (100 + $gst_rate_percentage);
+                    $final_retail_price = $retail_price_base;
                 }
             }
         }
         
-        // Retail Price calculation based on markup on final purchase price
-        $retail_price_type = $_POST['retail_price_type'] ?? 'percentage';
-        $retail_price_value = (float)($_POST['retail_price_value'] ?? 0);
-        $retail_price = (float)($_POST['retail_price'] ?? 0);
-        
-        // Calculate retail price if not manually entered
-        if ($retail_price == 0 && $final_purchase_price_new > 0 && $retail_price_value > 0) {
-            if ($retail_price_type === 'percentage') {
-                $markup_amount = $final_purchase_price_new * $retail_price_value / 100;
-                $retail_price = $final_purchase_price_new + $markup_amount;
-            } else {
-                $retail_price = $final_purchase_price_new + $retail_price_value;
-            }
-        } elseif ($retail_price == 0 && $final_purchase_price_new > 0) {
-            $retail_price = $final_purchase_price_new;
-        }
-        
-        // Wholesale price (hidden but stored same as retail)
-        $wholesale_price = $retail_price;
+        // Wholesale price (same as retail)
+        $wholesale_price = $final_retail_price;
         
         $min_stock_level = (int)($_POST['min_stock_level'] ?? 10);
         $image_alt_text = trim($_POST['image_alt_text'] ?? '');
@@ -260,11 +231,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $referral_type = $_POST['referral_type'] ?? 'percentage';
         $referral_value = (float)($_POST['referral_value'] ?? 0);
         
-        // IMPORTANT: Store the FINAL purchase price (including GST)
-        $stock_price = $final_purchase_price_new;
+        // Stock adjustment fields
+        $stock_adjustment_type = $_POST['stock_adjustment_type'] ?? 'none';
+        $stock_adjustment_quantity = !empty($_POST['stock_adjustment_quantity']) ? (int)$_POST['stock_adjustment_quantity'] : 0;
+        $stock_adjustment_reason = trim($_POST['stock_adjustment_reason'] ?? '');
         
-        $image_path = $product['image_path'];
-        $image_thumbnail_path = $product['image_thumbnail_path'];
+        // Store the FINAL purchase price (including GST) as stock price
+        $stock_price = $final_purchase_price;
+        
+        $image_path = $image_thumbnail_path = null;
+        $image_changed = false;
 
         // Image upload handling
         if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] == UPLOAD_ERR_OK) {
@@ -287,11 +263,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (empty($errors)) {
                 // Delete old images
-                if ($image_path && file_exists('../' . $image_path)) {
-                    @unlink('../' . $image_path);
+                if ($product['image_path'] && file_exists('../' . $product['image_path'])) {
+                    @unlink('../' . $product['image_path']);
                 }
-                if ($image_thumbnail_path && file_exists('../' . $image_thumbnail_path)) {
-                    @unlink('../' . $image_thumbnail_path);
+                if ($product['image_thumbnail_path'] && file_exists('../' . $product['image_thumbnail_path'])) {
+                    @unlink('../' . $product['image_thumbnail_path']);
                 }
                 
                 $unique_name = uniqid('prod_', true) . '_' . time() . '.' . $file_ext;
@@ -305,6 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $image_path = str_replace('../', '', $image_path);
                     $image_thumbnail_path = $image_thumbnail_path ? str_replace('../', '', $image_thumbnail_path) : null;
+                    $image_changed = true;
                 } else {
                     $errors[] = "Upload failed.";
                 }
@@ -315,44 +292,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($error)) {
-            $errors = [];
-            if (empty($product_name)) $errors[] = "Product name required.";
-            if ($purchase_price_base <= 0) $errors[] = "Purchase price must be greater than 0.";
-            if ($retail_price <= 0) $errors[] = "Retail price must be greater than 0.";
+            $validation_errors = [];
+            if (empty($product_name)) $validation_errors[] = "Product name required.";
+            if ($purchase_price_base <= 0) $validation_errors[] = "Purchase price must be greater than 0.";
+            if ($retail_price_base <= 0) $validation_errors[] = "Retail price must be greater than 0.";
             
             // GST validation
             if ($gst_type === 'exclusive' && !$gst_id) {
-                $errors[] = "Please select GST rate when GST is Exclusive.";
+                $validation_errors[] = "Please select GST rate when GST is Exclusive.";
             }
             
             // Price hierarchy validation
-            if ($final_purchase_price_new > 0 && $retail_price > 0 && $retail_price <= $final_purchase_price_new) {
-                $errors[] = "Retail price must be greater than Final Purchase Price.";
+            if ($final_purchase_price > 0 && $final_retail_price > 0 && $final_retail_price <= $final_purchase_price) {
+                $validation_errors[] = "Final Retail Price (with GST) must be greater than Final Purchase Price (with GST).";
             }
 
-            if ($retail_price_value < 0) $errors[] = "Retail markup cannot be negative.";
-
-            if ($referral_enabled && $referral_value <= 0) $errors[] = "Referral value must be > 0.";
-            if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $errors[] = "Referral % cannot exceed 100.";
+            if ($referral_enabled && $referral_value <= 0) $validation_errors[] = "Referral value must be > 0.";
+            if ($referral_enabled && $referral_type === 'percentage' && $referral_value > 100) $validation_errors[] = "Referral % cannot exceed 100.";
 
             // Secondary unit validation
             if ($secondary_unit && $sec_unit_conversion <= 0) {
-                $errors[] = "If secondary unit is specified, conversion rate must be greater than 0.";
+                $validation_errors[] = "If secondary unit is specified, conversion rate must be greater than 0.";
             }
             if (!$secondary_unit && $sec_unit_conversion > 0) {
-                $errors[] = "Please specify secondary unit name if entering conversion rate.";
+                $validation_errors[] = "Please specify secondary unit name if entering conversion rate.";
             }
 
             // Warranty validation
             if ($is_warranty_applicable) {
                 if ($warranty_type === 'none') {
-                    $errors[] = "Please select warranty type if warranty is applicable.";
+                    $validation_errors[] = "Please select warranty type if warranty is applicable.";
                 }
                 if ($warranty_period <= 0) {
-                    $errors[] = "Warranty period must be greater than 0.";
+                    $validation_errors[] = "Warranty period must be greater than 0.";
                 }
                 if ($warranty_period > 120) {
-                    $errors[] = "Warranty period cannot exceed 120 months/10 years.";
+                    $validation_errors[] = "Warranty period cannot exceed 120 months/10 years.";
+                }
+            }
+            
+            // Stock adjustment validation
+            if ($stock_adjustment_type !== 'none' && $stock_adjustment_quantity > 0) {
+                if ($stock_adjustment_type === 'remove' && $stock_adjustment_quantity > $current_quantity) {
+                    $validation_errors[] = "Cannot remove more than current stock ({$current_quantity} units).";
+                }
+                if (empty($stock_adjustment_reason)) {
+                    $validation_errors[] = "Please provide a reason for stock adjustment.";
                 }
             }
 
@@ -360,17 +345,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($barcode)) {
                 $check = $pdo->prepare("SELECT id FROM products WHERE barcode = ? AND business_id = ? AND id != ?");
                 $check->execute([$barcode, $current_business_id, $product_id]);
-                if ($check->fetch()) $errors[] = "Barcode already exists.";
+                if ($check->fetch()) $validation_errors[] = "Barcode already exists.";
             }
             if (!empty($product_code)) {
                 $check = $pdo->prepare("SELECT id FROM products WHERE product_code = ? AND business_id = ? AND id != ?");
                 $check->execute([$product_code, $current_business_id, $product_id]);
-                if ($check->fetch()) $errors[] = "Product code already exists.";
+                if ($check->fetch()) $validation_errors[] = "Product code already exists.";
             }
 
-            if (!empty($errors)) {
-                $error = implode("<br>", $errors);
-                if ($image_path != $product['image_path'] && $image_path) {
+            if (!empty($validation_errors)) {
+                $error = implode("<br>", $validation_errors);
+                if ($image_changed && $image_path) {
                     @unlink('../' . $image_path);
                     if ($image_thumbnail_path) @unlink('../' . $image_thumbnail_path);
                 }
@@ -378,51 +363,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $pdo->beginTransaction();
 
-                    // Update product
-                    $stmt = $pdo->prepare("
-                        UPDATE products SET
-                            product_name = ?,
-                            product_code = ?,
-                            barcode = ?,
-                            image_path = ?,
-                            image_thumbnail_path = ?,
-                            image_alt_text = ?,
-                            category_id = ?,
-                            subcategory_id = ?,
-                            description = ?,
-                            unit_of_measure = ?,
-                            secondary_unit = ?,
-                            sec_unit_conversion = ?,
-                            sec_unit_price_type = ?,
-                            sec_unit_extra_charge = ?,
-                            stock_price = ?,
-                            retail_price = ?,
-                            wholesale_price = ?,
-                            min_stock_level = ?,
-                            gst_id = ?,
-                            hsn_code = ?,
-                            gst_type = ?,
-                            gst_amount = ?,
-                            referral_enabled = ?,
-                            referral_type = ?,
-                            referral_value = ?,
-                            retail_price_type = ?,
-                            retail_price_value = ?,
-                            warranty_type = ?,
-                            warranty_period = ?,
-                            warranty_unit = ?,
-                            warranty_description = ?,
-                            updated_at = NOW()
-                        WHERE id = ? AND business_id = ?
-                    ");
-
-                    $stmt->execute([
+                    // Build update query
+                    $update_fields = [
+                        "product_name = ?",
+                        "product_code = ?",
+                        "barcode = ?",
+                        "category_id = ?",
+                        "subcategory_id = ?",
+                        "description = ?",
+                        "unit_of_measure = ?",
+                        "secondary_unit = ?",
+                        "sec_unit_conversion = ?",
+                        "sec_unit_price_type = ?",
+                        "sec_unit_extra_charge = ?",
+                        "stock_price = ?",
+                        "retail_price = ?",
+                        "wholesale_price = ?",
+                        "min_stock_level = ?",
+                        "gst_id = ?",
+                        "hsn_code = ?",
+                        "gst_type = ?",
+                        "gst_amount = ?",
+                        "referral_enabled = ?",
+                        "referral_type = ?",
+                        "referral_value = ?",
+                        "warranty_type = ?",
+                        "warranty_period = ?",
+                        "warranty_unit = ?",
+                        "warranty_description = ?",
+                        "image_alt_text = ?"
+                    ];
+                    
+                    $params = [
                         $product_name,
                         $product_code ?: null,
                         $barcode ?: null,
-                        $image_path,
-                        $image_thumbnail_path,
-                        $image_alt_text ?: null,
                         $category_id,
                         $subcategory_id,
                         $description ?: null,
@@ -432,42 +407,196 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $sec_unit_price_type,
                         $sec_unit_extra_charge,
                         $stock_price,
-                        $retail_price,
+                        $final_retail_price,
                         $wholesale_price,
                         $min_stock_level,
                         $gst_id,
                         $hsn_code,
                         $gst_type,
-                        $gst_amount_new,
+                        $retail_gst_amount,
                         $referral_enabled,
                         $referral_type,
                         $referral_value,
-                        $retail_price_type,
-                        $retail_price_value,
                         $is_warranty_applicable ? $warranty_type : 'none',
                         $is_warranty_applicable ? $warranty_period : 0,
                         $is_warranty_applicable ? $warranty_unit : 'months',
                         $is_warranty_applicable ? $warranty_description : null,
-                        $product_id,
-                        $current_business_id
-                    ]);
+                        $image_alt_text ?: null
+                    ];
+                    
+                    // Add image paths if changed
+                    if ($image_changed) {
+                        $update_fields[] = "image_path = ?";
+                        $update_fields[] = "image_thumbnail_path = ?";
+                        $params[] = $image_path;
+                        $params[] = $image_thumbnail_path;
+                    }
+                    
+                    $params[] = $product_id;
+                    
+                    $update_sql = "UPDATE products SET " . implode(", ", $update_fields) . " WHERE id = ?";
+                    $update_stmt = $pdo->prepare($update_sql);
+                    $update_stmt->execute($params);
+
+                    // Handle stock adjustment
+                    if ($stock_adjustment_type !== 'none' && $stock_adjustment_quantity > 0) {
+                        $old_quantity = $current_quantity;
+                        
+                        if ($stock_adjustment_type === 'add') {
+                            $new_quantity = $old_quantity + $stock_adjustment_quantity;
+                            $adj_type = 'add';
+                            $reason = $stock_adjustment_reason;
+                        } else {
+                            $new_quantity = $old_quantity - $stock_adjustment_quantity;
+                            $adj_type = 'remove';
+                            $reason = $stock_adjustment_reason;
+                        }
+                        
+                        // Calculate secondary units
+                        $total_secondary_units = null;
+                        if ($sec_unit_conversion && $sec_unit_conversion > 0) {
+                            $total_secondary_units = $new_quantity * $sec_unit_conversion;
+                        }
+                        
+                        // Update product_stocks
+                        $check_stock = $pdo->prepare("SELECT id FROM product_stocks WHERE product_id = ? AND shop_id = ?");
+                        $check_stock->execute([$product_id, $current_shop_id]);
+                        
+                        if ($check_stock->fetch()) {
+                            $update_stock = $pdo->prepare("
+                                UPDATE product_stocks 
+                                SET quantity = ?, 
+                                    total_secondary_units = ?,
+                                    last_updated = NOW()
+                                WHERE product_id = ? AND shop_id = ?
+                            ");
+                            $update_stock->execute([$new_quantity, $total_secondary_units, $product_id, $current_shop_id]);
+                        } else {
+                            $insert_stock = $pdo->prepare("
+                                INSERT INTO product_stocks 
+                                (product_id, shop_id, business_id, quantity, total_secondary_units, last_updated) 
+                                VALUES (?, ?, ?, ?, ?, NOW())
+                            ");
+                            $insert_stock->execute([$product_id, $current_shop_id, $current_business_id, $new_quantity, $total_secondary_units]);
+                        }
+                        
+                        // Generate adjustment number
+                        $date = new DateTime();
+                        $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                        
+                        $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+                        $check_adj->execute([$adjustment_number]);
+                        while ($check_adj->fetch()) {
+                            $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                            $check_adj->execute([$adjustment_number]);
+                        }
+                        
+                        // Record adjustment
+                        $adj_stmt = $pdo->prepare("
+                            INSERT INTO stock_adjustments (
+                                adjustment_number,
+                                product_id,
+                                shop_id,
+                                adjustment_type,
+                                quantity,
+                                old_stock,
+                                new_stock,
+                                reason,
+                                reference_type,
+                                notes,
+                                adjusted_by,
+                                adjusted_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        ");
+                        
+                        $notes = "Stock {$adj_type} during product edit";
+                        if ($total_secondary_units && $secondary_unit) {
+                            $notes .= " (Total secondary: {$total_secondary_units} {$secondary_unit})";
+                        }
+                        
+                        $adj_stmt->execute([
+                            $adjustment_number,
+                            $product_id,
+                            $current_shop_id,
+                            $adj_type,
+                            $stock_adjustment_quantity,
+                            $old_quantity,
+                            $new_quantity,
+                            $reason,
+                            'product_edit',
+                            $notes,
+                            $_SESSION['user_id']
+                        ]);
+                    }
 
                     $pdo->commit();
                     
-                    set_flash_message('success', "Product '$product_name' updated successfully!");
+                    $success_message = "Product '{$product_name}' updated successfully!";
+                    if ($stock_adjustment_type !== 'none' && $stock_adjustment_quantity > 0) {
+                        $success_message .= " Stock adjusted by " . ($stock_adjustment_type === 'add' ? '+' : '-') . $stock_adjustment_quantity . " {$unit}.";
+                    }
+                    
+                    set_flash_message('success', $success_message);
                     header('Location: products.php');
                     exit();
                     
                 } catch (Exception $e) {
                     $pdo->rollBack();
-                    if ($image_path != $product['image_path'] && $image_path) {
+                    if ($image_changed && $image_path) {
                         @unlink('../' . $image_path);
                         if ($image_thumbnail_path) @unlink('../' . $image_thumbnail_path);
                     }
                     $error = "Database error: " . $e->getMessage();
-                    error_log("Update product error: " . $e->getMessage());
+                    error_log("Edit product error: " . $e->getMessage());
                 }
             }
+        }
+    }
+}
+
+// Thumbnail function
+if (!function_exists('createThumbnail')) {
+    function createThumbnail($source_path, $dest_path, $max_width = 200, $max_height = 200) {
+        try {
+            $image_info = getimagesize($source_path);
+            if (!$image_info) return false;
+            list($orig_width, $orig_height, $image_type) = $image_info;
+
+            $ratio = min($max_width / $orig_width, $max_height / $orig_height);
+            $new_width = (int)($orig_width * $ratio);
+            $new_height = (int)($orig_height * $ratio);
+
+            switch ($image_type) {
+                case IMAGETYPE_JPEG: $source_image = imagecreatefromjpeg($source_path); break;
+                case IMAGETYPE_PNG: $source_image = imagecreatefrompng($source_path); break;
+                case IMAGETYPE_GIF: $source_image = imagecreatefromgif($source_path); break;
+                case IMAGETYPE_WEBP: $source_image = imagecreatefromwebp($source_path); break;
+                default: return false;
+            }
+
+            $thumbnail = imagecreatetruecolor($new_width, $new_height);
+
+            if ($image_type == IMAGETYPE_PNG || $image_type == IMAGETYPE_GIF) {
+                imagecolortransparent($thumbnail, imagecolorallocatealpha($thumbnail, 0, 0, 0, 127));
+                imagealphablending($thumbnail, false);
+                imagesavealpha($thumbnail, true);
+            }
+
+            imagecopyresampled($thumbnail, $source_image, 0, 0, 0, 0, $new_width, $new_height, $orig_width, $orig_height);
+
+            switch ($image_type) {
+                case IMAGETYPE_JPEG: imagejpeg($thumbnail, $dest_path, 85); break;
+                case IMAGETYPE_PNG: imagepng($thumbnail, $dest_path, 9); break;
+                case IMAGETYPE_GIF: imagegif($thumbnail, $dest_path); break;
+                case IMAGETYPE_WEBP: imagewebp($thumbnail, $dest_path, 85); break;
+            }
+
+            imagedestroy($source_image);
+            imagedestroy($thumbnail);
+            return true;
+        } catch (Exception $e) {
+            error_log("Thumbnail error: " . $e->getMessage());
+            return false;
         }
     }
 }
@@ -497,11 +626,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="bx bx-edit me-2"></i> Edit Product
                                 <span class="badge bg-info ms-2">Business Type 28</span>
                                 <span class="badge bg-warning ms-2">No MRP Required</span>
-                                <span class="badge bg-success ms-2">GST on Purchase Price</span>
+                                <span class="badge bg-success ms-2">GST on Purchase & Retail Price</span>
                             </h4>
-                            <a href="products.php" class="btn btn-outline-secondary">
-                                <i class="bx bx-arrow-back me-1"></i> Back to Products
-                            </a>
+                            <div>
+                                <a href="product_view.php?id=<?= $product_id ?>" class="btn btn-outline-info me-2">
+                                    <i class="bx bx-show me-1"></i> View Product
+                                </a>
+                                <a href="products.php" class="btn btn-outline-secondary">
+                                    <i class="bx bx-arrow-back me-1"></i> Back to Products
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -515,12 +649,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <?php endif; ?>
 
-                <form method="POST" id="editProductForm" enctype="multipart/form-data">
+                <?php if ($product): ?>
+                <form method="POST" id="editProductForm" enctype="multipart/form-data" novalidate>
                     <input type="hidden" name="csrf_token" value="<?= generate_csrf_token(); ?>">
-                    <input type="hidden" name="product_id" value="<?= $product_id ?>">
                     
                     <div class="row">
-                        <div class="col-lg-12">
+                        <div class="col-lg-8">
+                            <!-- Product Information Card -->
                             <div class="card">
                                 <div class="card-body">
                                     <h5 class="card-title mb-4">
@@ -532,45 +667,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     </h5>
 
                                     <div class="row g-3">
-                                        <div class="col-md-4">
-                                            <label class="form-label"><strong>Category</strong> <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openCategoryModal()"><i class="bx bx-plus"></i> Quick Add</button></label>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Category</strong></label>
                                             <select name="category_id" id="categorySelect" class="form-select" required>
                                                 <option value="">-- Select Category --</option>
                                                 <?php foreach($categories as $c): ?>
                                                 <option value="<?= $c['id'] ?>" 
-                                                    <?= ($product['category_id'] == $c['id']) ? 'selected' : '' ?>>
+                                                    <?= $product['category_id'] == $c['id'] ? 'selected' : '' ?>>
                                                     <?= htmlspecialchars($c['category_name']) ?>
                                                 </option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <?php if (empty($categories)): ?>
-                                            <div class="form-text text-warning">
-                                                <i class="bx bx-info-circle"></i> No categories found. 
-                                                <button type="button" class="btn btn-link p-0" onclick="openCategoryModal()">Create one now</button>
-                                            </div>
-                                            <?php endif; ?>
                                         </div>
 
-                                        <div class="col-md-4">
-                                            <label class="form-label"><strong>Subcategory</strong> <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openSubcategoryModal()"><i class="bx bx-plus"></i> Quick Add</button></label>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Subcategory</strong></label>
                                             <select name="subcategory_id" id="subcategorySelect" class="form-select">
                                                 <option value="">-- Select Subcategory --</option>
+                                                <?php foreach($subcategories as $sc): ?>
+                                                <option value="<?= $sc['id'] ?>" 
+                                                    <?= $product['subcategory_id'] == $sc['id'] ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($sc['subcategory_name']) ?>
+                                                </option>
+                                                <?php endforeach; ?>
                                             </select>
-                                            <div class="form-text">Optional - select subcategory for better organization</div>
                                             <div id="subcategoryLoading" class="form-text text-muted" style="display: none;">
                                                 <i class="bx bx-loader bx-spin"></i> Loading subcategories...
                                             </div>
                                         </div>
                                         
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Product Name <span class="text-danger">*</span></strong></label>
                                             <input type="text" name="product_name" class="form-control form-control-lg" 
                                                    value="<?= htmlspecialchars($product['product_name']) ?>" 
                                                    required autofocus>
-                                            <div class="form-text">Enter the product display name</div>
                                         </div>
                                         
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Product Code</strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">#</span>
@@ -578,10 +711,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        value="<?= htmlspecialchars($product['product_code'] ?? '') ?>" 
                                                        placeholder="e.g., PROD001">
                                             </div>
-                                            <div class="form-text">Unique product identifier (optional)</div>
                                         </div>
                                         
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Barcode</strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text"><i class="bx bx-barcode"></i></span>
@@ -592,10 +724,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <i class="bx bx-refresh"></i> Generate
                                                 </button>
                                             </div>
-                                            <div class="form-text">Scan barcode or enter manually</div>
                                         </div>
 
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Unit of Measure</strong></label>
                                             <select name="unit" class="form-select">
                                                 <option value="pcs" <?= ($product['unit_of_measure'] ?? 'pcs') == 'pcs' ? 'selected' : '' ?>>Pieces (pcs)</option>
@@ -611,15 +742,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </select>
                                         </div>
 
-                                        <!-- Secondary Unit Section -->
-                                        <div class="col-md-12 mt-4">
-                                            <h6 class="border-bottom pb-2 mb-3">
-                                                <i class="bx bx-transfer me-1"></i> Secondary Unit Conversion
-                                                <small class="text-muted">– Sell in different units (e.g., coil → meters)</small>
-                                            </h6>
+                                        <div class="col-12">
+                                            <label class="form-label">Description</label>
+                                            <textarea name="description" class="form-control" rows="3" 
+                                                      placeholder="Features, brand, specifications..."><?= htmlspecialchars($product['description'] ?? '') ?></textarea>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                                        <div class="col-md-3">
+                            <!-- Secondary Unit Card -->
+                            <div class="card mt-3">
+                                <div class="card-body">
+                                    <h5 class="card-title mb-4">
+                                        <i class="bx bx-transfer me-1"></i> Secondary Unit Conversion
+                                        <small class="text-muted">– Sell in different units (e.g., coil → meters)</small>
+                                    </h5>
+
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
                                             <label class="form-label">Secondary Unit</label>
                                             <input type="text" name="secondary_unit" class="form-control"
                                                    value="<?= htmlspecialchars($product['secondary_unit'] ?? '') ?>"
@@ -628,7 +769,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <div class="form-text">Unit for selling (leave blank if not needed)</div>
                                         </div>
 
-                                        <div class="col-md-3">
+                                        <div class="col-md-4">
                                             <label class="form-label">Conversion Rate</label>
                                             <div class="input-group">
                                                 <span class="input-group-text">1 primary =</span>
@@ -641,10 +782,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <?= htmlspecialchars($product['secondary_unit'] ?? 'units') ?>
                                                 </span>
                                             </div>
-                                            <div class="form-text">How many secondary units in 1 primary unit</div>
                                         </div>
 
-                                        <div class="col-md-3">
+                                        <div class="col-md-2">
                                             <label class="form-label">Extra Charge Type</label>
                                             <select name="sec_unit_price_type" id="secUnitPriceType" class="form-select"
                                                     onchange="updateSecUnitExtraUnit(); calculateSecondaryPrices()">
@@ -653,7 +793,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </select>
                                         </div>
 
-                                        <div class="col-md-3">
+                                        <div class="col-md-2">
                                             <label class="form-label">Extra Charge Value</label>
                                             <div class="input-group">
                                                 <input type="number" step="0.01" min="0" name="sec_unit_extra_charge"
@@ -663,19 +803,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                        placeholder="0.00">
                                                 <span class="input-group-text" id="secUnitExtraUnit">₹</span>
                                             </div>
-                                            <div class="form-text" id="extraChargeHelp">
-                                                Extra charge per secondary unit
-                                            </div>
                                         </div>
 
                                         <!-- Secondary Unit Price Preview -->
                                         <div class="col-md-12 mt-3" id="secondaryPricePreview" style="display:none;">
                                             <div class="alert alert-info py-3">
                                                 <div class="row">
-                                                    <div class="col-md-6">
+                                                    <div class="col-md-12">
                                                         <h6 class="mb-2"><i class="bx bx-store-alt me-1"></i> Retail Price (Secondary Unit)</h6>
                                                         <div class="d-flex justify-content-between mb-1">
-                                                            <span>Price per <?php echo $product['secondary_unit'] ?? 'secondary unit'; ?>:</span>
+                                                            <span>Price per secondary unit:</span>
                                                             <strong id="secRetailPricePerUnit">₹0.00</strong>
                                                         </div>
                                                         <div class="d-flex justify-content-between mb-1">
@@ -687,121 +824,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                             <span id="secRetailExtraCharge">₹0.00</span>
                                                         </div>
                                                     </div>
-                                                    <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-building-house me-1"></i> Wholesale Price (Secondary Unit)</h6>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>Price per <?php echo $product['secondary_unit'] ?? 'secondary unit'; ?>:</span>
-                                                            <strong id="secWholesalePricePerUnit">₹0.00</strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>Base price (no extra):</span>
-                                                            <span id="secWholesaleBasePrice">₹0.00</span>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between">
-                                                            <span>Extra charge:</span>
-                                                            <span id="secWholesaleExtraCharge">₹0.00</span>
-                                                        </div>
-                                                    </div>
                                                 </div>
-                                                <hr class="my-2">
-                                                <div class="row">
-                                                    <div class="col-md-12">
-                                                        <small class="text-muted">
-                                                            <i class="bx bx-info-circle me-1"></i>
-                                                            <strong>Example:</strong> If 1 coil = 90 meters and Retail Price = ₹900 per coil, 
-                                                            then price per meter = ₹10.00 + extra charge
-                                                        </small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-12">
-                                            <label class="form-label">Description</label>
-                                            <textarea name="description" class="form-control" rows="3" 
-                                                      placeholder="Features, brand, specifications..."><?= htmlspecialchars($product['description'] ?? '') ?></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card mt-3">
-                                <div class="card-body">
-                                    <h5 class="card-title mb-4"><i class="bx bx-image me-1"></i> Product Image</h5>
-
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="mb-3">
-                                                <label class="form-label"><strong>Product Image</strong></label>
-                                                <input type="file" name="product_image" id="productImage" class="form-control" accept="image/*">
-                                                <div class="form-text">
-                                                    Upload product image (max 2MB). Supported formats: JPG, PNG, GIF, WEBP
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label class="form-label">Image Alt Text</label>
-                                                <input type="text" name="image_alt_text" class="form-control" 
-                                                       value="<?= htmlspecialchars($product['image_alt_text'] ?? '') ?>" 
-                                                       placeholder="Brief description of image for accessibility">
-                                                <div class="form-text">Describe the image for screen readers (optional)</div>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-6">
-                                            <div class="text-center">
-                                                <div id="imagePreview" class="border rounded p-3 mb-3" style="min-height: 200px; background-color: #f8f9fa;">
-                                                    <?php if ($product['image_path'] && file_exists('../' . $product['image_path'])): ?>
-                                                    <img src="../<?= $product['image_path'] ?>" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
-                                                    <p class="mt-2 mb-0"><small>Current image</small></p>
-                                                    <?php else: ?>
-                                                    <i class="bx bx-image fs-1 text-muted"></i>
-                                                    <p class="text-muted mt-2 mb-0">Image preview will appear here</p>
-                                                    <?php endif; ?>
-                                                </div>
-                                                <div class="form-text">Preview of selected image</div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
+                            <!-- Pricing & Tax Card -->
                             <div class="card mt-3">
                                 <div class="card-body">
                                     <h5 class="card-title mb-4"><i class="bx bx-rupee me-1"></i> Pricing & Tax</h5>
                             
                                     <div class="row g-3">
-                                        <!-- GST Type and Rate Section -->
+                                        <!-- GST Configuration -->
                                         <div class="col-md-12">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-receipt me-1"></i> GST Configuration
-                                                <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="openGSTModal()"><i class="bx bx-plus"></i> Quick Add GST</button>
                                             </h6>
                                         </div>
 
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>GST Rate</strong></label>
-                                            <select name="gst_id" id="gstSelect" class="form-select" onchange="calculateGST()">
+                                            <select name="gst_id" id="gstSelect" class="form-select" onchange="calculateAllGST()">
                                                 <option value="">-- Select GST Rate --</option>
                                                 <?php foreach($gst_rates as $g): ?>
                                                 <option value="<?= $g['id'] ?>" 
                                                     data-rate="<?= $g['total_gst_rate'] ?>"
-                                                    <?= ($product['gst_id'] == $g['id']) ? 'selected' : '' ?>>
+                                                    <?= $product['gst_id'] == $g['id'] ? 'selected' : '' ?>>
                                                     <?= $g['hsn_code'] ?> - Total GST: <?= $g['total_gst_rate'] ?>%
                                                     (CGST: <?= $g['cgst_rate'] ?>%, SGST: <?= $g['sgst_rate'] ?>%, IGST: <?= $g['igst_rate'] ?>%)
                                                 </option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <div class="form-text">Select applicable GST rate</div>
-                                            <?php if (empty($gst_rates)): ?>
-                                            <div class="form-text text-warning">
-                                                <i class="bx bx-info-circle"></i> No GST rates configured. 
-                                                <button type="button" class="btn btn-link p-0" onclick="openGSTModal()">Add GST rates</button>
-                                            </div>
-                                            <?php endif; ?>
                                         </div>
 
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>GST Type</strong></label>
                                             <div class="d-flex align-items-center">
                                                 <div class="form-check form-switch me-3">
@@ -815,185 +873,195 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 </div>
                                                 <div id="gstTypeHelp" class="form-text">
                                                     <i class="bx bx-info-circle"></i>
-                                                    <span id="gstTypeDescription">GST will be added to Purchase Price</span>
+                                                    <span id="gstTypeDescription">GST will be added to prices</span>
                                                 </div>
                                             </div>
                                             <input type="hidden" name="gst_type" id="gstTypeHidden" value="<?= $product['gst_type'] ?? 'exclusive' ?>">
                                         </div>
 
-                                        <!-- Purchase Price Section -->
-                                        <div class="col-md-4">
+                                        <!-- Purchase Price -->
+                                        <div class="col-md-12 mt-3">
+                                            <h6 class="border-bottom pb-2 mb-3">
+                                                <i class="bx bx-cart me-1"></i> Purchase Price
+                                            </h6>
+                                        </div>
+
+                                        <div class="col-md-6">
                                             <label class="form-label"><strong>Base Purchase Price (Without GST) <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
                                                 <input type="number" step="0.01" min="0" name="purchase_price_base" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= number_format($base_price, 2) ?>" 
+                                                       value="<?= number_format($purchase_price_base, 2, '.', '') ?>" 
                                                        id="purchasePriceBase" required
-                                                       oninput="calculateGST()">
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearPurchasePrice()" title="Clear">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
+                                                       oninput="calculateAllGST()">
                                             </div>
-                                            <div class="form-text">Enter the base price without GST</div>
                                         </div>
 
-                                        <!-- GST Calculation Preview -->
-                                        <div class="col-md-12 mt-3" id="gstCalculationPreview" style="display:<?= ($product['gst_id'] && $base_price > 0) ? 'block' : 'none' ?>;">
-                                            <div class="alert alert-info py-3">
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-calculator me-1"></i> GST Calculation</h6>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>Base Purchase Price:</span>
-                                                            <strong id="basePriceDisplay">₹<?= number_format($base_price, 2) ?></strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>GST Rate:</span>
-                                                            <strong id="gstRateDisplay"><?= number_format($gst_rate_percentage, 2) ?>%</strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between mb-1">
-                                                            <span>GST Amount:</span>
-                                                            <strong id="gstAmountDisplay">₹<?= number_format($gst_amount, 2) ?></strong>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <h6 class="mb-2"><i class="bx bx-dollar me-1"></i> Final Purchase Price (With GST)</h6>
-                                                        <div class="d-flex justify-content-between mb-2">
-                                                            <span>Final Price (Including GST) - <span class="text-danger">This will be stored as Stock Price</span>:</span>
-                                                            <strong class="text-success" id="finalPurchasePrice">₹<?= number_format($final_purchase_price, 2) ?></strong>
-                                                        </div>
-                                                        <div class="d-flex justify-content-between">
-                                                            <small class="text-muted" id="gstCalculationDescription">
-                                                                <?php if ($product['gst_type'] == 'exclusive'): ?>
-                                                                Base Price (₹<?= number_format($base_price, 2) ?>) + GST (₹<?= number_format($gst_amount, 2) ?>) = Final Price (₹<?= number_format($final_purchase_price, 2) ?>)
-                                                                <?php else: ?>
-                                                                Base Price (₹<?= number_format($base_price, 2) ?>) includes GST of ₹<?= number_format($gst_amount, 2) ?> (<?= number_format($gst_rate_percentage, 2) ?>%)
-                                                                <?php endif; ?>
-                                                            </small>
-                                                        </div>
-                                                    </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Final Purchase Price (With GST)</strong></label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="text" class="form-control form-control-lg text-end" 
+                                                       id="finalPurchasePriceDisplay" readonly disabled>
+                                            </div>
+                                            <div class="form-text">
+                                                <span class="text-danger">This is stored as Stock Price</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Purchase GST Preview -->
+                                        <div class="col-md-12 mt-2" id="purchaseGstPreview" style="display:none;">
+                                            <div class="alert alert-info py-2">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Base Purchase Price:</span>
+                                                    <strong id="purchaseBaseDisplay">₹0.00</strong>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <span>GST Amount:</span>
+                                                    <strong id="purchaseGstAmountDisplay">₹0.00</strong>
+                                                </div>
+                                                <hr class="my-1">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Final Purchase Price:</span>
+                                                    <strong class="text-danger" id="purchaseFinalDisplay">₹0.00</strong>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <!-- Retail Price Section -->
+                                        <!-- Retail Price -->
                                         <div class="col-md-12 mt-4">
                                             <h6 class="border-bottom pb-2 mb-3">
                                                 <i class="bx bx-store-alt me-1"></i> Sale / Retail Price (For Customers)
                                             </h6>
                                         </div>
 
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Type</strong></label>
-                                            <select name="retail_price_type" id="retailPriceType" class="form-select" onchange="updateRetailPriceUnit(); calculateRetailPrice()">
-                                                <option value="percentage" <?= ($product['retail_price_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
-                                                <option value="fixed" <?= ($product['retail_price_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Markup Value</strong></label>
-                                            <div class="input-group">
-                                                <input type="number" step="0.01" min="0" name="retail_price_value" 
-                                                       class="form-control text-end" 
-                                                       value="<?= htmlspecialchars($product['retail_price_value'] ?? '0') ?>"
-                                                       id="retailPriceValue"
-                                                       oninput="calculateRetailPrice()">
-                                                <span class="input-group-text">
-                                                    <span id="retailPriceUnit">%</span>
-                                                </span>
-                                            </div>
-                                            <div class="form-text" id="retailMarkupText">
-                                                Markup: ₹0.00
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Sale Price / Retail Price <span class="text-danger">*</span></strong></label>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Base Retail Price (Without GST) <span class="text-danger">*</span></strong></label>
                                             <div class="input-group">
                                                 <span class="input-group-text">₹</span>
-                                                <input type="number" step="0.01" min="0" name="retail_price" 
+                                                <input type="number" step="0.01" min="0" name="retail_price_base" 
                                                        class="form-control form-control-lg text-end" 
-                                                       value="<?= htmlspecialchars($product['retail_price']) ?>" 
-                                                       id="retailPrice" required
-                                                       oninput="onManualRetailPriceChange()">
-                                                <button type="button" class="btn btn-outline-secondary" onclick="clearManualRetailPrice()" title="Clear manual entry">
-                                                    <i class="bx bx-refresh"></i>
-                                                </button>
-                                            </div>
-                                            <div class="form-text" id="retailPriceText">
-                                                Based on Final Purchase Price (with GST) + markup
+                                                       value="<?= number_format($retail_price_base, 2, '.', '') ?>" 
+                                                       id="retailPriceBase" required
+                                                       oninput="calculateAllGST()">
                                             </div>
                                         </div>
 
-                                        <div class="col-md-3">
-                                            <label class="form-label"><strong>Profit Margin</strong></label>
+                                        <div class="col-md-6">
+                                            <label class="form-label"><strong>Final Retail Price (With GST)</strong></label>
                                             <div class="input-group">
-                                                <input type="text" class="form-control text-end" id="retailProfitMargin" readonly>
-                                                <span class="input-group-text">%</span>
+                                                <span class="input-group-text">₹</span>
+                                                <input type="text" class="form-control form-control-lg text-end" 
+                                                       id="finalRetailPriceDisplay" readonly disabled>
                                             </div>
-                                            <div class="form-text" id="retailProfitAmountText">
-                                                Profit: ₹0.00
+                                            <div class="form-text">
+                                                <span class="text-success">This is the selling price</span>
                                             </div>
                                         </div>
 
-                                        <!-- Warranty Section -->
-                                        <div class="col-md-12 mt-4">
-                                            <h6 class="border-bottom pb-2 mb-3">
-                                                <i class="bx bx-shield me-1"></i> Warranty Information
-                                            </h6>
+                                        <!-- Retail GST Preview -->
+                                        <div class="col-md-12 mt-2" id="retailGstPreview" style="display:none;">
+                                            <div class="alert alert-info py-2">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Base Retail Price:</span>
+                                                    <strong id="retailBaseDisplay">₹0.00</strong>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <span>GST Amount:</span>
+                                                    <strong id="retailGstAmountDisplay">₹0.00</strong>
+                                                </div>
+                                                <hr class="my-1">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>Final Retail Price:</span>
+                                                    <strong class="text-success" id="retailFinalDisplay">₹0.00</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Profit Margin -->
+                                        <div class="col-md-12 mt-3">
+                                            <div class="alert alert-success py-2">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span><i class="bx bx-trending-up me-1"></i> Profit Margin:</span>
+                                                    <div>
+                                                        <span class="fw-bold" id="profitMarginDisplay">0.00%</span>
+                                                        <span class="ms-3">Profit Amount: <strong id="profitAmountDisplay">₹0.00</strong></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Stock Management Card -->
+                            <div class="card mt-3">
+                                <div class="card-body">
+                                    <h5 class="card-title mb-4">
+                                        <i class="bx bx-package me-1"></i> Stock Management
+                                    </h5>
+
+                                    <div class="row g-3">
+                                        <div class="col-md-12">
+                                            <div class="alert alert-secondary">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span><strong>Current Stock:</strong></span>
+                                                    <span class="fs-5">
+                                                        <strong><?= $current_quantity ?></strong> <?= htmlspecialchars($product['unit_of_measure'] ?? 'units') ?>
+                                                        <?php if ($current_secondary_units && $product['secondary_unit']): ?>
+                                                        <small class="text-muted ms-2">(<?= $current_secondary_units ?> <?= htmlspecialchars($product['secondary_unit']) ?>)</small>
+                                                        <?php endif; ?>
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div class="col-md-12">
-                                            <div class="form-check mb-3">
-                                                <input class="form-check-input" type="checkbox" id="warrantyCheckbox" 
-                                                       name="is_warranty_applicable" value="1"
-                                                       <?= ($product['warranty_type'] ?? 'none') != 'none' ? 'checked' : '' ?>
-                                                       onchange="toggleWarrantyFields()">
-                                                <label class="form-check-label fw-bold" for="warrantyCheckbox">
-                                                    This product comes with warranty
-                                                </label>
-                                            </div>
+                                            <label class="form-label"><strong>Stock Adjustment</strong></label>
+                                            <select name="stock_adjustment_type" id="stockAdjustmentType" class="form-select" onchange="toggleStockAdjustmentFields()">
+                                                <option value="none" selected>No stock adjustment</option>
+                                                <option value="add">Add Stock (+)</option>
+                                                <option value="remove">Remove Stock (-)</option>
+                                            </select>
+                                            <div class="form-text">Add or remove stock for this product</div>
                                         </div>
 
-                                        <div id="warrantyFields" style="display: <?= ($product['warranty_type'] ?? 'none') != 'none' ? 'block' : 'none' ?>;">
-                                            <div class="col-md-4">
-                                                <label class="form-label"><strong>Warranty Type</strong></label>
-                                                <select name="warranty_type" id="warrantyType" class="form-select">
-                                                    <option value="none">-- Select Warranty Type --</option>
-                                                    <option value="manufacturer" <?= ($product['warranty_type'] ?? '') == 'manufacturer' ? 'selected' : '' ?>>Manufacturer Warranty</option>
-                                                    <option value="seller" <?= ($product['warranty_type'] ?? '') == 'seller' ? 'selected' : '' ?>>Seller Warranty</option>
-                                                    <option value="extended" <?= ($product['warranty_type'] ?? '') == 'extended' ? 'selected' : '' ?>>Extended Warranty</option>
-                                                    <option value="international" <?= ($product['warranty_type'] ?? '') == 'international' ? 'selected' : '' ?>>International Warranty</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="col-md-4">
-                                                <label class="form-label"><strong>Warranty Period</strong></label>
-                                                <div class="input-group">
-                                                    <input type="number" name="warranty_period" 
-                                                           class="form-control text-end" 
-                                                           value="<?= htmlspecialchars($product['warranty_period'] ?? '12') ?>"
-                                                           min="0" max="120" step="1">
-                                                    <select name="warranty_unit" class="form-select" style="width: auto;">
-                                                        <option value="days" <?= ($product['warranty_unit'] ?? 'months') == 'days' ? 'selected' : '' ?>>Days</option>
-                                                        <option value="months" <?= ($product['warranty_unit'] ?? 'months') == 'months' ? 'selected' : '' ?>>Months</option>
-                                                        <option value="years" <?= ($product['warranty_unit'] ?? '') == 'years' ? 'selected' : '' ?>>Years</option>
-                                                    </select>
+                                        <div id="stockAdjustmentFields" style="display: none;">
+                                            <div class="row g-3 mt-1">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Quantity to <span id="adjustmentAction">add</span></label>
+                                                    <div class="input-group">
+                                                        <input type="number" name="stock_adjustment_quantity" 
+                                                               class="form-control text-end" 
+                                                               id="stockAdjustmentQuantity"
+                                                               min="1" value="0">
+                                                        <span class="input-group-text"><?= htmlspecialchars($product['unit_of_measure'] ?? 'units') ?></span>
+                                                    </div>
+                                                    <div class="form-text" id="stockAdjustmentHelp">
+                                                        Enter quantity to add to current stock
+                                                    </div>
                                                 </div>
-                                                <div class="form-text">Enter warranty duration (max 10 years / 120 months)</div>
-                                            </div>
 
-                                            <div class="col-md-4">
-                                                <label class="form-label"><strong>Warranty Description</strong></label>
-                                                <textarea name="warranty_description" class="form-control" rows="2" 
-                                                          placeholder="e.g., Covers manufacturing defects, 1 year free service..."><?= htmlspecialchars($product['warranty_description'] ?? '') ?></textarea>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Reason <span class="text-danger adjustment-required" style="display: none;">*</span></label>
+                                                    <input type="text" name="stock_adjustment_reason" 
+                                                           class="form-control" 
+                                                           id="stockAdjustmentReason"
+                                                           placeholder="e.g., New shipment received">
+                                                    <div class="form-text">Provide reason for stock adjustment</div>
+                                                </div>
+
+                                                <div class="col-md-12">
+                                                    <div class="alert alert-warning py-2" id="stockAdjustmentPreview">
+                                                        <i class="bx bx-info-circle me-1"></i>
+                                                        <span id="stockPreviewText">No adjustment selected</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <!-- Other Fields -->
-                                        <div class="col-md-3 mt-3">
+                                        <div class="col-md-6">
                                             <label class="form-label">Min Stock Level</label>
                                             <input type="number" name="min_stock_level" class="form-control text-end" 
                                                    value="<?= htmlspecialchars($product['min_stock_level'] ?? '0') ?>">
@@ -1002,7 +1070,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     </div>
                                 </div>
                             </div>
-                            
+                        </div>
+
+                        <div class="col-lg-4">
+                            <!-- Product Image Card -->
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title mb-4"><i class="bx bx-image me-1"></i> Product Image</h5>
+
+                                    <div class="mb-3">
+                                        <label class="form-label"><strong>Product Image</strong></label>
+                                        <input type="file" name="product_image" id="productImage" class="form-control" accept="image/*">
+                                        <div class="form-text">
+                                            Upload new image to replace existing (max 2MB)
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Image Alt Text</label>
+                                        <input type="text" name="image_alt_text" class="form-control" 
+                                               value="<?= htmlspecialchars($product['image_alt_text'] ?? '') ?>" 
+                                               placeholder="Brief description of image">
+                                    </div>
+
+                                    <div class="text-center">
+                                        <label class="form-label">Current Image</label>
+                                        <div id="imagePreview" class="border rounded p-3 mb-3" style="min-height: 200px; background-color: #f8f9fa;">
+                                            <?php if ($product['image_path'] && file_exists('../' . $product['image_path'])): ?>
+                                            <img src="../<?= htmlspecialchars($product['image_path']) ?>" 
+                                                 class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
+                                            <p class="mt-2 mb-0"><small>Current product image</small></p>
+                                            <?php else: ?>
+                                            <i class="bx bx-image fs-1 text-muted"></i>
+                                            <p class="text-muted mt-2 mb-0">No image uploaded</p>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Warranty Card -->
+                            <div class="card mt-3">
+                                <div class="card-body">
+                                    <h5 class="card-title mb-4">
+                                        <i class="bx bx-shield me-1"></i> Warranty Information
+                                    </h5>
+
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="warrantyCheckbox" 
+                                               name="is_warranty_applicable" value="1"
+                                               <?= $product['warranty_type'] && $product['warranty_type'] != 'none' ? 'checked' : '' ?>
+                                               onchange="toggleWarrantyFields()">
+                                        <label class="form-check-label fw-bold" for="warrantyCheckbox">
+                                            This product comes with warranty
+                                        </label>
+                                    </div>
+
+                                    <div id="warrantyFields" style="display: <?= ($product['warranty_type'] && $product['warranty_type'] != 'none') ? 'block' : 'none' ?>;">
+                                        <div class="mb-3">
+                                            <label class="form-label"><strong>Warranty Type</strong></label>
+                                            <select name="warranty_type" id="warrantyType" class="form-select">
+                                                <option value="none">-- Select Warranty Type --</option>
+                                                <option value="manufacturer" <?= ($product['warranty_type'] ?? '') == 'manufacturer' ? 'selected' : '' ?>>Manufacturer Warranty</option>
+                                                <option value="seller" <?= ($product['warranty_type'] ?? '') == 'seller' ? 'selected' : '' ?>>Seller Warranty</option>
+                                                <option value="extended" <?= ($product['warranty_type'] ?? '') == 'extended' ? 'selected' : '' ?>>Extended Warranty</option>
+                                                <option value="international" <?= ($product['warranty_type'] ?? '') == 'international' ? 'selected' : '' ?>>International Warranty</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="form-label"><strong>Warranty Period</strong></label>
+                                            <div class="input-group">
+                                                <input type="number" name="warranty_period" 
+                                                       class="form-control text-end" 
+                                                       value="<?= htmlspecialchars($product['warranty_period'] ?? '12') ?>"
+                                                       min="0" max="120" step="1">
+                                                <select name="warranty_unit" class="form-select" style="width: auto;">
+                                                    <option value="days" <?= ($product['warranty_unit'] ?? 'months') == 'days' ? 'selected' : '' ?>>Days</option>
+                                                    <option value="months" <?= ($product['warranty_unit'] ?? 'months') == 'months' ? 'selected' : '' ?>>Months</option>
+                                                    <option value="years" <?= ($product['warranty_unit'] ?? '') == 'years' ? 'selected' : '' ?>>Years</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="form-label"><strong>Warranty Description</strong></label>
+                                            <textarea name="warranty_description" class="form-control" rows="2" 
+                                                      placeholder="e.g., Covers manufacturing defects..."><?= htmlspecialchars($product['warranty_description'] ?? '') ?></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Referral Card -->
                             <div class="card mt-3">
                                 <div class="card-body">
                                     <h5 class="card-title mb-4">
@@ -1011,82 +1171,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                     <div class="form-check form-switch mb-3">
                                         <input class="form-check-input" type="checkbox" id="referralEnabled" 
-                                               name="referral_enabled" value="1"
-                                               <?= ($product['referral_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                                               name="referral_enabled"
+                                               <?= $product['referral_enabled'] ? 'checked' : '' ?>>
                                         <label class="form-check-label fw-bold" for="referralEnabled">
-                                            Enable referral commission for this product
+                                            Enable referral commission
                                         </label>
                                     </div>
 
-                                    <div id="referralBox" style="display: <?= ($product['referral_enabled'] ?? 0) == 1 ? 'block' : 'none' ?>;">
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Commission Type</label>
-                                                <select name="referral_type" class="form-select">
-                                                    <option value="percentage" <?= ($product['referral_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
-                                                    <option value="fixed" <?= ($product['referral_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="col-md-6">
-                                                <label class="form-label">Commission Value</label>
-                                                <div class="input-group">
-                                                    <input type="number" step="0.01" min="0"
-                                                           name="referral_value"
-                                                           class="form-control text-end"
-                                                           value="<?= htmlspecialchars($product['referral_value'] ?? '') ?>"
-                                                           placeholder="Enter value">
-                                                    <span class="input-group-text">
-                                                        <span id="commissionUnit">%</span>
-                                                    </span>
-                                                </div>
-                                            </div>
+                                    <div id="referralBox" style="display: <?= $product['referral_enabled'] ? 'block' : 'none' ?>;">
+                                        <div class="mb-3">
+                                            <label class="form-label">Commission Type</label>
+                                            <select name="referral_type" id="referralType" class="form-select">
+                                                <option value="percentage" <?= ($product['referral_type'] ?? 'percentage') == 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
+                                                <option value="fixed" <?= ($product['referral_type'] ?? '') == 'fixed' ? 'selected' : '' ?>>Fixed Amount (₹)</option>
+                                            </select>
                                         </div>
 
-                                        <div class="form-text mt-2">
-                                            <i class="bx bx-info-circle me-1"></i>
-                                            This commission will be credited to referrers when sales are completed.
+                                        <div class="mb-3">
+                                            <label class="form-label">Commission Value</label>
+                                            <div class="input-group">
+                                                <input type="number" step="0.01" min="0"
+                                                       name="referral_value"
+                                                       class="form-control text-end"
+                                                       value="<?= htmlspecialchars($product['referral_value'] ?? '') ?>"
+                                                       placeholder="Enter value">
+                                                <span class="input-group-text">
+                                                    <span id="commissionUnit">%</span>
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Quick Actions -->
+                            <!-- Product Info Card -->
                             <div class="card mt-3">
                                 <div class="card-body">
-                                    <h5 class="card-title mb-4">Quick Actions</h5>
+                                    <h5 class="card-title mb-4"><i class="bx bx-info-circle me-1"></i> Product Details</h5>
+                                    
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <td class="text-muted">Created:</td>
+                                            <td><?= date('d M Y, h:i A', strtotime($product['created_at'])) ?></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">Product ID:</td>
+                                            <td>#<?= $product_id ?></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-muted">HSN Code:</td>
+                                            <td><?= htmlspecialchars($product['hsn_code'] ?? 'N/A') ?></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body">
                                     <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                                        <button type="submit" name="submit" value="update" class="btn btn-success btn-lg px-4">
+                                        <button type="submit" class="btn btn-success btn-lg px-4">
                                             <i class="bx bx-save me-2"></i> Update Product
                                         </button>
-                                        <a href="products.php" class="btn btn-outline-secondary px-4">
+                                        <a href="product_view.php?id=<?= $product_id ?>" class="btn btn-outline-secondary px-4">
                                             <i class="bx bx-x me-1"></i> Cancel
                                         </a>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <!-- Quick Tips -->
-                            <div class="card mt-3">
-                                <div class="card-body">
-                                    <h6 class="card-title mb-3"><i class="bx bx-info-circle me-1"></i> Quick Tips</h6>
-                                    <ul class="list-unstyled mb-0">
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 1:</strong> Select GST rate and type (Exclusive/Inclusive)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 2:</strong> Enter Base Purchase Price (without GST)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 3:</strong> GST will be calculated automatically</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 4:</strong> Final Purchase Price (with GST) will be stored as Stock Price</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Step 5:</strong> Enter Retail markup → Retail Price auto-calculated</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Example:</strong> Base Price ₹100 + 18% GST = ₹118 Final Price (Stored)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Retail Price:</strong> ₹118 + 10% markup = ₹129.80</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Secondary Unit:</strong> Convert primary units (coil) to secondary units (mtr)</li>
-                                        <li class="mb-2"><i class="bx bx-check text-success me-1"></i> <strong>Profit Margin:</strong> ((Retail Price - Final Purchase Price) / Retail Price) × 100</li>
-                                        <li><i class="bx bx-check text-success me-1"></i> <strong>Note:</strong> MRP and Discount are not used for this business type</li>
-                                    </ul>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </form>
+                <?php endif; ?>
 
             </div>
         </div>
@@ -1094,140 +1254,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
-<!-- Quick Add Category Modal -->
-<div class="modal fade" id="categoryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bx bx-category"></i> Quick Add Category</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="quickCategoryForm">
-                    <div class="mb-3">
-                        <label class="form-label">Category Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="categoryName" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Category Code (Optional)</label>
-                        <input type="text" class="form-control" id="categoryCode">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Description (Optional)</label>
-                        <textarea class="form-control" id="categoryDescription" rows="2"></textarea>
-                    </div>
-                    <div class="text-end">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="saveCategoryBtn">
-                            <i class="bx bx-save"></i> Save Category
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Quick Add Subcategory Modal -->
-<div class="modal fade" id="subcategoryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bx bx-category-alt"></i> Quick Add Subcategory</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="quickSubcategoryForm">
-                    <div class="mb-3">
-                        <label class="form-label">Parent Category <span class="text-danger">*</span></label>
-                        <select class="form-select" id="subcategoryParentCategory" required>
-                            <option value="">-- Select Category --</option>
-                            <?php foreach($categories as $c): ?>
-                            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['category_name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Subcategory Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="subcategoryName" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Subcategory Code (Optional)</label>
-                        <input type="text" class="form-control" id="subcategoryCode">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Description (Optional)</label>
-                        <textarea class="form-control" id="subcategoryDescription" rows="2"></textarea>
-                    </div>
-                    <div class="text-end">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="saveSubcategoryBtn">
-                            <i class="bx bx-save"></i> Save Subcategory
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Quick Add GST Modal -->
-<div class="modal fade" id="gstModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bx bx-receipt"></i> Quick Add GST Rate</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="quickGSTForm">
-                    <div class="mb-3">
-                        <label class="form-label">HSN Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="hsnCode" required placeholder="e.g., 7318">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <input type="text" class="form-control" id="gstDescription" placeholder="Product/Service description">
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <label class="form-label">CGST Rate (%)</label>
-                            <input type="number" step="0.01" class="form-control" id="cgstRate" value="0" onchange="updateTotalGST()">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">SGST Rate (%)</label>
-                            <input type="number" step="0.01" class="form-control" id="sgstRate" value="0" onchange="updateTotalGST()">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">IGST Rate (%)</label>
-                            <input type="number" step="0.01" class="form-control" id="igstRate" value="0" onchange="updateTotalGST()">
-                        </div>
-                    </div>
-                    <div class="alert alert-info mt-3 mb-3">
-                        <strong>Total GST Rate:</strong> <span id="totalGSTRate">0.00</span>%
-                    </div>
-                    <div class="text-end">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="saveGSTBtn">
-                            <i class="bx bx-save"></i> Save GST Rate
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 <?php include('includes/rightbar.php'); ?>
 <?php include('includes/scripts.php'); ?>
 <script>
-// Track manual entries
-let manualRetailPrice = false;
-let gstRate = <?= $gst_rate_percentage ?>;
+// Global variables
+let gstRate = <?= $product['total_gst_rate'] ?? 0 ?>;
 let gstType = '<?= $product['gst_type'] ?? 'exclusive' ?>';
-let currentBasePrice = <?= $base_price ?>;
+let currentStock = <?= $current_quantity ?>;
 
-// Sweet Toast Alert Function
+// Sweet Toast Functions
 function showSweetToast(title, message, type = 'info', duration = 3000) {
     const Toast = Swal.mixin({
         toast: true,
@@ -1266,7 +1301,90 @@ function toggleWarrantyFields() {
     }
 }
 
-// Update GST Type based on toggle
+// Stock adjustment toggle
+function toggleStockAdjustmentFields() {
+    const select = document.getElementById('stockAdjustmentType');
+    const fields = document.getElementById('stockAdjustmentFields');
+    const actionSpan = document.getElementById('adjustmentAction');
+    const helpText = document.getElementById('stockAdjustmentHelp');
+    const previewText = document.getElementById('stockPreviewText');
+    const quantityInput = document.getElementById('stockAdjustmentQuantity');
+    const reasonInput = document.getElementById('stockAdjustmentReason');
+    const requiredSpan = document.querySelector('.adjustment-required');
+    
+    if (select && fields) {
+        const value = select.value;
+        
+        if (value !== 'none') {
+            fields.style.display = 'block';
+            
+            if (value === 'add') {
+                if (actionSpan) actionSpan.textContent = 'add';
+                if (helpText) helpText.textContent = 'Enter quantity to add to current stock';
+            } else if (value === 'remove') {
+                if (actionSpan) actionSpan.textContent = 'remove';
+                if (helpText) helpText.textContent = 'Enter quantity to remove from current stock (cannot exceed current stock)';
+            }
+            
+            // Enable fields when visible
+            if (quantityInput) {
+                quantityInput.disabled = false;
+            }
+            if (reasonInput) {
+                reasonInput.disabled = false;
+            }
+            if (requiredSpan) requiredSpan.style.display = 'inline';
+            
+        } else {
+            fields.style.display = 'none';
+            
+            // Disable fields when hidden
+            if (quantityInput) {
+                quantityInput.disabled = true;
+                quantityInput.value = '0';
+            }
+            if (reasonInput) {
+                reasonInput.disabled = true;
+                reasonInput.value = '';
+            }
+            if (requiredSpan) requiredSpan.style.display = 'none';
+        }
+        
+        updateStockPreview();
+    }
+}
+
+// Update stock preview
+function updateStockPreview() {
+    const select = document.getElementById('stockAdjustmentType');
+    const quantity = parseInt(document.getElementById('stockAdjustmentQuantity')?.value) || 0;
+    const previewText = document.getElementById('stockPreviewText');
+    const quantityInput = document.getElementById('stockAdjustmentQuantity');
+    
+    if (select && previewText) {
+        const value = select.value;
+        
+        if (value === 'none' || quantity === 0) {
+            previewText.textContent = 'No adjustment will be made';
+            if (quantityInput) quantityInput.style.borderColor = '';
+        } else if (value === 'add') {
+            const newStock = currentStock + quantity;
+            previewText.textContent = `Stock will increase from ${currentStock} to ${newStock} (+${quantity})`;
+            if (quantityInput) quantityInput.style.borderColor = '#198754';
+        } else if (value === 'remove') {
+            if (quantity > currentStock) {
+                previewText.textContent = `⚠️ Cannot remove ${quantity} units (only ${currentStock} available)`;
+                if (quantityInput) quantityInput.style.borderColor = '#dc3545';
+            } else {
+                const newStock = currentStock - quantity;
+                previewText.textContent = `Stock will decrease from ${currentStock} to ${newStock} (-${quantity})`;
+                if (quantityInput) quantityInput.style.borderColor = quantity > 0 ? '#fd7e14' : '';
+            }
+        }
+    }
+}
+
+// Update GST Type
 function updateGSTType() {
     const gstToggle = document.getElementById('gstTypeToggle');
     const gstTypeLabel = document.getElementById('gstTypeLabel');
@@ -1276,194 +1394,137 @@ function updateGSTType() {
     if (gstToggle && gstToggle.checked) {
         gstType = 'exclusive';
         if (gstTypeLabel) gstTypeLabel.textContent = 'GST Exclusive';
-        if (gstTypeDescription) gstTypeDescription.textContent = 'GST will be added to Purchase Price';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST will be added to prices';
         if (gstTypeHidden) gstTypeHidden.value = 'exclusive';
     } else {
         gstType = 'inclusive';
         if (gstTypeLabel) gstTypeLabel.textContent = 'GST Inclusive';
-        if (gstTypeDescription) gstTypeDescription.textContent = 'GST is included in Purchase Price';
+        if (gstTypeDescription) gstTypeDescription.textContent = 'GST is included in prices';
         if (gstTypeHidden) gstTypeHidden.value = 'inclusive';
     }
     
-    calculateGST();
+    calculateAllGST();
 }
 
-// Calculate GST based on selected rate and type
-function calculateGST() {
+// Calculate all GST
+function calculateAllGST() {
     const gstSelect = document.getElementById('gstSelect');
     const selectedOption = gstSelect ? gstSelect.options[gstSelect.selectedIndex] : null;
-    const basePrice = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
-    const gstPreview = document.getElementById('gstCalculationPreview');
-    const finalPurchasePriceSpan = document.getElementById('finalPurchasePrice');
-    const gstCalculationDescription = document.getElementById('gstCalculationDescription');
-    const gstAmountDisplay = document.getElementById('gstAmountDisplay');
-    const gstRateDisplay = document.getElementById('gstRateDisplay');
-    const basePriceDisplay = document.getElementById('basePriceDisplay');
+    const purchaseBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
+    const retailBase = parseFloat(document.getElementById('retailPriceBase').value) || 0;
     
     gstRate = 0;
     
-    if (selectedOption && selectedOption.value && basePrice > 0) {
+    if (selectedOption && selectedOption.value) {
         gstRate = parseFloat(selectedOption.getAttribute('data-rate')) || 0;
-        
-        if (gstPreview) gstPreview.style.display = 'block';
-        if (basePriceDisplay) basePriceDisplay.textContent = '₹' + basePrice.toFixed(2);
-        if (gstRateDisplay) gstRateDisplay.textContent = gstRate.toFixed(2) + '%';
+    }
+    
+    calculatePurchaseGST(purchaseBase, gstRate);
+    calculateRetailGST(retailBase, gstRate);
+    calculateProfitMargin();
+    calculateSecondaryPrices();
+}
+
+// Calculate Purchase GST
+function calculatePurchaseGST(basePrice, rate) {
+    const purchasePreview = document.getElementById('purchaseGstPreview');
+    const purchaseBaseDisplay = document.getElementById('purchaseBaseDisplay');
+    const purchaseGstAmountDisplay = document.getElementById('purchaseGstAmountDisplay');
+    const purchaseFinalDisplay = document.getElementById('purchaseFinalDisplay');
+    const finalPurchasePriceDisplay = document.getElementById('finalPurchasePriceDisplay');
+    
+    if (basePrice > 0 && rate > 0) {
+        if (purchasePreview) purchasePreview.style.display = 'block';
         
         let gstAmount = 0;
         let finalPrice = basePrice;
         
         if (gstType === 'exclusive') {
-            gstAmount = basePrice * (gstRate / 100);
+            gstAmount = basePrice * (rate / 100);
             finalPrice = basePrice + gstAmount;
-            
-            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
-            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + finalPrice.toFixed(2);
-            if (gstCalculationDescription) {
-                gstCalculationDescription.innerHTML = 
-                    'Base Price (₹' + basePrice.toFixed(2) + ') + GST (₹' + gstAmount.toFixed(2) + ') = Final Price (₹' + finalPrice.toFixed(2) + ')';
-            }
         } else {
-            gstAmount = (basePrice * gstRate) / (100 + gstRate);
-            
-            if (gstAmountDisplay) gstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2);
-            if (finalPurchasePriceSpan) finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
-            if (gstCalculationDescription) {
-                gstCalculationDescription.innerHTML = 
-                    'Base Price (₹' + basePrice.toFixed(2) + ') includes GST of ₹' + gstAmount.toFixed(2) + ' (' + gstRate.toFixed(2) + '%)';
-            }
+            gstAmount = (basePrice * rate) / (100 + rate);
+            finalPrice = basePrice;
         }
         
-        calculateRetailPrice();
-        
+        if (purchaseBaseDisplay) purchaseBaseDisplay.textContent = '₹' + basePrice.toFixed(2);
+        if (purchaseGstAmountDisplay) purchaseGstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2) + ' (' + rate.toFixed(2) + '%)';
+        if (purchaseFinalDisplay) purchaseFinalDisplay.textContent = '₹' + finalPrice.toFixed(2);
+        if (finalPurchasePriceDisplay) finalPurchasePriceDisplay.value = '₹' + finalPrice.toFixed(2);
     } else {
-        if (gstPreview) gstPreview.style.display = 'none';
-        if (finalPurchasePriceSpan && basePrice > 0) {
-            finalPurchasePriceSpan.textContent = '₹' + basePrice.toFixed(2);
-        }
-        calculateRetailPrice();
-    }
-}
-
-function clearPurchasePrice() {
-    document.getElementById('purchasePriceBase').value = '';
-    calculateGST();
-}
-
-function clearManualRetailPrice() {
-    manualRetailPrice = false;
-    document.getElementById('retailPrice').value = '';
-    calculateRetailPrice();
-}
-
-function onManualRetailPriceChange() {
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    if (retailPrice > 0) {
-        manualRetailPrice = true;
-        document.getElementById('retailPriceText').innerHTML = 'Manually entered - Press refresh to auto-calculate';
-        document.getElementById('retailPriceText').style.color = '#0d6efd';
-        calculateRetailPrice();
-    }
-}
-
-// Calculate Retail Price based on Final Purchase Price and Retail Markup
-function calculateRetailPrice() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPriceType = document.getElementById('retailPriceType');
-    const retailPriceValue = parseFloat(document.getElementById('retailPriceValue').value) || 0;
-    const retailPriceInput = document.getElementById('retailPrice');
-    const retailMarkupText = document.getElementById('retailMarkupText');
-    const retailPriceText = document.getElementById('retailPriceText');
-    
-    let markupAmount = 0;
-    let calculatedRetailPrice = finalPurchasePrice;
-    
-    if (finalPurchasePrice > 0 && !manualRetailPrice) {
-        if (retailPriceValue > 0 && retailPriceType) {
-            if (retailPriceType.value === 'percentage') {
-                markupAmount = finalPurchasePrice * retailPriceValue / 100;
-                calculatedRetailPrice = finalPurchasePrice + markupAmount;
-                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${retailPriceValue}%)`;
-            } else {
-                markupAmount = retailPriceValue;
-                calculatedRetailPrice = finalPurchasePrice + retailPriceValue;
-                if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
-            }
-            
-            if (retailPriceInput) retailPriceInput.value = calculatedRetailPrice.toFixed(2);
-            if (retailPriceText) {
-                retailPriceText.innerHTML = `Based on Final Purchase Price (with GST) + markup`;
-                retailPriceText.style.color = '#198754';
-            }
-        } else {
-            if (retailPriceInput) retailPriceInput.value = finalPurchasePrice.toFixed(2);
-            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
-            if (retailPriceText) {
-                retailPriceText.innerHTML = `Same as Final Purchase Price (no markup)`;
-                retailPriceText.style.color = '#6c757d';
-            }
-        }
-    } else if (finalPurchasePrice > 0 && manualRetailPrice && retailPriceInput) {
-        const currentRetailPrice = parseFloat(retailPriceInput.value) || 0;
-        
-        if (currentRetailPrice > finalPurchasePrice) {
-            markupAmount = currentRetailPrice - finalPurchasePrice;
-            
-            if (retailPriceType) {
-                if (retailPriceType.value === 'percentage') {
-                    const calculatedPercentage = (markupAmount / finalPurchasePrice) * 100;
-                    document.getElementById('retailPriceValue').value = calculatedPercentage.toFixed(2);
-                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (${calculatedPercentage.toFixed(2)}%)`;
-                } else {
-                    document.getElementById('retailPriceValue').value = markupAmount.toFixed(2);
-                    if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹${markupAmount.toFixed(2)} (fixed)`;
-                }
-            }
-        } else {
-            document.getElementById('retailPriceValue').value = '0';
-            if (retailMarkupText) retailMarkupText.innerHTML = `Markup: ₹0.00`;
-        }
-        
-        if (retailPriceText) {
-            retailPriceText.innerHTML = `Manually entered - Markup calculated`;
-            retailPriceText.style.color = '#0d6efd';
+        if (purchasePreview) purchasePreview.style.display = 'none';
+        if (finalPurchasePriceDisplay && basePrice > 0) {
+            finalPurchasePriceDisplay.value = '₹' + basePrice.toFixed(2);
+        } else if (finalPurchasePriceDisplay) {
+            finalPurchasePriceDisplay.value = '';
         }
     }
-    
-    calculateProfitMargins();
-    calculateSecondaryPrices();
-    validatePriceHierarchy();
 }
 
-// Calculate Profit Margins
-function calculateProfitMargins() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const retailProfitMarginInput = document.getElementById('retailProfitMargin');
-    const retailProfitAmountText = document.getElementById('retailProfitAmountText');
+// Calculate Retail GST
+function calculateRetailGST(basePrice, rate) {
+    const retailPreview = document.getElementById('retailGstPreview');
+    const retailBaseDisplay = document.getElementById('retailBaseDisplay');
+    const retailGstAmountDisplay = document.getElementById('retailGstAmountDisplay');
+    const retailFinalDisplay = document.getElementById('retailFinalDisplay');
+    const finalRetailPriceDisplay = document.getElementById('finalRetailPriceDisplay');
     
-    if (finalPurchasePrice > 0 && retailPrice > 0) {
-        const retailProfit = retailPrice - finalPurchasePrice;
-        const retailProfitMargin = retailPrice > 0 ? (retailProfit / retailPrice) * 100 : 0;
+    if (basePrice > 0 && rate > 0) {
+        if (retailPreview) retailPreview.style.display = 'block';
         
-        if (retailProfitMarginInput) retailProfitMarginInput.value = retailProfitMargin.toFixed(2);
-        if (retailProfitAmountText) retailProfitAmountText.innerHTML = `Profit: ₹${retailProfit.toFixed(2)}`;
+        let gstAmount = 0;
+        let finalPrice = basePrice;
         
-        if (retailProfitMargin > 20) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#198754';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#198754';
-        } else if (retailProfitMargin > 10) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#fd7e14';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#fd7e14';
-        } else if (retailProfitMargin > 0) {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#0d6efd';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#0d6efd';
+        if (gstType === 'exclusive') {
+            gstAmount = basePrice * (rate / 100);
+            finalPrice = basePrice + gstAmount;
         } else {
-            if (retailProfitMarginInput) retailProfitMarginInput.style.color = '#dc3545';
-            if (retailProfitAmountText) retailProfitAmountText.style.color = '#dc3545';
+            gstAmount = (basePrice * rate) / (100 + rate);
+            finalPrice = basePrice;
         }
+        
+        if (retailBaseDisplay) retailBaseDisplay.textContent = '₹' + basePrice.toFixed(2);
+        if (retailGstAmountDisplay) retailGstAmountDisplay.textContent = '₹' + gstAmount.toFixed(2) + ' (' + rate.toFixed(2) + '%)';
+        if (retailFinalDisplay) retailFinalDisplay.textContent = '₹' + finalPrice.toFixed(2);
+        if (finalRetailPriceDisplay) finalRetailPriceDisplay.value = '₹' + finalPrice.toFixed(2);
     } else {
-        if (retailProfitMarginInput) retailProfitMarginInput.value = '';
-        if (retailProfitAmountText) retailProfitAmountText.innerHTML = 'Profit: ₹0.00';
+        if (retailPreview) retailPreview.style.display = 'none';
+        if (finalRetailPriceDisplay && basePrice > 0) {
+            finalRetailPriceDisplay.value = '₹' + basePrice.toFixed(2);
+        } else if (finalRetailPriceDisplay) {
+            finalRetailPriceDisplay.value = '';
+        }
+    }
+}
+
+// Calculate Profit Margin
+function calculateProfitMargin() {
+    const finalPurchaseDisplay = document.getElementById('finalPurchasePriceDisplay');
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const profitMarginDisplay = document.getElementById('profitMarginDisplay');
+    const profitAmountDisplay = document.getElementById('profitAmountDisplay');
+    
+    if (finalPurchaseDisplay && finalRetailDisplay) {
+        const purchasePrice = parseFloat(finalPurchaseDisplay.value.replace('₹', '')) || 0;
+        const retailPrice = parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0;
+        
+        if (purchasePrice > 0 && retailPrice > 0) {
+            const profitAmount = retailPrice - purchasePrice;
+            const profitMargin = retailPrice > 0 ? (profitAmount / retailPrice) * 100 : 0;
+            
+            if (profitMarginDisplay) {
+                profitMarginDisplay.textContent = profitMargin.toFixed(2) + '%';
+                profitMarginDisplay.style.color = profitMargin > 0 ? '#198754' : '#dc3545';
+            }
+            
+            if (profitAmountDisplay) {
+                profitAmountDisplay.textContent = '₹' + profitAmount.toFixed(2);
+                profitAmountDisplay.style.color = profitAmount > 0 ? '#198754' : '#dc3545';
+            }
+        } else {
+            if (profitMarginDisplay) profitMarginDisplay.textContent = '0.00%';
+            if (profitAmountDisplay) profitAmountDisplay.textContent = '₹0.00';
+        }
     }
 }
 
@@ -1473,23 +1534,17 @@ function calculateSecondaryPrices() {
     const conversion = parseFloat(document.getElementById('secUnitConversion')?.value) || 0;
     const extraType = document.getElementById('secUnitPriceType')?.value || 'fixed';
     const extraCharge = parseFloat(document.getElementById('secUnitExtraCharge')?.value) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const retailPrice = finalRetailDisplay ? parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0 : 0;
 
     const previewBox = document.getElementById('secondaryPricePreview');
     const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
-    const extraChargeHelp = document.getElementById('extraChargeHelp');
 
     if (secondaryUnitLabel) {
         secondaryUnitLabel.textContent = secondaryUnit || 'units';
     }
-    
-    if (extraChargeHelp) {
-        extraChargeHelp.innerHTML = extraType === 'fixed' 
-            ? `Extra charge per ${secondaryUnit || 'secondary unit'}` 
-            : `Extra charge percentage per ${secondaryUnit || 'secondary unit'}`;
-    }
 
-    if (secondaryUnit && conversion > 0 && conversion < 1000000 && previewBox) {
+    if (secondaryUnit && conversion > 0 && previewBox) {
         previewBox.style.display = 'block';
 
         let retailBasePricePerUnit = retailPrice / conversion;
@@ -1514,42 +1569,8 @@ function calculateSecondaryPrices() {
                 ? `₹${retailExtraPerUnit.toFixed(2)} (fixed)` 
                 : `₹${retailExtraPerUnit.toFixed(2)} (${extraCharge}%)`;
         }
-
-        if (conversion === 0) {
-            showSweetToast('Invalid Conversion', 'Conversion rate cannot be 0', 'warning');
-            const secUnitConversionField = document.getElementById('secUnitConversion');
-            if (secUnitConversionField) secUnitConversionField.value = '';
-            previewBox.style.display = 'none';
-        }
     } else if (previewBox) {
         previewBox.style.display = 'none';
-    }
-}
-
-// Validate price hierarchy
-function validatePriceHierarchy() {
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
-    const retailPriceText = document.getElementById('retailPriceText');
-    
-    if (retailPriceText) retailPriceText.style.color = '';
-    
-    if (finalPurchasePrice > 0 && retailPrice > 0) {
-        if (retailPrice <= finalPurchasePrice) {
-            if (retailPriceText) {
-                retailPriceText.innerHTML = '<span class="text-danger">Error: Must be > Final Purchase Price (with GST)</span>';
-                retailPriceText.style.color = '#dc3545';
-            }
-        }
-    }
-}
-
-// Update retail price unit display
-function updateRetailPriceUnit() {
-    const retailPriceType = document.getElementById('retailPriceType');
-    const retailPriceUnit = document.getElementById('retailPriceUnit');
-    if (retailPriceType && retailPriceUnit) {
-        retailPriceUnit.textContent = retailPriceType.value === 'percentage' ? '%' : '₹';
     }
 }
 
@@ -1573,36 +1594,34 @@ function generateBarcode() {
     showSweetToast('Barcode Generated', 'New barcode has been generated', 'success', 2000);
 }
 
-// Form submission validation
+// Form validation
 document.getElementById('editProductForm')?.addEventListener('submit', async function(e) {
     const purchasePriceBase = parseFloat(document.getElementById('purchasePriceBase').value) || 0;
-    const retailPrice = parseFloat(document.getElementById('retailPrice').value) || 0;
+    const retailPriceBase = parseFloat(document.getElementById('retailPriceBase').value) || 0;
     const gstSelect = document.getElementById('gstSelect');
-    const gstToggle = document.getElementById('gstTypeToggle');
-    const gstType = gstToggle && gstToggle.checked ? 'exclusive' : 'inclusive';
     const warrantyCheckbox = document.getElementById('warrantyCheckbox');
     const warrantyType = document.getElementById('warrantyType')?.value || 'none';
     const warrantyPeriod = parseFloat(document.querySelector('input[name="warranty_period"]')?.value) || 0;
     const secondaryUnit = document.querySelector('input[name="secondary_unit"]')?.value.trim() || '';
     const conversion = parseFloat(document.getElementById('secUnitConversion')?.value) || 0;
+    const stockAdjustmentType = document.getElementById('stockAdjustmentType')?.value || 'none';
     
     let errors = [];
     
-    if (purchasePriceBase <= 0) {
-        errors.push('Base purchase price must be greater than 0.');
-    }
-    
-    if (retailPrice <= 0) {
-        errors.push('Retail price must be greater than 0.');
-    }
+    if (purchasePriceBase <= 0) errors.push('Base purchase price must be greater than 0.');
+    if (retailPriceBase <= 0) errors.push('Base retail price must be greater than 0.');
     
     if (gstType === 'exclusive' && gstSelect && gstSelect.value === '') {
         errors.push('Please select GST rate when GST is Exclusive.');
     }
     
-    const finalPurchasePrice = parseFloat(document.getElementById('finalPurchasePrice')?.innerText.replace('₹', '')) || 0;
-    if (finalPurchasePrice > 0 && retailPrice > 0 && retailPrice <= finalPurchasePrice) {
-        errors.push('Retail price must be greater than Final Purchase Price (with GST).');
+    const finalPurchaseDisplay = document.getElementById('finalPurchasePriceDisplay');
+    const finalRetailDisplay = document.getElementById('finalRetailPriceDisplay');
+    const finalPurchasePrice = finalPurchaseDisplay ? parseFloat(finalPurchaseDisplay.value.replace('₹', '')) || 0 : 0;
+    const finalRetailPrice = finalRetailDisplay ? parseFloat(finalRetailDisplay.value.replace('₹', '')) || 0 : 0;
+    
+    if (finalPurchasePrice > 0 && finalRetailPrice > 0 && finalRetailPrice <= finalPurchasePrice) {
+        errors.push('Final Retail Price (with GST) must be greater than Final Purchase Price (with GST).');
     }
     
     if (secondaryUnit && conversion <= 0) {
@@ -1614,36 +1633,60 @@ document.getElementById('editProductForm')?.addEventListener('submit', async fun
     }
     
     if (warrantyCheckbox && warrantyCheckbox.checked) {
-        if (warrantyType === 'none') {
-            errors.push('Please select warranty type if warranty is applicable.');
+        if (warrantyType === 'none') errors.push('Please select warranty type if warranty is applicable.');
+        if (warrantyPeriod <= 0) errors.push('Warranty period must be greater than 0.');
+        if (warrantyPeriod > 120) errors.push('Warranty period cannot exceed 120 months/10 years.');
+    }
+    
+    // Only validate stock adjustment if type is not 'none'
+    if (stockAdjustmentType !== 'none') {
+        const stockAdjustmentQty = parseInt(document.getElementById('stockAdjustmentQuantity')?.value) || 0;
+        const stockAdjustmentReason = document.getElementById('stockAdjustmentReason')?.value.trim() || '';
+        
+        if (stockAdjustmentQty <= 0) {
+            errors.push('Stock adjustment quantity must be greater than 0.');
         }
-        if (warrantyPeriod <= 0) {
-            errors.push('Warranty period must be greater than 0.');
+        
+        if (stockAdjustmentType === 'remove' && stockAdjustmentQty > currentStock) {
+            errors.push(`Cannot remove more than current stock (${currentStock} units).`);
         }
-        if (warrantyPeriod > 120) {
-            errors.push('Warranty period cannot exceed 120 months/10 years.');
+        
+        if (!stockAdjustmentReason) {
+            errors.push('Please provide a reason for stock adjustment.');
         }
     }
     
     if (errors.length > 0) {
         e.preventDefault();
         await showSweetError('Validation Errors', errors.join('\n'));
-        return;
+        return false;
     }
     
-    const fileInput = document.getElementById('productImage');
-    if (fileInput && fileInput.files.length > 0) {
-        const fileSize = fileInput.files[0].size;
-        const maxSize = 2 * 1024 * 1024;
-        if (fileSize > maxSize) {
-            e.preventDefault();
-            await showSweetError('File Too Large', 'File size exceeds 2MB limit. Please choose a smaller image.');
-            fileInput.focus();
-        }
+    // Before form submission, enable disabled fields so their values are submitted
+    if (stockAdjustmentType !== 'none') {
+        document.getElementById('stockAdjustmentQuantity')?.removeAttribute('disabled');
+        document.getElementById('stockAdjustmentReason')?.removeAttribute('disabled');
     }
+    
+    return true;
 });
 
-// AJAX: Load subcategories when category changes
+// Event Listeners
+document.getElementById('purchasePriceBase')?.addEventListener('input', calculateAllGST);
+document.getElementById('retailPriceBase')?.addEventListener('input', calculateAllGST);
+document.getElementById('gstSelect')?.addEventListener('change', calculateAllGST);
+document.getElementById('secUnitPriceType')?.addEventListener('change', updateSecUnitExtraUnit);
+document.getElementById('secUnitConversion')?.addEventListener('input', calculateSecondaryPrices);
+document.getElementById('secUnitExtraCharge')?.addEventListener('input', calculateSecondaryPrices);
+document.getElementById('stockAdjustmentType')?.addEventListener('change', toggleStockAdjustmentFields);
+document.getElementById('stockAdjustmentQuantity')?.addEventListener('input', updateStockPreview);
+document.querySelector('input[name="secondary_unit"]')?.addEventListener('input', function() {
+    calculateSecondaryPrices();
+    const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
+    if (secondaryUnitLabel) secondaryUnitLabel.textContent = this.value || 'units';
+});
+
+// Category change - load subcategories
 const categorySelect = document.getElementById('categorySelect');
 if (categorySelect) {
     categorySelect.addEventListener('change', function() {
@@ -1671,17 +1714,6 @@ if (categorySelect) {
                         option.textContent = subcat.subcategory_name;
                         subcategorySelect.appendChild(option);
                     });
-                } else {
-                    const option = document.createElement('option');
-                    option.textContent = 'No subcategories available';
-                    option.disabled = true;
-                    subcategorySelect.appendChild(option);
-                }
-                
-                // Set selected subcategory
-                const currentSubcategoryId = '<?= $product['subcategory_id'] ?>';
-                if (currentSubcategoryId) {
-                    subcategorySelect.value = currentSubcategoryId;
                 }
             })
             .catch(error => {
@@ -1695,11 +1727,11 @@ if (categorySelect) {
     });
 }
 
-// Referral commission toggle
+// Referral toggle
 const referralToggle = document.getElementById('referralEnabled');
 const referralBox = document.getElementById('referralBox');
 const commissionUnit = document.getElementById('commissionUnit');
-const referralTypeSelect = document.querySelector('select[name="referral_type"]');
+const referralTypeSelect = document.getElementById('referralType');
 
 function toggleReferralBox() {
     if (referralBox) {
@@ -1713,12 +1745,8 @@ function updateCommissionUnit() {
     }
 }
 
-if (referralToggle) {
-    referralToggle.addEventListener('change', toggleReferralBox);
-}
-if (referralTypeSelect) {
-    referralTypeSelect.addEventListener('change', updateCommissionUnit);
-}
+if (referralToggle) referralToggle.addEventListener('change', toggleReferralBox);
+if (referralTypeSelect) referralTypeSelect.addEventListener('change', updateCommissionUnit);
 
 // Image preview
 const productImageInput = document.getElementById('productImage');
@@ -1733,310 +1761,37 @@ if (productImageInput) {
             reader.onload = function(e) {
                 preview.innerHTML = `
                     <img src="${e.target.result}" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
-                    <p class="mt-2 mb-0"><small>${file.name} (${(file.size / 1024).toFixed(1)} KB)</small></p>
+                    <p class="mt-2 mb-0"><small class="text-success">New image: ${file.name} (${(file.size / 1024).toFixed(1)} KB)</small></p>
                 `;
-                showSweetToast('Image Loaded', 'Image preview is ready', 'success', 1500);
             };
             
             reader.readAsDataURL(file);
-        } else if (preview && !preview.querySelector('img')) {
-            preview.innerHTML = `
-                <i class="bx bx-image fs-1 text-muted"></i>
-                <p class="text-muted mt-2 mb-0">Image preview will appear here</p>
-            `;
         }
     });
 }
-
-// Event listeners
-document.getElementById('purchasePriceBase')?.addEventListener('input', function() {
-    calculateGST();
-});
-
-document.getElementById('gstSelect')?.addEventListener('change', function() {
-    calculateGST();
-});
-
-document.getElementById('retailPriceValue')?.addEventListener('input', function() {
-    if (manualRetailPrice) {
-        manualRetailPrice = false;
-    }
-    calculateRetailPrice();
-});
-
-document.getElementById('retailPriceType')?.addEventListener('change', function() {
-    if (manualRetailPrice) {
-        manualRetailPrice = false;
-    }
-    updateRetailPriceUnit();
-    calculateRetailPrice();
-});
-
-document.getElementById('secUnitPriceType')?.addEventListener('change', updateSecUnitExtraUnit);
-document.getElementById('secUnitConversion')?.addEventListener('input', calculateSecondaryPrices);
-document.getElementById('secUnitExtraCharge')?.addEventListener('input', calculateSecondaryPrices);
-document.querySelector('input[name="secondary_unit"]')?.addEventListener('input', function() {
-    calculateSecondaryPrices();
-    const secondaryUnitLabel = document.getElementById('secondaryUnitLabel');
-    if (secondaryUnitLabel) {
-        secondaryUnitLabel.textContent = this.value || 'units';
-    }
-});
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     updateGSTType();
     toggleReferralBox();
     updateCommissionUnit();
-    updateRetailPriceUnit();
     updateSecUnitExtraUnit();
     toggleWarrantyFields();
     
-    calculateRetailPrice();
+    // Initialize stock adjustment fields as disabled
+    const quantityInput = document.getElementById('stockAdjustmentQuantity');
+    const reasonInput = document.getElementById('stockAdjustmentReason');
+    if (quantityInput) {
+        quantityInput.disabled = true;
+    }
+    if (reasonInput) {
+        reasonInput.disabled = true;
+    }
+    
+    toggleStockAdjustmentFields();
+    
+    calculateAllGST();
     calculateSecondaryPrices();
-    
-    // Load subcategories if category is selected
-    const categorySelectField = document.getElementById('categorySelect');
-    if (categorySelectField && categorySelectField.value) {
-        categorySelectField.dispatchEvent(new Event('change'));
-    }
-});
-
-// Quick Add Category Functions
-function openCategoryModal() {
-    const categoryNameField = document.getElementById('categoryName');
-    if (categoryNameField) categoryNameField.value = '';
-    const categoryCodeField = document.getElementById('categoryCode');
-    if (categoryCodeField) categoryCodeField.value = '';
-    const categoryDescriptionField = document.getElementById('categoryDescription');
-    if (categoryDescriptionField) categoryDescriptionField.value = '';
-    const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
-    modal.show();
-}
-
-function openSubcategoryModal() {
-    const categorySelect = document.getElementById('categorySelect');
-    if (!categorySelect || !categorySelect.value) {
-        showSweetToast('Select Category First', 'Please select a category before adding a subcategory', 'warning');
-        return;
-    }
-    
-    const subcategoryNameField = document.getElementById('subcategoryName');
-    if (subcategoryNameField) subcategoryNameField.value = '';
-    const subcategoryCodeField = document.getElementById('subcategoryCode');
-    if (subcategoryCodeField) subcategoryCodeField.value = '';
-    const subcategoryDescriptionField = document.getElementById('subcategoryDescription');
-    if (subcategoryDescriptionField) subcategoryDescriptionField.value = '';
-    const subcategoryParentCategoryField = document.getElementById('subcategoryParentCategory');
-    if (subcategoryParentCategoryField) subcategoryParentCategoryField.value = categorySelect.value;
-    const modal = new bootstrap.Modal(document.getElementById('subcategoryModal'));
-    modal.show();
-}
-
-function openGSTModal() {
-    const hsnCodeField = document.getElementById('hsnCode');
-    if (hsnCodeField) hsnCodeField.value = '';
-    const gstDescriptionField = document.getElementById('gstDescription');
-    if (gstDescriptionField) gstDescriptionField.value = '';
-    const cgstRateField = document.getElementById('cgstRate');
-    if (cgstRateField) cgstRateField.value = '0';
-    const sgstRateField = document.getElementById('sgstRate');
-    if (sgstRateField) sgstRateField.value = '0';
-    const igstRateField = document.getElementById('igstRate');
-    if (igstRateField) igstRateField.value = '0';
-    updateTotalGST();
-    const modal = new bootstrap.Modal(document.getElementById('gstModal'));
-    modal.show();
-}
-
-function updateTotalGST() {
-    const cgst = parseFloat(document.getElementById('cgstRate')?.value) || 0;
-    const sgst = parseFloat(document.getElementById('sgstRate')?.value) || 0;
-    const igst = parseFloat(document.getElementById('igstRate')?.value) || 0;
-    const total = cgst + sgst + igst;
-    const totalGSTRateSpan = document.getElementById('totalGSTRate');
-    if (totalGSTRateSpan) totalGSTRateSpan.textContent = total.toFixed(2);
-}
-
-// Quick Category Form Submit
-document.getElementById('quickCategoryForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const categoryName = document.getElementById('categoryName')?.value.trim();
-    if (!categoryName) {
-        await showSweetError('Missing Information', 'Please enter category name');
-        return;
-    }
-    
-    const saveBtn = document.getElementById('saveCategoryBtn');
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
-    }
-    
-    fetch('ajax/quick_add_category.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `category_name=${encodeURIComponent(categoryName)}&category_code=${encodeURIComponent(document.getElementById('categoryCode')?.value || '')}&description=${encodeURIComponent(document.getElementById('categoryDescription')?.value || '')}&business_id=<?= $current_business_id ?>`
-    })
-    .then(response => response.json())
-    .then(async data => {
-        if (data.success) {
-            const categorySelectField = document.getElementById('categorySelect');
-            if (categorySelectField) {
-                const newOption = document.createElement('option');
-                newOption.value = data.category_id;
-                newOption.textContent = data.category_name;
-                categorySelectField.appendChild(newOption);
-                categorySelectField.value = data.category_id;
-            }
-            
-            bootstrap.Modal.getInstance(document.getElementById('categoryModal'))?.hide();
-            await showSweetSuccess('Success!', 'Category added successfully!');
-            
-            if (categorySelectField) {
-                categorySelectField.dispatchEvent(new Event('change'));
-            }
-        } else {
-            await showSweetError('Error', data.message || 'Failed to add category');
-        }
-    })
-    .catch(async error => {
-        console.error('Error:', error);
-        await showSweetError('Error', 'Failed to add category. Please try again.');
-    })
-    .finally(() => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Category';
-        }
-    });
-});
-
-// Quick Subcategory Form Submit
-document.getElementById('quickSubcategoryForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const categoryId = document.getElementById('subcategoryParentCategory')?.value;
-    const subcategoryName = document.getElementById('subcategoryName')?.value.trim();
-    
-    if (!categoryId) {
-        await showSweetError('Missing Information', 'Please select a parent category');
-        return;
-    }
-    
-    if (!subcategoryName) {
-        await showSweetError('Missing Information', 'Please enter subcategory name');
-        return;
-    }
-    
-    const saveBtn = document.getElementById('saveSubcategoryBtn');
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
-    }
-    
-    fetch('ajax/quick_add_subcategory.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `subcategory_name=${encodeURIComponent(subcategoryName)}&category_id=${categoryId}&subcategory_code=${encodeURIComponent(document.getElementById('subcategoryCode')?.value || '')}&description=${encodeURIComponent(document.getElementById('subcategoryDescription')?.value || '')}&business_id=<?= $current_business_id ?>`
-    })
-    .then(response => response.json())
-    .then(async data => {
-        if (data.success) {
-            const subcategorySelectField = document.getElementById('subcategorySelect');
-            if (subcategorySelectField) {
-                const newOption = document.createElement('option');
-                newOption.value = data.subcategory_id;
-                newOption.textContent = data.subcategory_name;
-                subcategorySelectField.appendChild(newOption);
-                subcategorySelectField.value = data.subcategory_id;
-            }
-            
-            bootstrap.Modal.getInstance(document.getElementById('subcategoryModal'))?.hide();
-            await showSweetSuccess('Success!', 'Subcategory added successfully!');
-        } else {
-            await showSweetError('Error', data.message || 'Failed to add subcategory');
-        }
-    })
-    .catch(async error => {
-        console.error('Error:', error);
-        await showSweetError('Error', 'Failed to add subcategory. Please try again.');
-    })
-    .finally(() => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save Subcategory';
-        }
-    });
-});
-
-// Quick GST Form Submit
-document.getElementById('quickGSTForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const hsnCode = document.getElementById('hsnCode')?.value.trim();
-    if (!hsnCode) {
-        await showSweetError('Missing Information', 'Please enter HSN code');
-        return;
-    }
-    
-    const cgstRate = parseFloat(document.getElementById('cgstRate')?.value) || 0;
-    const sgstRate = parseFloat(document.getElementById('sgstRate')?.value) || 0;
-    const igstRate = parseFloat(document.getElementById('igstRate')?.value) || 0;
-    
-    if (cgstRate === 0 && sgstRate === 0 && igstRate === 0) {
-        await showSweetError('Missing Information', 'Please enter at least one GST rate');
-        return;
-    }
-    
-    const saveBtn = document.getElementById('saveGSTBtn');
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="bx bx-loader bx-spin"></i> Saving...';
-    }
-    
-    fetch('ajax/quick_add_gst.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `hsn_code=${encodeURIComponent(hsnCode)}&description=${encodeURIComponent(document.getElementById('gstDescription')?.value || '')}&cgst_rate=${cgstRate}&sgst_rate=${sgstRate}&igst_rate=${igstRate}&business_id=<?= $current_business_id ?>`
-    })
-    .then(response => response.json())
-    .then(async data => {
-        if (data.success) {
-            const gstSelectField = document.getElementById('gstSelect');
-            if (gstSelectField) {
-                const newOption = document.createElement('option');
-                newOption.value = data.gst_id;
-                newOption.setAttribute('data-rate', data.total_gst_rate);
-                newOption.textContent = `${data.hsn_code} - Total GST: ${data.total_gst_rate}% (CGST: ${data.cgst_rate}%, SGST: ${data.sgst_rate}%, IGST: ${data.igst_rate}%)`;
-                gstSelectField.appendChild(newOption);
-                gstSelectField.value = data.gst_id;
-            }
-            
-            bootstrap.Modal.getInstance(document.getElementById('gstModal'))?.hide();
-            await showSweetSuccess('Success!', 'GST rate added successfully!');
-            calculateGST();
-        } else {
-            await showSweetError('Error', data.message || 'Failed to add GST rate');
-        }
-    })
-    .catch(async error => {
-        console.error('Error:', error);
-        await showSweetError('Error', 'Failed to add GST rate. Please try again.');
-    })
-    .finally(() => {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="bx bx-save"></i> Save GST Rate';
-        }
-    });
 });
 </script>
 
@@ -2074,68 +1829,25 @@ document.getElementById('quickGSTForm')?.addEventListener('submit', async functi
     max-width: 100%;
     max-height: 200px;
 }
-#retailMarkupText, #retailPriceText, #retailProfitAmountText {
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-#retailMarkupText {
-    color: #fd7e14;
-}
-#retailPriceText {
-    color: #6f42c1;
-}
-#retailProfitAmountText {
-    color: #20c997;
-}
 .border-bottom {
     border-color: #dee2e6 !important;
 }
-#retailProfitMargin {
-    background-color: #f8f9fa;
-    cursor: not-allowed;
-}
 .alert-info {
     border-left: 4px solid #0dcaf0;
-}
-.btn-outline-secondary {
-    border-color: #dee2e6;
 }
 #secondaryPricePreview .alert-info {
     background-color: #f0f9ff;
     border: 1px solid #b6e0fe;
 }
-#secondaryPricePreview h6 {
-    color: #0d6efd;
-    font-size: 0.9rem;
-}
-#secRetailPricePerUnit {
-    color: #198754;
-    font-size: 1.1rem;
-}
-#secRetailBasePrice {
-    color: #6c757d;
-    font-size: 0.85rem;
-}
-#secRetailExtraCharge {
-    color: #fd7e14;
-    font-size: 0.85rem;
-}
-#gstCalculationPreview .alert-info {
-    background-color: #f0f9ff;
-    border: 1px solid #b6e0fe;
-}
-#gstCalculationPreview h6 {
-    color: #0d6efd;
-    font-size: 0.9rem;
-}
-#basePriceDisplay, #gstRateDisplay, #gstAmountDisplay {
-    color: #6c757d;
-    font-weight: 500;
-}
-#finalPurchasePrice {
-    color: #198754;
-    font-size: 1.2rem;
+#finalPurchasePriceDisplay, #finalRetailPriceDisplay {
+    background-color: #f8f9fa !important;
     font-weight: 600;
+}
+#finalPurchasePriceDisplay {
+    color: #dc3545 !important;
+}
+#finalRetailPriceDisplay {
+    color: #198754 !important;
 }
 .form-check.form-switch .form-check-input {
     width: 3.5em;
@@ -2145,28 +1857,26 @@ document.getElementById('quickGSTForm')?.addEventListener('submit', async functi
     background-color: #198754;
     border-color: #198754;
 }
-#gstTypeLabel {
-    font-weight: 600;
-    font-size: 1rem;
-}
-#gstTypeHelp {
-    color: #6c757d;
-}
 #warrantyFields {
     background-color: #f8f9fa;
     padding: 15px;
     border-radius: 8px;
     margin-top: 10px;
 }
-.modal-content {
-    border-radius: 12px;
+#stockAdjustmentFields {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
 }
-.modal-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+#profitMarginDisplay {
+    font-size: 1.2rem;
 }
-.modal-header .btn-close {
-    filter: brightness(0) invert(1);
+#profitAmountDisplay {
+    font-size: 1rem;
+}
+.table-sm td {
+    padding: 0.5rem 0.75rem;
 }
 </style>
 </body>
