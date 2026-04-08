@@ -987,7 +987,7 @@ function buildPaginationUrl($page, $per_page, $search, $category, $hsn_filter, $
                                                     </a>
 
                                                     <?php if ($is_stock_manager): ?>
-                                                        <a href="product_add.php?edit=<?= (int)$p['id'] ?>" class="btn btn-outline-warning" data-bs-toggle="tooltip" title="Edit Product">
+                                                        <a href="product_edit.php?edit=<?= (int)$p['id'] ?>" class="btn btn-outline-warning" data-bs-toggle="tooltip" title="Edit Product">
                                                             <i class="bx bx-edit"></i>
                                                         </a>
 
