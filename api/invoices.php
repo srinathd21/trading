@@ -453,59 +453,44 @@ function saveInvoice($action = 'save')
         }
 
         /* =========================
-           INVOICE NUMBER (USING EXISTING LOGIC)
-        ========================= */
-        $invoice_number = $data['invoice_number'] ?? '';
-        if (empty($invoice_number)) {
-            throw new Exception("Invoice number is required");
-        }
+   INVOICE NUMBER + DATE
+========================= */
+$invoice_number = trim($data['invoice_number'] ?? '');
+if ($invoice_number === '') {
+    throw new Exception("Invoice number is required");
+}
 
-        // Check for duplicate invoice number before proceeding
-        $check_duplicate_sql = "SELECT id FROM invoices 
-                               WHERE invoice_number = ? 
-                               AND business_id = ?";
-        $check_stmt = $pdo->prepare($check_duplicate_sql);
-        $check_stmt->execute([$invoice_number, $business_id]);
-        $existing_invoice = $check_stmt->fetch();
+$invoice_date = trim($data['invoice_date'] ?? ($data['date'] ?? ''));
+if ($invoice_date === '') {
+    throw new Exception("Invoice date is required");
+}
 
-        if ($existing_invoice) {
-            debug_log("Duplicate invoice number detected", [
-                'invoice_number' => $invoice_number,
-                'existing_id' => $existing_invoice['id']
-            ]);
+$invoice_date_obj = DateTime::createFromFormat('Y-m-d', $invoice_date);
+if (!$invoice_date_obj || $invoice_date_obj->format('Y-m-d') !== $invoice_date) {
+    throw new Exception("Invalid invoice date format");
+}
 
-            // Generate a new unique invoice number
-            $gst_type = $data['invoice_type'] ?? 'gst';
-            $prefix = ($gst_type === 'gst') ? 'INV' : 'INVNG';
-            $year_month = date('Ym');
-            $full_prefix = $prefix . $year_month . '-';
+$check_duplicate_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
+$check_stmt = $pdo->prepare($check_duplicate_sql);
+$check_stmt->execute([$invoice_number, $business_id]);
+$existing_invoice = $check_stmt->fetch();
 
-            // Find the next available number
-            $sql = "SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED)) as max_num
-                    FROM invoices
-                    WHERE business_id = ?
-                      AND shop_id = ?
-                      AND invoice_number LIKE ?";
+if ($existing_invoice) {
+    debug_log("Duplicate invoice number blocked", [
+        'invoice_number' => $invoice_number,
+        'existing_id' => $existing_invoice['id']
+    ]);
 
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$business_id, $shop_id, $full_prefix . '%']);
-            $result = $stmt->fetch();
+    throw new Exception("Invoice number already exists. Please enter a different invoice number.");
+}
 
-            $seq = 1;
-            if ($result && $result['max_num']) {
-                $seq = $result['max_num'] + 1;
-            }
+$created_at = $invoice_date . ' ' . date('H:i:s');
 
-            // Generate new number
-            $invoice_number = $full_prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
-
-            debug_log("Generated new invoice number", [
-                'old_number' => $data['invoice_number'],
-                'new_number' => $invoice_number
-            ]);
-        }
-
-        debug_log("Using invoice number", ['invoice_number' => $invoice_number]);
+debug_log("Using user-entered invoice number and date", [
+    'invoice_number' => $invoice_number,
+    'invoice_date' => $invoice_date,
+    'created_at' => $created_at
+]);
 
     /* =========================
    PAYMENT & TOTALS
@@ -536,8 +521,10 @@ $shipping_contact = trim($shipping_details['contact'] ?? '');
 $shipping_gstin = trim($shipping_details['gstin'] ?? '');
 $shipping_address = trim($shipping_details['address'] ?? '');
 $shipping_vehicle_number = trim($shipping_details['vehicle_number'] ?? '');
-$shipping_charges = (float)($shipping_details['charges'] ?? 0);
 
+$shipping_charges = (float)($shipping_details['shipping_charges'] ?? 0);
+$shipping_transport_type = trim($shipping_details['transport_type'] ?? '');
+$transport_charge = (float)($shipping_details['transport_charge'] ?? 0);
 // Calculate pending amount - use credit amount if credit payment exists
 if ($credit_amount > 0) {
     $pending_amount = $credit_amount; // Insert credit amount as pending amount
@@ -601,7 +588,7 @@ $stmt = $pdo->prepare("
         referral_id, referral_commission_amount,
         points_redeemed, points_discount_amount,
         shipping_name, shipping_contact, shipping_gstin, shipping_address,
-        shipping_vehicle_number, shipping_charges,
+        shipping_vehicle_number, shipping_transport_type, shipping_charges, transport_charge,
         credit_due_date,
         created_at, gst_type
     ) VALUES (
@@ -614,9 +601,9 @@ $stmt = $pdo->prepare("
         ?, ?,
         ?, ?,
         ?, ?, ?, ?,
-        ?, ?,
+        ?, ?, ?, ?,
         ?,
-        NOW(), ?
+        ?, ?
     )
 ");
 
@@ -633,7 +620,7 @@ $stmt->execute([
     $discount,
     $discount_type,
     $overall_discount,
-    $total_with_shipping, // Use total with shipping
+    $total_with_shipping,
     $total_paid,
     $change_given,
     $pending_amount,
@@ -659,8 +646,11 @@ $stmt->execute([
     $shipping_gstin ?: null,
     $shipping_address ?: null,
     $shipping_vehicle_number ?: null,
-    $shipping_charges,
+$shipping_transport_type ?: null,
+$shipping_charges,
+$transport_charge,
     $credit_due_date,
+    $created_at,
     $gst_type
 ]);
 

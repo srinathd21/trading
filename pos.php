@@ -5,10 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>POS - Billing</title>
-        <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon//favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon//favicon-16x16.png">
-<link rel="manifest" href="assets/favicon//site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon//favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon//favicon-16x16.png">
+    <link rel="manifest" href="assets/favicon//site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -1620,6 +1620,158 @@
             background-color: #dc3545;
             color: white;
         }
+        /* GST Filter Toggle Styles */
+    .gst-filter-section {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+
+    .gst-filter-section label {
+        margin-bottom: 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #495057;
+    }
+
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 24px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: 0.3s;
+        border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+        background-color: #28a745;
+    }
+
+    input:checked + .toggle-slider:before {
+        transform: translateX(26px);
+    }
+
+    .filter-badge {
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: #e9ecef;
+        color: #495057;
+        cursor: pointer;
+    }
+
+    .filter-badge.active-gst {
+        background: #28a745;
+        color: white;
+    }
+
+    .filter-badge.active-non-gst {
+        background: #dc3545;
+        color: white;
+    }
+
+    .filter-badge.all {
+        background: #17a2b8;
+        color: white;
+    }
+
+    /* Transport Section Styles */
+    .transport-section {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 12px;
+        margin-top: 10px;
+        border: 1px solid #e9ecef;
+        display: none;
+    }
+
+    .transport-section.show {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .transport-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+    }
+
+    .transport-row > div {
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .transport-row label {
+        font-size: 11px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: #495057;
+        display: block;
+    }
+
+    .transport-row input {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    .transport-badge {
+        background: #17a2b8;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
     </style>
 </head>
 
@@ -1644,7 +1796,7 @@
                     <div>
                         <label for="invoice-number"><i class="fas fa-hashtag"></i>
                             Invoice Number</label>
-                        <input type="text" name="invoice-number" id="invoice-number" readonly>
+                        <input type="text" name="invoice-number" id="invoice-number">
                     </div>
                     <div>
                         <label for="price-type"><i class="fas fa-tag"></i>
@@ -1739,6 +1891,24 @@
         </div>
         <div class="center-section">
             <h6>Add Product</h6>
+            <div class="gst-filter-section">
+    <label><i class="fas fa-filter me-1"></i> Product Filter:</label>
+    <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <span class="filter-badge all" id="filterAllBadge">All</span>
+            <span class="filter-badge" id="filterGstBadge">GST Products</span>
+            <span class="filter-badge" id="filterNonGstBadge">Non-GST Products</span>
+        </div>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <span style="font-size: 11px;">Show only:</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="gstFilterToggle">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="filterStatusText" style="font-size: 11px; font-weight: 500;">All Products</span>
+        </div>
+    </div>
+</div>
             <div class="product-select-section">
                 <div id="search-product-div">
                     <label for="search-product">Search Product</label>
@@ -1830,24 +2000,46 @@
 
                 <!-- NEW: Shipping Details Section - Place this here -->
                 <div class="shipping-info-section" id="shippingInfoSection" style="margin-top: 15px;">
-                    <h6>
-                        <i class="fas fa-truck"></i> Shipping Details
-                        <button type="button" id="btnEditShippingFromDiscount" class="btn btn-sm btn-outline-info ms-2"
-                            style="padding: 2px 8px; font-size: 10px;">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button type="button" id="btnClearShippingFromDiscount"
-                            class="btn btn-sm btn-outline-danger ms-1" style="padding: 2px 8px; font-size: 10px;">
-                            <i class="fas fa-trash"></i> Clear
-                        </button>
-                    </h6>
-                    <div id="shippingDetailsHorizontal" class="shipping-details-horizontal">
-                        <!-- Shipping details will appear here horizontally -->
-                        <div class="shipping-empty-state text-muted" style="font-size: 11px; padding: 8px;">
-                            <i class="fas fa-info-circle"></i> No shipping details added
-                        </div>
-                    </div>
-                </div>
+    <h6>
+        <i class="fas fa-truck"></i> Shipping Details
+        <button type="button" id="btnEditShippingFromDiscount" class="btn btn-sm btn-outline-info ms-2"
+            style="padding: 2px 8px; font-size: 10px;">
+            <i class="fas fa-edit"></i> Edit
+        </button>
+        <button type="button" id="btnClearShippingFromDiscount" class="btn btn-sm btn-outline-danger ms-1"
+            style="padding: 2px 8px; font-size: 10px;">
+            <i class="fas fa-trash"></i> Clear
+        </button>
+        <button type="button" id="btnToggleTransport" class="btn btn-sm btn-outline-secondary ms-1"
+            style="padding: 2px 8px; font-size: 10px;">
+            <i class="fas fa-truck-moving"></i> Transport
+        </button>
+    </h6>
+    <div id="shippingDetailsHorizontal" class="shipping-details-horizontal">
+        <div class="shipping-empty-state text-muted" style="font-size: 11px; padding: 8px;">
+            <i class="fas fa-info-circle"></i> No shipping details added
+        </div>
+    </div>
+    
+    <!-- Transport Section -->
+    <div id="transportSection" class="transport-section">
+        <div class="transport-row">
+            <div>
+                <label><i class="fas fa-truck-ramp-box"></i> Transport Type</label>
+                <input type="text" id="transportType" placeholder="e.g., Road, Air, Train, Ship" class="form-control form-control-sm">
+            </div>
+            <div>
+                <label><i class="fas fa-rupee-sign"></i> Transport Charge</label>
+                <input type="number" id="transportCharge" value="0" min="0" step="0.01" placeholder="Transport charge" class="form-control form-control-sm">
+            </div>
+            <div class="d-flex align-items-end">
+                <button type="button" id="btnSaveTransport" class="btn btn-sm btn-info w-100">
+                    <i class="fas fa-save me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
                 <div>
                     <h6>Payment Methods</h6>
                     <div class="payment-details">

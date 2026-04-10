@@ -156,13 +156,16 @@ $status_class = ['paid' => 'success', 'partial' => 'warning', 'unpaid' => 'dange
 // Get overall discount from invoice
 $overall_discount = $invoice['overall_discount'] ?? 0;
 
-// Get shipping details
+// Get shipping / transport details
 $shipping_name = $invoice['shipping_name'] ?? '';
 $shipping_contact = $invoice['shipping_contact'] ?? '';
 $shipping_gstin = $invoice['shipping_gstin'] ?? '';
 $shipping_address = $invoice['shipping_address'] ?? '';
 $shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
-$shipping_charges = $invoice['shipping_charges'] ?? 0;
+$shipping_transport_type = $invoice['shipping_transport_type'] ?? '';
+$shipping_charges = (float)($invoice['shipping_charges'] ?? 0);
+$transport_charge = (float)($invoice['transport_charge'] ?? 0);
+$total_extra_charges = $shipping_charges + $transport_charge;
 ?>
 <!doctype html>
 <html lang="en">
@@ -178,8 +181,7 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
     <div class="main-content">
         <div class="page-content">
             <div class="container-fluid">
-                <!-- Debug Section (remove in production) -->
-                <?php if(false): /* Set to true to debug */ ?>
+                <?php if(false): ?>
                 <div class="card mb-4">
                     <div class="card-header bg-danger text-white">
                         <h5 class="mb-0">Debug Info - Raw Data</h5>
@@ -197,7 +199,6 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                 </div>
                 <?php endif; ?>
 
-                <!-- Page Header -->
                 <div class="row mb-4">
                     <div class="col-12">
                         <div class="page-title-box d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -229,13 +230,13 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                     </div>
                 </div>
 
-                <!-- Messages -->
                 <?php if (isset($_SESSION['success'])): ?>
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <i class="bx bx-check-circle me-2"></i> <?= htmlspecialchars($_SESSION['success']) ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 <?php unset($_SESSION['success']); endif; ?>
+
                 <?php if (isset($_SESSION['error'])): ?>
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <i class="bx bx-error-circle me-2"></i> <?= htmlspecialchars($_SESSION['error']) ?>
@@ -243,7 +244,6 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                 </div>
                 <?php unset($_SESSION['error']); endif; ?>
 
-                <!-- Stats Cards -->
                 <div class="row mb-4 g-3">
                     <div class="col-xl-3 col-md-6">
                         <div class="card card-hover border-start border-primary border-4 shadow-sm h-100">
@@ -279,7 +279,6 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                     </div>
                 </div>
 
-                <!-- Invoice Summary -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-body">
                         <div class="row">
@@ -302,8 +301,7 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                     </div>
                 </div>
 
-                <!-- Shipping Details Card -->
-                <?php if (!empty($shipping_name) || !empty($shipping_contact) || !empty($shipping_address) || !empty($shipping_vehicle_number) || $shipping_charges > 0): ?>
+                <?php if (!empty($shipping_name) || !empty($shipping_contact) || !empty($shipping_address) || !empty($shipping_vehicle_number) || !empty($shipping_transport_type) || $shipping_charges > 0 || $transport_charge > 0): ?>
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-info bg-opacity-10 border-bottom border-info">
                         <h5 class="mb-0">
@@ -348,6 +346,18 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                                 </div>
                             </div>
                             <?php endif; ?>
+
+                            <?php if (!empty($shipping_transport_type)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-transfer-alt fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Transport Type</small>
+                                        <strong><?= htmlspecialchars($shipping_transport_type) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                             
                             <?php if (!empty($shipping_gstin)): ?>
                             <div class="col-md-6 col-lg-4">
@@ -384,12 +394,35 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                                 </div>
                             </div>
                             <?php endif; ?>
+
+                            <?php if ($transport_charge > 0): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-primary bg-opacity-10 rounded border border-primary">
+                                    <i class="bx bx-rupee fs-4 text-primary"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Transport Charge</small>
+                                        <strong class="text-primary fs-5">₹<?= number_format($transport_charge, 2) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if ($total_extra_charges > 0): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-warning bg-opacity-10 rounded border border-warning">
+                                    <i class="bx bx-calculator fs-4 text-warning"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Total Extra Charges</small>
+                                        <strong class="text-warning fs-5">₹<?= number_format($total_extra_charges, 2) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
                 <?php endif; ?>
 
-                <!-- Payment History Card -->
                 <?php if (!empty($payment_history)): ?>
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-light d-flex justify-content-between align-items-center">
@@ -468,7 +501,6 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                 </div>
                 <?php endif; ?>
 
-                <!-- Payment Summary Card -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-light">
                         <h5 class="mb-0"><i class="bx bx-credit-card me-2"></i> Payment Summary</h5>
@@ -508,6 +540,18 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                                         <strong class="text-secondary">₹<?= number_format($shipping_charges, 2) ?></strong>
                                     </div>
                                     <?php endif; ?>
+                                    <?php if($transport_charge > 0): ?>
+                                    <div class="d-flex justify-content-between py-1">
+                                        <span>Transport Charge<?php if(!empty($shipping_transport_type)): ?> (<?= htmlspecialchars($shipping_transport_type) ?>)<?php endif; ?></span>
+                                        <strong class="text-primary">₹<?= number_format($transport_charge, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
+                                    <?php if($total_extra_charges > 0): ?>
+                                    <div class="d-flex justify-content-between py-1">
+                                        <span>Total Extra Charges</span>
+                                        <strong class="text-warning">₹<?= number_format($total_extra_charges, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
                                     <?php if(($invoice['change_given'] ?? 0) > 0): ?>
                                     <div class="d-flex justify-content-between py-1">
                                         <span>Change Given</span>
@@ -523,24 +567,42 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                                         <span>Invoice Total:</span>
                                         <strong>₹<?= number_format($invoice['total'], 2) ?></strong>
                                     </div>
+
                                     <?php if($shipping_charges > 0): ?>
                                     <div class="d-flex justify-content-between py-2 text-secondary">
-                                        <span>Including Shipping:</span>
-                                        <strong>₹<?= number_format($invoice['total'] - $shipping_charges, 2) ?> + ₹<?= number_format($shipping_charges, 2) ?></strong>
+                                        <span>Shipping Charges:</span>
+                                        <strong>₹<?= number_format($shipping_charges, 2) ?></strong>
                                     </div>
                                     <?php endif; ?>
+
+                                    <?php if($transport_charge > 0): ?>
+                                    <div class="d-flex justify-content-between py-2 text-primary">
+                                        <span>Transport Charge<?php if(!empty($shipping_transport_type)): ?> (<?= htmlspecialchars($shipping_transport_type) ?>)<?php endif; ?>:</span>
+                                        <strong>₹<?= number_format($transport_charge, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
+
+                                    <?php if($total_extra_charges > 0): ?>
+                                    <div class="d-flex justify-content-between py-2 text-warning">
+                                        <span>Total Extra Charges:</span>
+                                        <strong>₹<?= number_format($total_extra_charges, 2) ?></strong>
+                                    </div>
+                                    <?php endif; ?>
+
                                     <?php if($total_payments > 0): ?>
                                     <div class="d-flex justify-content-between py-2 text-success">
                                         <span>Additional Payments:</span>
                                         <strong>₹<?= number_format($total_payments, 2) ?></strong>
                                     </div>
                                     <?php endif; ?>
+
                                     <?php if($pending > 0): ?>
                                     <div class="d-flex justify-content-between py-2 text-danger">
                                         <span>Pending Amount:</span>
                                         <strong>₹<?= number_format($pending, 2) ?></strong>
                                     </div>
                                     <?php endif; ?>
+
                                     <hr>
                                     <div class="d-flex justify-content-between py-2 fw-bold fs-5">
                                         <span>Total Received:</span>
@@ -569,7 +631,6 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                     </div>
                 </div>
 
-                <!-- Items Table -->
                 <div class="card shadow-sm">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
@@ -635,26 +696,47 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
                                         <td class="text-end fw-bold text-primary">₹<?= number_format($item['line_total_inclusive'], 2) ?></td>
                                     </tr>
                                     <?php endforeach; ?>
+
                                     <tr class="table-light fw-bold">
                                         <td colspan="9" class="text-end">Subtotal:</td>
                                         <td class="text-end">₹<?= number_format($subtotal, 2) ?></td>
                                     </tr>
+
                                     <?php if ($overall_discount > 0): ?>
                                     <tr class="table-danger fw-bold">
                                         <td colspan="9" class="text-end">Overall Discount:</td>
                                         <td class="text-end text-danger">-₹<?= number_format($overall_discount, 2) ?></td>
                                     </tr>
                                     <?php endif; ?>
+
                                     <?php if ($shipping_charges > 0): ?>
                                     <tr class="table-info fw-bold">
                                         <td colspan="9" class="text-end">Shipping Charges:</td>
                                         <td class="text-end text-info">+₹<?= number_format($shipping_charges, 2) ?></td>
                                     </tr>
                                     <?php endif; ?>
+
+                                    <?php if ($transport_charge > 0): ?>
+                                    <tr class="table-primary fw-bold">
+                                        <td colspan="9" class="text-end">
+                                            Transport Charge<?php if (!empty($shipping_transport_type)): ?> (<?= htmlspecialchars($shipping_transport_type) ?>)<?php endif; ?>:
+                                        </td>
+                                        <td class="text-end text-primary">+₹<?= number_format($transport_charge, 2) ?></td>
+                                    </tr>
+                                    <?php endif; ?>
+
+                                    <?php if ($total_extra_charges > 0): ?>
+                                    <tr class="table-warning fw-bold">
+                                        <td colspan="9" class="text-end">Total Extra Charges:</td>
+                                        <td class="text-end text-warning">+₹<?= number_format($total_extra_charges, 2) ?></td>
+                                    </tr>
+                                    <?php endif; ?>
+
                                     <tr class="table-light fw-bold">
                                         <td colspan="9" class="text-end">Original Invoice Total:</td>
                                         <td class="text-end text-primary">₹<?= number_format($invoice['total'], 2) ?></td>
                                     </tr>
+
                                     <tr class="table-success fw-bold fs-5">
                                         <td colspan="9" class="text-end">Active Total (After Returns):</td>
                                         <td class="text-end text-success">₹<?= number_format($active_total, 2) ?></td>
@@ -674,6 +756,7 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
 </div>
 <?php include 'includes/rightbar.php'; ?>
 <?php include 'includes/scripts.php'; ?>
+
 <style>
 .card-hover {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -710,9 +793,9 @@ $shipping_charges = $invoice['shipping_charges'] ?? 0;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 </style>
+
 <script>
 $(document).ready(function() {
-    // Auto-close alerts
     setTimeout(() => {
         $('.alert').alert('close');
     }, 5000);

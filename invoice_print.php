@@ -31,7 +31,8 @@ $stmt = $pdo->prepare("
            s.shop_name, s.address as shop_address, s.phone as shop_phone, s.gstin as shop_gstin,
            s.id as shop_id,
            i.shipping_name, i.shipping_contact, i.shipping_gstin, i.shipping_address,
-           i.shipping_vehicle_number, i.shipping_charges
+           i.shipping_vehicle_number, i.shipping_transport_type,
+           i.shipping_charges, i.transport_charge
     FROM invoices i
     LEFT JOIN customers c ON i.customer_id = c.id
     LEFT JOIN users u ON i.seller_id = u.id
@@ -45,13 +46,16 @@ if (!$invoice) {
     die("Invoice not found or access denied");
 }
 
-// Get shipping details
+// Get shipping / transport details
 $shipping_name = $invoice['shipping_name'] ?? '';
 $shipping_contact = $invoice['shipping_contact'] ?? '';
 $shipping_gstin = $invoice['shipping_gstin'] ?? '';
 $shipping_address = $invoice['shipping_address'] ?? '';
 $shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
-$shipping_charges = $invoice['shipping_charges'] ?? 0;
+$shipping_transport_type = $invoice['shipping_transport_type'] ?? '';
+$shipping_charges = (float)($invoice['shipping_charges'] ?? 0);
+$transport_charge = (float)($invoice['transport_charge'] ?? 0);
+$total_extra_charges = $shipping_charges + $transport_charge;
 
 // Get shop_id from invoice
 $shop_id = $invoice['shop_id'] ?? null;
@@ -201,7 +205,9 @@ $customer_address = $invoice['customer_address'] ?? '';
 $customer_gstin = $invoice['customer_gstin'] ?? '';
 
 // Transport and waybill details (from shipping)
-$transport = !empty($shipping_vehicle_number) ? 'Vehicle: ' . $shipping_vehicle_number : 'By Road';
+$transport = !empty($shipping_transport_type)
+    ? $shipping_transport_type
+    : (!empty($shipping_vehicle_number) ? 'Vehicle: ' . $shipping_vehicle_number : 'By Road');
 $waybill_no = $invoice['shipping_waybill_no'] ?? '';
 
 // ========== Include FPDF library ==========
@@ -310,62 +316,106 @@ if ($business_id == 28) {
         public $waybill_no = '';
         public $headerEndY = 0;
         
+        function ChargesBox()
+        {
+            $shippingCharges = (float)($this->shipping['shipping_charges'] ?? 0);
+            $transportCharge = (float)($this->shipping['transport_charge'] ?? 0);
+            $transportType = $this->shipping['transport_type'] ?? '';
+            $totalExtra = (float)($this->shipping['total_extra'] ?? 0);
+
+            if ($shippingCharges <= 0 && $transportCharge <= 0 && empty($transportType)) {
+                return;
+            }
+
+            $this->Ln(2);
+            $this->SetFont('Arial', 'B', 9);
+            $this->SetX(5);
+            $this->Cell(200, 7, 'Additional Charges', 1, 1, 'C');
+
+            $this->SetFont('Arial', '', 9);
+
+            if ($shippingCharges > 0) {
+                $this->SetX(5);
+                $this->Cell(100, 7, 'Shipping Charges', 1, 0, 'L');
+                $this->Cell(100, 7, money($shippingCharges), 1, 1, 'R');
+            }
+
+            if (!empty($transportType) || $transportCharge > 0) {
+                $label = 'Transport Charge';
+                if (!empty($transportType)) {
+                    $label .= ' (' . pdf_text_simple($transportType) . ')';
+                }
+
+                $this->SetX(5);
+                $this->Cell(100, 7, $label, 1, 0, 'L');
+                $this->Cell(100, 7, money($transportCharge), 1, 1, 'R');
+            }
+
+            if ($totalExtra > 0) {
+                $this->SetFont('Arial', 'B', 9);
+                $this->SetX(5);
+                $this->Cell(100, 7, 'Total Extra Charges', 1, 0, 'L');
+                $this->Cell(100, 7, money($totalExtra), 1, 1, 'R');
+                $this->SetFont('Arial', '', 9);
+            }
+        }
+        
         function Header()
-{
-    // Outer border
-    $this->Rect(5, 5, 200, 287);
-    
-    // Title - TAX INVOICE
-    $this->SetFont('Arial','B',10);
-    $this->SetXY(5,5);
-    $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
-    $this->Cell(200,8, $title, 0, 1, 'C');
-    
-    // ========== ADD SHOP ADDRESS UNDER TITLE ==========
-    $this->SetY(12);
-    $this->SetX(5);
-    
-    // Shop/Business Name - Bold
-    $this->SetFont('Arial','B',14);
-    $this->Cell(200, 4, pdf_text_simple($this->company['name']), 0, 1, 'C');
-    
-    // Shop Address - Normal
-    $this->SetFont('Arial','',8);
-    $this->SetX(5);
-    $this->SetY(17);
-    $this->MultiCell(200, 4, pdf_text_simple($this->company['address']), 0, 'C');
-    
-    // Phone (if available)
-    if (!empty($this->company['phone'])) {
-        $this->SetX(5);
-        $this->MultiCell(200, 4, pdf_text_simple("Phone: " . $this->company['phone']), 0, 'C');
-    }
-    
-    // GSTIN (if available)
-    if (!empty($this->company['gstin'])) {
-        $this->SetX(5);
-        $this->MultiCell(200, 4, pdf_text_simple("GSTIN: " . $this->company['gstin']), 0, 'C');
-    }
-    
-    // IRN and Ack details (if available)
-    $this->SetFont('Arial','',7);
-    
-    if (!empty($this->invoice['irn_no'])) {
-        $irnText = "IRN No.: " . $this->invoice['irn_no'];
-        $this->SetY($this->GetY() + 2);
-        $this->SetX(5);
-        $this->MultiCell(200, 4, $irnText, 0, 'C');
-    }
-    
-    if (!empty($this->invoice['ack_no']) && !empty($this->invoice['ack_date'])) {
-        $this->SetFont('Arial','',7);
-        $this->SetY($this->GetY() + 1);
-        $this->SetX(5);
-        $this->Cell(200, 4, 'Ack No.: ' . $this->invoice['ack_no'] . ' | Ack Date: ' . $this->invoice['ack_date'], 0, 1, 'C');
-    }
-    
-    $this->headerEndY = $this->GetY();
-}
+        {
+            // Outer border
+            $this->Rect(5, 5, 200, 287);
+            
+            // Title - TAX INVOICE
+            $this->SetFont('Arial','B',10);
+            $this->SetXY(5,5);
+            $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
+            $this->Cell(200,8, $title, 0, 1, 'C');
+            
+            // ========== ADD SHOP ADDRESS UNDER TITLE ==========
+            $this->SetY(12);
+            $this->SetX(5);
+            
+            // Shop/Business Name - Bold
+            $this->SetFont('Arial','B',14);
+            $this->Cell(200, 4, pdf_text_simple($this->company['name']), 0, 1, 'C');
+            
+            // Shop Address - Normal
+            $this->SetFont('Arial','',8);
+            $this->SetX(5);
+            $this->SetY(17);
+            $this->MultiCell(200, 4, pdf_text_simple($this->company['address']), 0, 'C');
+            
+            // Phone (if available)
+            if (!empty($this->company['phone'])) {
+                $this->SetX(5);
+                $this->MultiCell(200, 4, pdf_text_simple("Phone: " . $this->company['phone']), 0, 'C');
+            }
+            
+            // GSTIN (if available)
+            if (!empty($this->company['gstin'])) {
+                $this->SetX(5);
+                $this->MultiCell(200, 4, pdf_text_simple("GSTIN: " . $this->company['gstin']), 0, 'C');
+            }
+            
+            // IRN and Ack details (if available)
+            $this->SetFont('Arial','',7);
+            
+            if (!empty($this->invoice['irn_no'])) {
+                $irnText = "IRN No.: " . $this->invoice['irn_no'];
+                $this->SetY($this->GetY() + 2);
+                $this->SetX(5);
+                $this->MultiCell(200, 4, $irnText, 0, 'C');
+            }
+            
+            if (!empty($this->invoice['ack_no']) && !empty($this->invoice['ack_date'])) {
+                $this->SetFont('Arial','',7);
+                $this->SetY($this->GetY() + 1);
+                $this->SetX(5);
+                $this->Cell(200, 4, 'Ack No.: ' . $this->invoice['ack_no'] . ' | Ack Date: ' . $this->invoice['ack_date'], 0, 1, 'C');
+            }
+            
+            $this->headerEndY = $this->GetY();
+        }
         
         function LabelValue($label, $value, $totalWidth = 100)
         {
@@ -688,6 +738,47 @@ if ($business_id == 28) {
             $this->SetFont('Arial','',9);
             $this->Cell(30, 7, money($totalSgst), 1, 1, 'R');
             
+            // Extra charges rows
+            $shippingCharges = (float)($this->totals['shipping_charges'] ?? 0);
+            $transportCharge = (float)($this->totals['transport_charge'] ?? 0);
+            $totalExtraCharges = (float)($this->totals['total_extra_charges'] ?? 0);
+
+            if ($shippingCharges > 0) {
+                $this->SetX(5);
+                $this->Cell(30, 7, '', 1, 0);
+                $this->Cell(40, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->SetFont('Arial','B',9);
+                $this->Cell(30, 7, 'Shipping', 1, 0, 'L');
+                $this->SetFont('Arial','',9);
+                $this->Cell(30, 7, money($shippingCharges), 1, 1, 'R');
+            }
+
+            if ($transportCharge > 0) {
+                $this->SetX(5);
+                $this->Cell(30, 7, '', 1, 0);
+                $this->Cell(40, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->SetFont('Arial','B',9);
+                $this->Cell(30, 7, 'Transport', 1, 0, 'L');
+                $this->SetFont('Arial','',9);
+                $this->Cell(30, 7, money($transportCharge), 1, 1, 'R');
+            }
+
+            if ($totalExtraCharges > 0) {
+                $this->SetX(5);
+                $this->Cell(30, 7, '', 1, 0);
+                $this->Cell(40, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->Cell(35, 7, '', 1, 0);
+                $this->SetFont('Arial','B',9);
+                $this->Cell(30, 7, 'Extra Total', 1, 0, 'L');
+                $this->Cell(30, 7, money($totalExtraCharges), 1, 1, 'R');
+                $this->SetFont('Arial','',9);
+            }
+            
             // Empty row
             $this->SetX(5);
             $this->Cell(30, 7, '', 1, 0);
@@ -709,7 +800,7 @@ if ($business_id == 28) {
             $this->Cell(30, 7, money($totalIgst), 1, 1, 'R');
             
             // Rounded Off row
-            $calculatedTotal = $this->totals['taxable'] + $totalCgst + $totalSgst + $totalIgst;
+            $calculatedTotal = $this->totals['taxable'] + $totalCgst + $totalSgst + $totalIgst + $shippingCharges + $transportCharge;
             $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
             $this->SetX(5);
             $this->Cell(30, 7, '', 1, 0);
@@ -911,23 +1002,29 @@ if ($business_id == 28) {
     
     // Set shipping info
     $pdf->shipping = [
-        'name'           => $shipping_name,
-        'contact'        => $shipping_contact,
-        'gstin'          => $shipping_gstin,
-        'address'        => $shipping_address,
-        'vehicle_number' => $shipping_vehicle_number,
-        'charges'        => $shipping_charges
+        'name'             => $shipping_name,
+        'contact'          => $shipping_contact,
+        'gstin'            => $shipping_gstin,
+        'address'          => $shipping_address,
+        'vehicle_number'   => $shipping_vehicle_number,
+        'transport_type'   => $shipping_transport_type,
+        'shipping_charges' => $shipping_charges,
+        'transport_charge' => $transport_charge,
+        'total_extra'      => $total_extra_charges
     ];
     
     $pdf->totals = [
-        'subtotal'        => $total_taxable,
-        'overall_discount'=> $overall_discount,
-        'discount'        => $total_discount,
-        'taxable'         => $total_taxable,
-        'cgst'            => $total_cgst,
-        'sgst'            => $total_sgst,
-        'igst'            => $total_igst,
-        'grand_total'     => $grand_total
+        'subtotal'            => $subtotal,
+        'discount'            => $total_discount + $overall_discount,
+        'overall_discount'    => $overall_discount,
+        'taxable'             => $total_taxable,
+        'cgst'                => $total_cgst,
+        'sgst'                => $total_sgst,
+        'igst'                => $total_igst,
+        'shipping_charges'    => $shipping_charges,
+        'transport_charge'    => $transport_charge,
+        'total_extra_charges' => $total_extra_charges,
+        'grand_total'         => $grand_total
     ];
     
     // Set taxable by rate for totals box
@@ -952,7 +1049,7 @@ if ($business_id == 28) {
     $pdf->items = $items;
     
     // Set transport and waybill
-    $pdf->transport = !empty($shipping_vehicle_number) ? 'Vehicle: ' . $shipping_vehicle_number : 'By Road';
+    $pdf->transport = $transport;
     $pdf->waybill_no = $invoice['shipping_waybill_no'] ?? '';
     
     // ========== Generate PDF ==========
@@ -961,6 +1058,7 @@ if ($business_id == 28) {
     $pdf->PartyBoxes();
     $pdf->TableHeader();
     $pdf->TableRows();
+    $pdf->ChargesBox();
     $pdf->FooterSection();
     $pdf->TotalsBox();
     $pdf->BankDetailsSection();
@@ -1157,15 +1255,39 @@ if ($business_id == 28) {
             $ship_y_end = $this->GetY();
             $this->SetY(max($bill_y_end, $ship_y_end));
             
-            // Show shipping charges if applicable
-            if ($this->shipping['charges'] > 0) {
+            // Show transport type if available
+            if (!empty($this->shipping['transport_type'])) {
                 $this->Ln(2);
                 $this->SetFont('Arial','',9);
                 $this->SetX($this->lm);
                 $this->Cell($colW, 5, '', 0, 0, 'L');
                 $this->SetX($this->lm + $colW);
                 $this->SetTextColor(0, 100, 0);
-                $this->Cell($colW, 5, pdf_text_simple('Shipping Charges: Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+                $this->Cell($colW, 5, pdf_text_simple('Transport: ' . $this->shipping['transport_type']), 0, 1, 'R');
+                $this->SetTextColor(0, 0, 0);
+            }
+            
+            // Show shipping charges if applicable
+            if ($this->shipping['shipping_charges'] > 0) {
+                $this->Ln(2);
+                $this->SetFont('Arial','',9);
+                $this->SetX($this->lm);
+                $this->Cell($colW, 5, '', 0, 0, 'L');
+                $this->SetX($this->lm + $colW);
+                $this->SetTextColor(0, 100, 0);
+                $this->Cell($colW, 5, pdf_text_simple('Shipping Charges: Rs. ' . money($this->shipping['shipping_charges'])), 0, 1, 'R');
+                $this->SetTextColor(0, 0, 0);
+            }
+            
+            // Show transport charge if applicable
+            if ($this->shipping['transport_charge'] > 0) {
+                $this->Ln(2);
+                $this->SetFont('Arial','',9);
+                $this->SetX($this->lm);
+                $this->Cell($colW, 5, '', 0, 0, 'L');
+                $this->SetX($this->lm + $colW);
+                $this->SetTextColor(0, 100, 0);
+                $this->Cell($colW, 5, pdf_text_simple('Transport Charge: Rs. ' . money($this->shipping['transport_charge'])), 0, 1, 'R');
                 $this->SetTextColor(0, 0, 0);
             }
             
@@ -1445,11 +1567,27 @@ if ($business_id == 28) {
                     $y = $this->GetY();
                 }
                 
+                // IGST
+                if ($t['igst'] > 0) {
+                    $this->SetX($rightX);
+                    $this->Cell(40, 6, pdf_text_simple('IGST'), 0, 0, 'L');
+                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['igst'])), 0, 1, 'R');
+                    $y = $this->GetY();
+                }
+                
                 // Add Shipping Charges if they exist
-                if ($this->shipping['charges'] > 0) {
+                if ($t['shipping_charges'] > 0) {
                     $this->SetX($rightX);
                     $this->Cell(40, 6, pdf_text_simple('Shipping Charges'), 0, 0, 'L');
-                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['shipping_charges'])), 0, 1, 'R');
+                    $y = $this->GetY();
+                }
+                
+                // Add Transport Charge if they exist
+                if ($t['transport_charge'] > 0) {
+                    $this->SetX($rightX);
+                    $this->Cell(40, 6, pdf_text_simple('Transport Charge'), 0, 0, 'L');
+                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['transport_charge'])), 0, 1, 'R');
                     $y = $this->GetY();
                 }
                 
@@ -1477,10 +1615,18 @@ if ($business_id == 28) {
                 $y = $this->GetY();
                 
                 // Add Shipping Charges if they exist
-                if ($this->shipping['charges'] > 0) {
+                if ($t['shipping_charges'] > 0) {
                     $this->SetX($rightX);
                     $this->Cell(40, 6, pdf_text_simple('Shipping Charges'), 0, 0, 'L');
-                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($this->shipping['charges'])), 0, 1, 'R');
+                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['shipping_charges'])), 0, 1, 'R');
+                    $y = $this->GetY();
+                }
+                
+                // Add Transport Charge if they exist
+                if ($t['transport_charge'] > 0) {
+                    $this->SetX($rightX);
+                    $this->Cell(40, 6, pdf_text_simple('Transport Charge'), 0, 0, 'L');
+                    $this->Cell(40, 6, pdf_text_simple('Rs. ' . money($t['transport_charge'])), 0, 1, 'R');
                     $y = $this->GetY();
                 }
                 
@@ -1639,24 +1785,30 @@ if ($business_id == 28) {
     
     // Set shipping info
     $pdf->shipping = [
-        'name'           => $shipping_name,
-        'contact'        => $shipping_contact,
-        'gstin'          => $shipping_gstin,
-        'address'        => $shipping_address,
-        'vehicle_number' => $shipping_vehicle_number,
-        'charges'        => $shipping_charges
+        'name'             => $shipping_name,
+        'contact'          => $shipping_contact,
+        'gstin'            => $shipping_gstin,
+        'address'          => $shipping_address,
+        'vehicle_number'   => $shipping_vehicle_number,
+        'transport_type'   => $shipping_transport_type,
+        'shipping_charges' => $shipping_charges,
+        'transport_charge' => $transport_charge,
+        'total_extra'      => $total_extra_charges
     ];
     
     // Set totals - INCLUDING OVERALL DISCOUNT
     $pdf->totals = [
-        'subtotal'        => $subtotal,
-        'overall_discount'=> $overall_discount,
-        'discount'        => $total_discount,
-        'taxable'         => $total_taxable,
-        'cgst'            => $total_cgst,
-        'sgst'            => $total_sgst,
-        'igst'            => $total_igst,
-        'grand_total'     => $grand_total
+        'subtotal'            => $subtotal,
+        'discount'            => $total_discount + $overall_discount,
+        'overall_discount'    => $overall_discount,
+        'taxable'             => $total_taxable,
+        'cgst'                => $total_cgst,
+        'sgst'                => $total_sgst,
+        'igst'                => $total_igst,
+        'shipping_charges'    => $shipping_charges,
+        'transport_charge'    => $transport_charge,
+        'total_extra_charges' => $total_extra_charges,
+        'grand_total'         => $grand_total
     ];
     
     // Set account details from first bank account
@@ -1788,3 +1940,4 @@ echo '<script type="text/javascript">
 </script>';
 
 exit;
+?>
