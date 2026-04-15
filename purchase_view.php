@@ -267,11 +267,16 @@ include 'includes/head.php';
                                 </p>
                             </div>
                             <div class="d-flex gap-2">
-                                <a href="purchases.php" class="btn btn-outline-secondary">
-                                    <i class="bx bx-arrow-back me-1"></i> Back to List
-                                </a>
-                               
-                            </div>
+    <a href="purchases.php" class="btn btn-outline-secondary">
+        <i class="bx bx-arrow-back me-1"></i> Back to List
+    </a>
+
+    <a href="print-purchase.php?id=<?= $purchase['id'] ?>" 
+       target="_blank" 
+       class="btn btn-primary">
+        <i class="bx bx-printer me-1"></i> Print
+    </a>
+</div>
                         </div>
                     </div>
                 </div>

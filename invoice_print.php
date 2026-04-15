@@ -61,18 +61,25 @@ $total_extra_charges = $shipping_charges + $transport_charge;
 $shop_id = $invoice['shop_id'] ?? null;
 
 // Fetch invoice settings for this shop/business
-$settings_stmt = $pdo->prepare("
-    SELECT * FROM invoice_settings
-    WHERE business_id = ? AND shop_id = ?
-    LIMIT 1
-");
-$settings_stmt->execute([$business_id, $shop_id]);
-$settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
+$settings = [];
 
-// If no shop-specific settings, get business default
-if (!$settings && $shop_id) {
+// First try shop-specific settings when shop_id exists
+if (!empty($shop_id)) {
     $settings_stmt = $pdo->prepare("
-        SELECT * FROM invoice_settings
+        SELECT *
+        FROM invoice_settings
+        WHERE business_id = ? AND shop_id = ?
+        LIMIT 1
+    ");
+    $settings_stmt->execute([$business_id, $shop_id]);
+    $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// Always fallback to business default settings
+if (empty($settings)) {
+    $settings_stmt = $pdo->prepare("
+        SELECT *
+        FROM invoice_settings
         WHERE business_id = ? AND shop_id IS NULL
         LIMIT 1
     ");
@@ -113,6 +120,15 @@ $company_name = $settings['company_name'] ?? 'Ecommer';
 $company_address = $settings['company_address'] ?? 'Sogathur X Road, Dharmapuri';
 $company_phone = $settings['company_phone'] ?? '9003552650';
 $company_gstin = $settings['gst_number'] ?? ($invoice['shop_gstin'] ?? '');
+
+// ========== Safe logo path for FPDF ==========
+$company_logo = '';
+if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])) {
+    $logo_ext = strtolower(pathinfo($settings['logo_path'], PATHINFO_EXTENSION));
+    if (in_array($logo_ext, ['jpg', 'jpeg', 'png'])) {
+        $company_logo = $settings['logo_path'];
+    }
+}
 
 // ========== Fetch default active bank accounts ==========
 if ($shop_id) {
@@ -367,7 +383,7 @@ if ($business_id == 28) {
             
             // Title - TAX INVOICE
             $this->SetFont('Arial','B',10);
-            $this->SetXY(5,5);
+            $this->SetXY(5,4);
             $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
             $this->Cell(200,8, $title, 0, 1, 'C');
             
@@ -375,14 +391,29 @@ if ($business_id == 28) {
             $this->SetY(12);
             $this->SetX(5);
             
+            // Logo for business_id 28 (supported formats only)
+            if (
+                !empty($this->company['logo']) &&
+                file_exists($this->company['logo']) &&
+                in_array(strtolower(pathinfo($this->company['logo'], PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png'])
+            ) {
+                try {
+                    $this->Image($this->company['logo'], 10, 8, 20, 20);
+                } catch (Exception $e) {
+                    // keep layout without breaking PDF
+                } catch (Error $e) {
+                    // keep layout without breaking PDF
+                }
+            }
+            
             // Shop/Business Name - Bold
-            $this->SetFont('Arial','B',14);
+            $this->SetFont('Arial','B',18);
             $this->Cell(200, 4, pdf_text_simple($this->company['name']), 0, 1, 'C');
             
             // Shop Address - Normal
             $this->SetFont('Arial','',8);
             $this->SetX(5);
-            $this->SetY(17);
+            $this->SetY(18);
             $this->MultiCell(200, 4, pdf_text_simple($this->company['address']), 0, 'C');
             
             // Phone (if available)
@@ -972,7 +1003,7 @@ if ($business_id == 28) {
         'phone'   => $company_phone,
         'email'   => $settings['company_email'] ?? '',
         'website' => $settings['company_website'] ?? '',
-        'logo'    => !empty($settings['logo_path']) ? $settings['logo_path'] : ''
+        'logo'    => $company_logo
     ];
     
     // Set invoice info
@@ -1762,7 +1793,7 @@ if ($business_id == 28) {
         'gstin'   => $company_gstin,
         'phone'   => $company_phone,
         'email'   => $settings['company_email'] ?? '',
-        'logo'    => !empty($settings['logo_path']) ? $settings['logo_path'] : ''
+        'logo'    => $company_logo
     ];
     
     // Set invoice info
@@ -1933,11 +1964,5 @@ header('Pragma: public');
 
 // Output PDF content
 echo $pdf_content;
-
-// Add JavaScript for auto-print
-echo '<script type="text/javascript">
-    window.onload = function() { window.print(); }
-</script>';
-
 exit;
 ?>

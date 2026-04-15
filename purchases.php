@@ -661,7 +661,7 @@ $(document).ready(function() {
 });
 
 function printPurchase(id) {
-    window.open('purchase_print.php?id=' + id, 'PrintPO', 'width=900,height=700,scrollbars=yes,resizable=yes');
+    window.open('print-purchase.php?id=' + id, 'PrintPO', 'width=900,height=700,scrollbars=yes,resizable=yes');
 }
 
 function exportPurchases() {
