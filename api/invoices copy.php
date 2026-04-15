@@ -86,41 +86,8 @@ function getNextInvoiceNumber()
 
     $data = json_decode(file_get_contents('php://input'), true);
 
-    $gst_type = strtolower(trim($data['invoice_type'] ?? 'gst'));
-    $is_non_gst = in_array($gst_type, ['non-gst', 'non_gst', 'nongst']);
-
-    // =========================
-    // GET PREFIX FROM invoice_settings
-    // =========================
-    $settings = [];
-
-    if (!empty($shop_id)) {
-        $settings_sql = "SELECT invoice_prefix, non_gst_invoice_prefix
-                         FROM invoice_settings
-                         WHERE business_id = ? AND shop_id = ?
-                         LIMIT 1";
-        $settings_stmt = $pdo->prepare($settings_sql);
-        $settings_stmt->execute([$business_id, $shop_id]);
-        $settings = $settings_stmt->fetch();
-    }
-
-    // Fallback to business default settings
-    if (empty($settings)) {
-        $settings_sql = "SELECT invoice_prefix, non_gst_invoice_prefix
-                         FROM invoice_settings
-                         WHERE business_id = ? AND shop_id IS NULL
-                         LIMIT 1";
-        $settings_stmt = $pdo->prepare($settings_sql);
-        $settings_stmt->execute([$business_id]);
-        $settings = $settings_stmt->fetch();
-    }
-
-    // Final fallback values
-    $gst_prefix = trim($settings['invoice_prefix'] ?? 'INV');
-    $non_gst_prefix = trim($settings['non_gst_invoice_prefix'] ?? 'NGST');
-
-    $prefix = $is_non_gst ? $non_gst_prefix : $gst_prefix;
-
+    $gst_type = $data['invoice_type'] ?? 'gst';
+    $prefix = ($gst_type === 'gst') ? 'INV' : 'INVNG';
     $year_month = date('Ym');
     $full_prefix = $prefix . $year_month . '-';
 
@@ -128,16 +95,11 @@ function getNextInvoiceNumber()
         'business_id' => $business_id,
         'shop_id' => $shop_id,
         'gst_type' => $gst_type,
-        'is_non_gst' => $is_non_gst,
-        'gst_prefix' => $gst_prefix,
-        'non_gst_prefix' => $non_gst_prefix,
-        'selected_prefix' => $prefix,
+        'prefix' => $prefix,
         'year_month' => $year_month
     ]);
 
-    // =========================
-    // FIND LAST INVOICE NUMBER
-    // =========================
+    // Check for existing invoice number with exact pattern
     $sql = "SELECT invoice_number
             FROM invoices
             WHERE business_id = ?
@@ -151,36 +113,38 @@ function getNextInvoiceNumber()
     $last = $stmt->fetch();
 
     $seq = 1;
-    if ($last && !empty($last['invoice_number'])) {
+    if ($last && isset($last['invoice_number'])) {
         $last_num = (int) substr($last['invoice_number'], strlen($full_prefix));
         $seq = $last_num + 1;
     }
 
-    // =========================
-    // ENSURE UNIQUE NUMBER
-    // =========================
-    $max_attempts = 20;
+    // Keep trying until we find a unique number
+    $max_attempts = 10;
     $attempt = 0;
     $invoice_number = '';
 
     while ($attempt < $max_attempts) {
         $invoice_number = $full_prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
+        // Check if this invoice number already exists
         $check_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
         $check_stmt = $pdo->prepare($check_sql);
         $check_stmt->execute([$invoice_number, $business_id]);
         $exists = $check_stmt->fetch();
 
         if (!$exists) {
-            break;
+            break; // Found unique number
         }
 
+        // If exists, try next number
         $seq++;
         $attempt++;
     }
 
     if ($attempt >= $max_attempts) {
-        $invoice_number = $full_prefix . time();
+        // Use timestamp as fallback
+        $timestamp = time();
+        $invoice_number = $full_prefix . $timestamp;
     }
 
     debug_log("Generated invoice number", [

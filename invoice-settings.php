@@ -189,7 +189,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) 
         $invoice_terms = $_POST['invoice_terms'] ?? '';
         $invoice_footer = $_POST['invoice_footer'] ?? '';
         $invoice_prefix = $_POST['invoice_prefix'] ?? 'INV';
-        $qr_code_data = $_POST['qr_code_data'] ?? '';
+$non_gst_invoice_prefix = $_POST['non_gst_invoice_prefix'] ?? 'NGST';
+$qr_code_data = $_POST['qr_code_data'] ?? '';
         $shop_id = $_POST['shop_id'] ?? null; // Get shop_id from form
         
         // Check if shop belongs to current business
@@ -217,28 +218,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) 
         if ($exists) {
             // Update existing settings
             $sql = "UPDATE invoice_settings SET 
-                    company_name = ?,
-                    company_address = ?,
-                    company_phone = ?,
-                    company_email = ?,
-                    company_website = ?,
-                    gst_number = ?,
-                    pan_number = ?,
-                    invoice_terms = ?,
-                    invoice_footer = ?,
-                    invoice_prefix = ?,
-                    qr_code_data = ?,
-                    updated_at = NOW()
-                    WHERE business_id = ? AND " . (($shop_id && $shop_id != 0) ? "shop_id = ?" : "shop_id IS NULL");
+        company_name = ?,
+        company_address = ?,
+        company_phone = ?,
+        company_email = ?,
+        company_website = ?,
+        gst_number = ?,
+        pan_number = ?,
+        invoice_terms = ?,
+        invoice_footer = ?,
+        invoice_prefix = ?,
+        non_gst_invoice_prefix = ?,
+        qr_code_data = ?,
+        updated_at = NOW()
+        WHERE business_id = ? AND " . (($shop_id && $shop_id != 0) ? "shop_id = ?" : "shop_id IS NULL");
         } else {
             // Insert new settings
             $sql = "INSERT INTO invoice_settings (
-                    business_id, shop_id, company_name, company_address, company_phone, 
-                    company_email, company_website, gst_number, pan_number, 
-                    invoice_terms, invoice_footer, invoice_prefix, qr_code_data
-                    ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                    )";
+        business_id, shop_id, company_name, company_address, company_phone, 
+        company_email, company_website, gst_number, pan_number, 
+        invoice_terms, invoice_footer, invoice_prefix, non_gst_invoice_prefix, qr_code_data
+        ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )";
         }
         
         $stmt = $pdo->prepare($sql);
@@ -246,25 +248,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) 
         if ($exists) {
             if ($shop_id && $shop_id != 0) {
                 $stmt->execute([
-                    $company_name, $company_address, $company_phone, $company_email,
-                    $company_website, $gst_number, $pan_number, $invoice_terms,
-                    $invoice_footer, $invoice_prefix, $qr_code_data,
-                    $business_id, $shop_id
-                ]);
+    $company_name, $company_address, $company_phone, $company_email,
+    $company_website, $gst_number, $pan_number, $invoice_terms,
+    $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data,
+    $business_id, $shop_id
+]);
             } else {
                 $stmt->execute([
-                    $company_name, $company_address, $company_phone, $company_email,
-                    $company_website, $gst_number, $pan_number, $invoice_terms,
-                    $invoice_footer, $invoice_prefix, $qr_code_data,
-                    $business_id
-                ]);
+    $company_name, $company_address, $company_phone, $company_email,
+    $company_website, $gst_number, $pan_number, $invoice_terms,
+    $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data,
+    $business_id
+]);
             }
         } else {
             $stmt->execute([
-                $business_id, ($shop_id && $shop_id != 0) ? $shop_id : null, $company_name, $company_address, $company_phone,
-                $company_email, $company_website, $gst_number, $pan_number,
-                $invoice_terms, $invoice_footer, $invoice_prefix, $qr_code_data
-            ]);
+    $business_id, ($shop_id && $shop_id != 0) ? $shop_id : null, $company_name, $company_address, $company_phone,
+    $company_email, $company_website, $gst_number, $pan_number,
+    $invoice_terms, $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data
+]);
         }
         
         $message = "Invoice settings saved successfully!";
@@ -471,7 +473,8 @@ if (empty($settings)) {
         'qr_code_data' => '',
         'invoice_terms' => "1. Goods Once Sold will not be taken back or exchanged.\n2. Seller is not responsible for any loss or damage of goods in transit\n3. Buyer Undertake to submit prescribed S.T.dech., to the seller on demand\n4. Dispute if any will be subject to Chennai Court jurisdiction Only.\n5. Certified that the particulars given above are true and correct",
         'invoice_footer' => 'Thank you for your business! Visit Again.',
-        'invoice_prefix' => 'INV'
+        'invoice_prefix' => 'INV',
+'non_gst_invoice_prefix' => 'NGST'
     ];
 }
 
@@ -1211,11 +1214,18 @@ if (isset($_GET['msg'])) {
                                     <h5 class="card-title">Invoice Settings</h5>
                                     <div class="row">
                                         <div class="col-md-4 mb-3">
-                                            <label class="form-label">Invoice Prefix</label>
-                                            <input type="text" class="form-control" name="invoice_prefix" 
-                                                   value="<?php echo htmlspecialchars($settings['invoice_prefix']); ?>">
-                                            <small class="form-text text-muted">e.g., INV, BIL, etc.</small>
-                                        </div>
+    <label class="form-label">GST Invoice Prefix</label>
+    <input type="text" class="form-control" name="invoice_prefix" 
+           value="<?php echo htmlspecialchars($settings['invoice_prefix'] ?? 'INV'); ?>">
+    <small class="form-text text-muted">e.g., INV, GST, TAX etc.</small>
+</div>
+
+<div class="col-md-4 mb-3">
+    <label class="form-label">Non GST Invoice Prefix</label>
+    <input type="text" class="form-control" name="non_gst_invoice_prefix" 
+           value="<?php echo htmlspecialchars($settings['non_gst_invoice_prefix'] ?? 'NGST'); ?>">
+    <small class="form-text text-muted">e.g., NGS, BILL, CASH etc.</small>
+</div>
                                         <div class="col-12 mb-3">
                                             <label class="form-label">Invoice Terms & Conditions</label>
                                             <textarea class="form-control" name="invoice_terms" rows="5"><?php echo htmlspecialchars($settings['invoice_terms']); ?></textarea>
