@@ -212,26 +212,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         break;
 
                     case 'delete':
-                        $check_stmt = $pdo->prepare("
-                            SELECT COUNT(*) as product_count
-                            FROM products
-                            WHERE subcategory_id IN ($placeholders) AND business_id = ?
-                        ");
-                        $check_params = array_merge($selected_ids, [$current_business_id]);
-                        $check_stmt->execute($check_params);
-                        $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
-
-                        if (($result['product_count'] ?? 0) > 0) {
-                            $error = "Cannot delete: Some subcategories have products assigned.";
-                        } else {
-                            $stmt = $pdo->prepare("
-                                DELETE FROM subcategories
-                                WHERE id IN ($placeholders) AND business_id = ?
-                            ");
-                            $params = array_merge($selected_ids, [$current_business_id]);
-                            $stmt->execute($params);
-                            $success = count($selected_ids) . " subcategory(s) deleted.";
-                        }
+                        $stmt = $pdo->prepare("
+    DELETE FROM subcategories
+    WHERE id IN ($placeholders) AND business_id = ?
+");
+$params = array_merge($selected_ids, [$current_business_id]);
+$stmt->execute($params);
+$success = count($selected_ids) . " subcategory(s) and related products deleted.";
                         break;
 
                     default:
@@ -252,24 +239,12 @@ if (isset($_GET['delete'])) {
     $subcategory_id = (int)$_GET['delete'];
 
     try {
-        $check_stmt = $pdo->prepare("
-            SELECT COUNT(*) as product_count
-            FROM products
-            WHERE subcategory_id = ? AND business_id = ?
-        ");
-        $check_stmt->execute([$subcategory_id, $current_business_id]);
-        $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (($result['product_count'] ?? 0) > 0) {
-            $error = "Cannot delete subcategory: It has " . $result['product_count'] . " product(s). Update products first.";
-        } else {
-            $stmt = $pdo->prepare("
-                DELETE FROM subcategories
-                WHERE id = ? AND business_id = ?
-            ");
-            $stmt->execute([$subcategory_id, $current_business_id]);
-            $success = "Subcategory deleted successfully!";
-        }
+        $stmt = $pdo->prepare("
+    DELETE FROM subcategories
+    WHERE id = ? AND business_id = ?
+");
+$stmt->execute([$subcategory_id, $current_business_id]);
+$success = "Subcategory and related products deleted successfully!";
     } catch (PDOException $e) {
         $error = "Error deleting subcategory: " . $e->getMessage();
     }
@@ -686,21 +661,12 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
                                                         <i class="bx bx-edit"></i>
                                                     </button>
 
-                                                    <?php if ((int)($subcat['product_count'] ?? 0) === 0): ?>
-                                                        <a href="?delete=<?= (int)$subcat['id'] ?>"
-                                                           class="btn btn-outline-danger delete-subcategory"
-                                                           data-bs-toggle="tooltip"
-                                                           title="Delete">
-                                                            <i class="bx bx-trash"></i>
-                                                        </a>
-                                                    <?php else: ?>
-                                                        <button type="button"
-                                                                class="btn btn-outline-danger disabled"
-                                                                data-bs-toggle="tooltip"
-                                                                title="Cannot delete: Has <?= (int)$subcat['product_count'] ?> product(s)">
-                                                            <i class="bx bx-trash"></i>
-                                                        </button>
-                                                    <?php endif; ?>
+                                                    <a href="?delete=<?= (int)$subcat['id'] ?>"
+   class="btn btn-outline-danger delete-subcategory"
+   data-bs-toggle="tooltip"
+   title="Delete subcategory and its products">
+    <i class="bx bx-trash"></i>
+</a>
                                                 </div>
                                             </td>
                                         </tr>

@@ -87,7 +87,7 @@ function getNextInvoiceNumber()
     $data = json_decode(file_get_contents('php://input'), true);
 
     $gst_type = strtolower(trim($data['invoice_type'] ?? 'gst'));
-    $is_non_gst = in_array($gst_type, ['non-gst', 'non_gst', 'nongst']);
+    $is_non_gst = in_array($gst_type, ['non-gst', 'non_gst', 'nongst'], true);
 
     // =========================
     // GET PREFIX FROM invoice_settings
@@ -101,7 +101,7 @@ function getNextInvoiceNumber()
                          LIMIT 1";
         $settings_stmt = $pdo->prepare($settings_sql);
         $settings_stmt->execute([$business_id, $shop_id]);
-        $settings = $settings_stmt->fetch();
+        $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     // Fallback to business default settings
@@ -112,7 +112,7 @@ function getNextInvoiceNumber()
                          LIMIT 1";
         $settings_stmt = $pdo->prepare($settings_sql);
         $settings_stmt->execute([$business_id]);
-        $settings = $settings_stmt->fetch();
+        $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     // Final fallback values
@@ -121,8 +121,20 @@ function getNextInvoiceNumber()
 
     $prefix = $is_non_gst ? $non_gst_prefix : $gst_prefix;
 
-    $year_month = date('Ym');
-    $full_prefix = $prefix . $year_month . '-';
+    // =========================
+    // SPECIAL FORMAT FOR BUSINESS ID 28
+    // =========================
+    if ((int)$business_id === 28) {
+        // Example result: BAE/2026-2027/0001
+        $full_prefix = rtrim($prefix) . '';
+        $number_length = 4;
+    } else {
+        // Default format for other businesses
+        // Example result: INV202604-0001
+        $year_month = date('Ym');
+        $full_prefix = $prefix . $year_month . '-';
+        $number_length = 4;
+    }
 
     debug_log("Generating next invoice number", [
         'business_id' => $business_id,
@@ -132,7 +144,7 @@ function getNextInvoiceNumber()
         'gst_prefix' => $gst_prefix,
         'non_gst_prefix' => $non_gst_prefix,
         'selected_prefix' => $prefix,
-        'year_month' => $year_month
+        'full_prefix' => $full_prefix
     ]);
 
     // =========================
@@ -143,33 +155,38 @@ function getNextInvoiceNumber()
             WHERE business_id = ?
               AND shop_id = ?
               AND invoice_number LIKE ?
-            ORDER BY CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED) DESC
+            ORDER BY CAST(SUBSTRING(invoice_number, ? + 1) AS UNSIGNED) DESC
             LIMIT 1";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$business_id, $shop_id, $full_prefix . '%']);
-    $last = $stmt->fetch();
+    $stmt->execute([
+        $business_id,
+        $shop_id,
+        $full_prefix . '%',
+        strlen($full_prefix)
+    ]);
+    $last = $stmt->fetch(PDO::FETCH_ASSOC);
 
     $seq = 1;
     if ($last && !empty($last['invoice_number'])) {
-        $last_num = (int) substr($last['invoice_number'], strlen($full_prefix));
+        $last_num = (int)substr($last['invoice_number'], strlen($full_prefix));
         $seq = $last_num + 1;
     }
 
     // =========================
     // ENSURE UNIQUE NUMBER
     // =========================
-    $max_attempts = 20;
+    $max_attempts = 50;
     $attempt = 0;
     $invoice_number = '';
 
     while ($attempt < $max_attempts) {
-        $invoice_number = $full_prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        $invoice_number = $full_prefix . str_pad($seq, $number_length, '0', STR_PAD_LEFT);
 
         $check_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
         $check_stmt = $pdo->prepare($check_sql);
         $check_stmt->execute([$invoice_number, $business_id]);
-        $exists = $check_stmt->fetch();
+        $exists = $check_stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$exists) {
             break;
@@ -193,8 +210,7 @@ function getNextInvoiceNumber()
         'success' => true,
         'invoice_number' => $invoice_number,
         'prefix' => $prefix,
-        'year_month' => $year_month,
-        'next_number' => str_pad($seq, 4, '0', STR_PAD_LEFT)
+        'next_number' => str_pad($seq, $number_length, '0', STR_PAD_LEFT)
     ]);
 }
 

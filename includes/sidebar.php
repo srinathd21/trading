@@ -175,6 +175,7 @@ try {
             <ul class="sub-menu">
                 <li><a href="report_daily.php">Daily Report</a></li>
                 <li><a href="product_wise_sale_report.php">Product Wise sales Report</a></li>
+                <li><a href="customer-profit-report.php">Customer Wise Profit</a></li>
                 <li><a href="profit_loss.php">Profit & Loss</a></li>
                 <li><a href="report_retail_sales.php">Retail Reports</a></li>
                 <li><a href="report_wholesale_sales.php">Wholesale Reports</a></li>

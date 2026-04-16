@@ -14,8 +14,181 @@ if (!in_array($_SESSION['role'], ['admin', 'warehouse_manager', 'shop_manager', 
     exit();
 }
 
-$current_business_id = (int)$_SESSION['current_business_id'];
+$current_business_id = (int)($_SESSION['current_business_id'] ?? 0);
 $success = $error = '';
+
+if ($current_business_id <= 0) {
+    header('Location: select_shop.php');
+    exit();
+}
+
+/* -----------------------------
+   Helper: delete category + child subcategories + linked products
+   Only allow delete if linked products are NOT used in invoice_items
+----------------------------- */
+if (!function_exists('delete_categories_with_links')) {
+    function delete_categories_with_links(PDO $pdo, int $business_id, array $root_ids): array
+    {
+        $root_ids = array_values(array_unique(array_filter(array_map('intval', $root_ids), function ($id) {
+            return $id > 0;
+        })));
+
+        if (empty($root_ids)) {
+            return ['ok' => false, 'message' => 'No valid category selected.'];
+        }
+
+        $pdo->beginTransaction();
+
+        try {
+            // Step 1: collect selected categories + direct child subcategories
+            $all_category_ids = $root_ids;
+
+            $root_placeholders = implode(',', array_fill(0, count($root_ids), '?'));
+
+            $child_stmt = $pdo->prepare("
+                SELECT id
+                FROM categories
+                WHERE parent_id IN ($root_placeholders)
+                  AND business_id = ?
+            ");
+            $child_stmt->execute(array_merge($root_ids, [$business_id]));
+            $child_ids = $child_stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($child_ids)) {
+                $all_category_ids = array_merge($all_category_ids, array_map('intval', $child_ids));
+            }
+
+            $all_category_ids = array_values(array_unique(array_filter($all_category_ids)));
+
+            // Step 2: collect all products linked to selected categories / subcategories
+            $product_ids = [];
+            if (!empty($all_category_ids)) {
+                $all_placeholders = implode(',', array_fill(0, count($all_category_ids), '?'));
+
+                $product_stmt = $pdo->prepare("
+                    SELECT id
+                    FROM products
+                    WHERE business_id = ?
+                      AND (
+                            category_id IN ($all_placeholders)
+                            OR subcategory_id IN ($all_placeholders)
+                          )
+                ");
+                $product_stmt->execute(array_merge([$business_id], $all_category_ids, $all_category_ids));
+                $product_ids = $product_stmt->fetchAll(PDO::FETCH_COLUMN);
+                $product_ids = array_values(array_unique(array_filter(array_map('intval', $product_ids))));
+            }
+
+            // Step 3: allow delete only if no linked product is used in invoice_items
+            if (!empty($product_ids)) {
+                $product_placeholders = implode(',', array_fill(0, count($product_ids), '?'));
+
+                $invoice_check_stmt = $pdo->prepare("
+                    SELECT COUNT(*)
+                    FROM invoice_items
+                    WHERE product_id IN ($product_placeholders)
+                ");
+                $invoice_check_stmt->execute($product_ids);
+                $invoice_item_count = (int)$invoice_check_stmt->fetchColumn();
+
+                if ($invoice_item_count > 0) {
+                    $pdo->rollBack();
+                    return [
+                        'ok' => false,
+                        'message' => 'Cannot delete: one or more linked products are used in invoice items.'
+                    ];
+                }
+
+                // Optional linked product tables
+                try {
+                    $stmt = $pdo->prepare("
+                        DELETE FROM product_stocks
+                        WHERE product_id IN ($product_placeholders)
+                    ");
+                    $stmt->execute($product_ids);
+                } catch (Exception $e) {
+                    // ignore if table / FK not present
+                }
+
+                try {
+                    $stmt = $pdo->prepare("
+                        DELETE FROM purchase_items
+                        WHERE product_id IN ($product_placeholders)
+                    ");
+                    $stmt->execute($product_ids);
+                } catch (Exception $e) {
+                    // ignore if table / FK not present
+                }
+
+                try {
+                    $stmt = $pdo->prepare("
+                        DELETE FROM stock_movements
+                        WHERE product_id IN ($product_placeholders)
+                    ");
+                    $stmt->execute($product_ids);
+                } catch (Exception $e) {
+                    // ignore if table / FK not present
+                }
+
+                try {
+                    $stmt = $pdo->prepare("
+                        DELETE FROM invoice_item_taxes
+                        WHERE invoice_item_id IN (
+                            SELECT id FROM invoice_items WHERE product_id IN ($product_placeholders)
+                        )
+                    ");
+                    $stmt->execute($product_ids);
+                } catch (Exception $e) {
+                    // ignore if table / FK not present
+                }
+
+                // Delete products
+                $delete_products = $pdo->prepare("
+                    DELETE FROM products
+                    WHERE id IN ($product_placeholders)
+                      AND business_id = ?
+                ");
+                $delete_products->execute(array_merge($product_ids, [$business_id]));
+            }
+
+            // Step 4: delete child subcategories first
+            if (!empty($all_category_ids)) {
+                $all_placeholders = implode(',', array_fill(0, count($all_category_ids), '?'));
+
+                $delete_children = $pdo->prepare("
+                    DELETE FROM categories
+                    WHERE id IN ($all_placeholders)
+                      AND parent_id IS NOT NULL
+                      AND business_id = ?
+                ");
+                $delete_children->execute(array_merge($all_category_ids, [$business_id]));
+            }
+
+            // Step 5: delete selected main categories
+            $delete_main = $pdo->prepare("
+                DELETE FROM categories
+                WHERE id IN ($root_placeholders)
+                  AND business_id = ?
+            ");
+            $delete_main->execute(array_merge($root_ids, [$business_id]));
+
+            $pdo->commit();
+
+            return [
+                'ok' => true,
+                'message' => count($root_ids) . " category(s), linked subcategories, and products deleted successfully!"
+            ];
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return [
+                'ok' => false,
+                'message' => 'Delete failed: ' . $e->getMessage()
+            ];
+        }
+    }
+}
 
 /* -----------------------------
    Single toggle status
@@ -40,12 +213,11 @@ if (isset($_GET['toggle'])) {
 ----------------------------- */
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
-    try {
-        $stmt = $pdo->prepare("DELETE FROM categories WHERE id = ? AND business_id = ?");
-        $stmt->execute([$id, $current_business_id]);
-        $success = "Category deleted successfully!";
-    } catch (Exception $e) {
-        $error = "Cannot delete category: it has sub-categories or associated products.";
+    $result = delete_categories_with_links($pdo, $current_business_id, [$id]);
+    if ($result['ok']) {
+        $success = $result['message'];
+    } else {
+        $error = $result['message'];
     }
 }
 
@@ -55,10 +227,10 @@ if (isset($_GET['delete'])) {
 if (isset($_POST['save_category'])) {
     $id = !empty($_POST['id']) ? (int)$_POST['id'] : 0;
     $name = trim($_POST['category_name'] ?? '');
-    $parent_id = (isset($_POST['parent_id']) && $_POST['parent_id'] == 0) ? null : (int)($_POST['parent_id'] ?? 0);
+    $parent_id = (isset($_POST['parent_id']) && (int)$_POST['parent_id'] === 0) ? null : (int)($_POST['parent_id'] ?? 0);
     $description = trim($_POST['description'] ?? '');
 
-    if (empty($name)) {
+    if ($name === '') {
         $error = "Category name is required.";
     } else {
         try {
@@ -121,8 +293,7 @@ if (isset($_POST['bulk_action'])) {
                         SET status = 'active'
                         WHERE id IN ($placeholders) AND business_id = ?
                     ");
-                    $params = array_merge($selected_ids, [$current_business_id]);
-                    $stmt->execute($params);
+                    $stmt->execute(array_merge($selected_ids, [$current_business_id]));
                     $success = count($selected_ids) . " category(s) activated.";
                     break;
 
@@ -132,19 +303,17 @@ if (isset($_POST['bulk_action'])) {
                         SET status = 'inactive'
                         WHERE id IN ($placeholders) AND business_id = ?
                     ");
-                    $params = array_merge($selected_ids, [$current_business_id]);
-                    $stmt->execute($params);
+                    $stmt->execute(array_merge($selected_ids, [$current_business_id]));
                     $success = count($selected_ids) . " category(s) deactivated.";
                     break;
 
                 case 'delete':
-                    $stmt = $pdo->prepare("
-                        DELETE FROM categories
-                        WHERE id IN ($placeholders) AND business_id = ?
-                    ");
-                    $params = array_merge($selected_ids, [$current_business_id]);
-                    $stmt->execute($params);
-                    $success = count($selected_ids) . " category(s) deleted successfully!";
+                    $result = delete_categories_with_links($pdo, $current_business_id, $selected_ids);
+                    if ($result['ok']) {
+                        $success = $result['message'];
+                    } else {
+                        $error = $result['message'];
+                    }
                     break;
 
                 default:
@@ -153,7 +322,7 @@ if (isset($_POST['bulk_action'])) {
             }
         } catch (Exception $e) {
             if ($action === 'delete') {
-                $error = "Cannot delete selected categories: some have sub-categories or associated products.";
+                $error = "Bulk delete failed: " . $e->getMessage();
             } else {
                 $error = "Bulk action failed.";
             }
@@ -167,7 +336,12 @@ if (isset($_POST['bulk_action'])) {
 $categories_stmt = $pdo->prepare("
     SELECT c.*,
            p.category_name as parent_name,
-           (SELECT COUNT(*) FROM products pr WHERE pr.category_id = c.id AND pr.business_id = ?) as product_count
+           (
+               SELECT COUNT(*)
+               FROM products pr
+               WHERE pr.category_id = c.id
+                 AND pr.business_id = ?
+           ) as product_count
     FROM categories c
     LEFT JOIN categories p ON c.parent_id = p.id
     WHERE c.business_id = ?
@@ -182,7 +356,9 @@ $categories = $categories_stmt->fetchAll(PDO::FETCH_ASSOC);
 $main_cats_stmt = $pdo->prepare("
     SELECT id, category_name
     FROM categories
-    WHERE parent_id IS NULL AND status = 'active' AND business_id = ?
+    WHERE parent_id IS NULL
+      AND status = 'active'
+      AND business_id = ?
     ORDER BY category_name
 ");
 $main_cats_stmt->execute([$current_business_id]);
@@ -508,7 +684,7 @@ $(document).ready(function() {
 
             Swal.fire({
                 title: 'Are you sure?',
-                text: `You are about to delete ${selectedCount} category(s)`,
+                text: `Deleting ${selectedCount} category(s) will also delete linked subcategories and products. Delete is allowed only when those products are not used in invoice items.`,
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
@@ -561,7 +737,7 @@ $(document).ready(function() {
 
         Swal.fire({
             title: 'Are you sure?',
-            text: "Delete this category? Associated products will become uncategorized.",
+            text: "Delete this category? Linked subcategories and products will also be deleted. Delete is allowed only when those products are not used in invoice items.",
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#d33',
