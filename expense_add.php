@@ -302,7 +302,7 @@ $business_name = $business['business_name'] ?? 'Current Business';
 
                                     <!-- Description -->
                                     <div class="mb-3">
-                                        <label class="form-label">Description *</label>
+                                        <label class="form-label">Description</label>
                                         <textarea class="form-control" name="description" rows="3"
                                             placeholder="Describe the expense..."><?= isset($_POST['description']) ? htmlspecialchars($_POST['description']) : '' ?></textarea>
                                         <div class="invalid-feedback">Please enter a description.</div>
