@@ -103,8 +103,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = "Amount must be greater than 0!";
                 } elseif (empty($category)) {
                     $error = "Category is required!";
-                } elseif (empty($description)) {
-                    $error = "Description is required!";
                 } else {
                     // Insert expense with business_id
                     $stmt = $pdo->prepare("
@@ -305,7 +303,7 @@ $business_name = $business['business_name'] ?? 'Current Business';
                                     <!-- Description -->
                                     <div class="mb-3">
                                         <label class="form-label">Description *</label>
-                                        <textarea class="form-control" name="description" rows="3" required
+                                        <textarea class="form-control" name="description" rows="3"
                                             placeholder="Describe the expense..."><?= isset($_POST['description']) ? htmlspecialchars($_POST['description']) : '' ?></textarea>
                                         <div class="invalid-feedback">Please enter a description.</div>
                                     </div>
