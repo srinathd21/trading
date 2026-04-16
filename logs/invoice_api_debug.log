@@ -73030,3 +73030,33 @@
     "attempts": 0,
     "final_seq": 1
 }
+[2026-04-15 15:14:02] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "VS",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "VS",
+    "year_month": "202604"
+}
+[2026-04-15 15:14:02] Generated invoice number | {
+    "invoice_number": "VS202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-15 15:14:16] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "VS",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "VS",
+    "year_month": "202604"
+}
+[2026-04-15 15:14:16] Generated invoice number | {
+    "invoice_number": "VS202604-0001",
+    "attempts": 0,
+    "final_seq": 1
+}

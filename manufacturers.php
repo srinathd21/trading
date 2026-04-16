@@ -474,24 +474,7 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                 </thead>
                                 <tbody>
                                 <?php if (empty($manufacturers)): ?>
-                                    <tr>
-                                        <td colspan="9" class="text-center py-5">
-                                            <div class="empty-state">
-                                                <i class="bx bx-buildings fs-1 text-muted mb-3"></i>
-                                                <h5>No suppliers found</h5>
-                                                <p class="text-muted">
-                                                    <?php if ($search || $shop_filter || $status_filter !== 'all' || $outstanding_filter !== 'all'): ?>
-                                                        Try adjusting your filters or <a href="manufacturers.php">clear all filters</a>
-                                                    <?php else: ?>
-                                                        Get started by adding your first supplier
-                                                    <?php endif; ?>
-                                                </p>
-                                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManufacturerModal">
-                                                    <i class="bx bx-plus-circle me-1"></i> Add Supplier
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                   
                                 <?php else: ?>
                                     <?php foreach ($manufacturers as $m):
                                         $outstanding_amount = $m['initial_outstanding_amount'] ?? 0;
