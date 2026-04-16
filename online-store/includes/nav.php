@@ -1,0 +1,144 @@
+<?php
+if (!function_exists('store_h')) {
+    function store_h($value) {
+        return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+    }
+}
+
+$currentSlug = trim((string)($_GET['slug'] ?? ''));
+
+$baseStoreUrl = 'storefront.php';
+if ($currentSlug !== '') {
+    $baseStoreUrl .= '?slug=' . urlencode($currentSlug);
+}
+
+function store_page_url(string $page = '', array $extra = []): string
+{
+    $slug = trim((string)($_GET['slug'] ?? ''));
+    $params = [];
+
+    if ($slug !== '') {
+        $params['slug'] = $slug;
+    }
+
+    if ($page !== '') {
+        $params['page'] = $page;
+    }
+
+    foreach ($extra as $key => $value) {
+        if ($value !== null && $value !== '') {
+            $params[$key] = $value;
+        }
+    }
+
+    return 'storefront.php' . (!empty($params) ? '?' . http_build_query($params) : '');
+}
+
+$currentPage = trim((string)($_GET['page'] ?? 'home'));
+if ($currentPage === '') {
+    $currentPage = 'home';
+}
+
+$storeBrandName = '';
+if (isset($displayName) && trim((string)$displayName) !== '') {
+    $storeBrandName = trim((string)$displayName);
+} elseif (isset($store['display_name']) && trim((string)$store['display_name']) !== '') {
+    $storeBrandName = trim((string)$store['display_name']);
+} elseif (isset($store['store_title']) && trim((string)$store['store_title']) !== '') {
+    $storeBrandName = trim((string)$store['store_title']);
+} else {
+    $storeBrandName = 'ONLINE STORE';
+}
+
+$homeUrl       = store_page_url();
+$shopUrl       = store_page_url('store');
+$categoriesUrl = store_page_url('categories');
+$offersUrl     = store_page_url('offers');
+$contactUrl    = store_page_url('contact');
+$searchUrl     = store_page_url('search');
+$wishlistUrl   = store_page_url('wishlist');
+?>
+
+<nav class="navbar main-navbar sticky-top">
+  <div class="container-fluid px-lg-5 px-3">
+    <a class="navbar-brand" href="<?php echo store_h($homeUrl); ?>">
+      <?php echo store_h(strtoupper($storeBrandName)); ?>
+    </a>
+
+    <div class="mobile-nav-actions ms-auto">
+      <button
+        type="button"
+        id="mobileCartBtn"
+        data-bs-toggle="offcanvas"
+        data-bs-target="#sideCart"
+        aria-controls="sideCart"
+      >
+        <i class="bi bi-cart3"></i>
+        <span class="cart-count-badge" id="mobileCartCount">0</span>
+      </button>
+
+      <button
+        class="menu-toggle-btn border-0 shadow-none"
+        type="button"
+        data-bs-toggle="offcanvas"
+        data-bs-target="#mobileMenu"
+        aria-controls="mobileMenu"
+        aria-label="Open menu"
+      >
+        <i class="bi bi-list fs-5"></i>
+      </button>
+    </div>
+
+    <div class="desktop-nav-wrapper">
+      <ul class="navbar-nav mx-auto mb-0 flex-row">
+        <li class="nav-item">
+          <a class="nav-link <?php echo $currentPage === 'home' ? 'active' : ''; ?>" href="<?php echo store_h($homeUrl); ?>">
+            Home
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link <?php echo $currentPage === 'store' ? 'active' : ''; ?>" href="<?php echo store_h($shopUrl); ?>">
+            Shop
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link <?php echo $currentPage === 'categories' ? 'active' : ''; ?>" href="<?php echo store_h($categoriesUrl); ?>">
+            Categories
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link <?php echo $currentPage === 'offers' ? 'active' : ''; ?>" href="<?php echo store_h($offersUrl); ?>">
+            Offers
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link <?php echo $currentPage === 'contact' ? 'active' : ''; ?>" href="<?php echo store_h($contactUrl); ?>">
+            Contact
+          </a>
+        </li>
+      </ul>
+
+      <div class="nav-icons d-flex align-items-center ms-auto">
+        <a href="<?php echo store_h($searchUrl); ?>" aria-label="Search">
+          <i class="bi bi-search"></i>
+        </a>
+
+        <a href="<?php echo store_h($wishlistUrl); ?>" aria-label="Wishlist">
+          <i class="bi bi-heart"></i>
+        </a>
+
+        <button
+          type="button"
+          id="openCartBtn"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#sideCart"
+          aria-controls="sideCart"
+          aria-label="Open cart"
+        >
+          <i class="bi bi-cart3"></i>
+          <span class="cart-count-badge" id="cartCount">0</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>

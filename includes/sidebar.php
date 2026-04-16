@@ -44,7 +44,6 @@ try {
 <div id="sidebar-menu">
     <ul class="metismenu list-unstyled" id="side-menu">
 
-
         <li class="menu-title">Main Navigation</li>
 
         <li><a href="dashboard.php"><i class="bx bx-home-alt"></i> <span>Dashboard</span></a></li>
@@ -59,13 +58,11 @@ try {
       
         <!-- Sales Menu -->
         <?php if ($is_seller || $is_accountant): ?>
-        
-        <li><a href="invoices.php"><i class="bx bx-receipt"></i>  <span>All Invoices</span></a></li>
-        <li><a href="quotations.php"><i class="bx bx-receipt"></i>  <span>Quotations</span></a></li>
-        
+        <li><a href="invoices.php"><i class="bx bx-receipt"></i> <span>All Invoices</span></a></li>
+        <li><a href="quotations.php"><i class="bx bx-receipt"></i> <span>Quotations</span></a></li>
         <?php endif; ?>
 
-        <!-- Expenses - Only for authorized roles -->
+        <!-- Expenses -->
         <?php if ($is_accountant || $is_shop_manager || $is_admin): ?>
         <li>
             <a href="javascript: void(0);" class="has-arrow">
@@ -108,36 +105,45 @@ try {
             </ul>
         </li>
 
+        <!-- Online Store -->
+        <li>
+            <a href="javascript: void(0);" class="has-arrow">
+                <i class="bx bx-world"></i> <span>Online Store</span>
+            </a>
+            <ul class="sub-menu">
+                <li><a href="online_store_settings.php">Settings</a></li>
+                <li><a href="online_store_orders.php">Orders</a></li>
+                <li><a href="online_store_customers.php">Customers</a></li>
+                <li><a href="online_store_setup.php">Setup</a></li>
+            </ul>
+        </li>
+
         <!-- Inventory Management -->
         <?php if ($is_stock_manager): ?>
         <li class="menu-title">Inventory Management</li>
         
         <li><a href="manufacturers.php"><i class="bx bx-buildings me-2"></i><span>Supplier</span></a></li>
         
-        <!-- Products Management -->
         <li>
             <a href="javascript: void(0);" class="has-arrow">
                 <i class="bx bx-package"></i> <span>Products</span>
             </a>
             <ul class="sub-menu">
                 <li><a href="categories.php">Categories</a></li>
-                 <li><a href="subcategories.php">Subcategories</a></li>
-                 <li><a href="product_add.php">Add New Product</a></li>
+                <li><a href="subcategories.php">Subcategories</a></li>
+                <li><a href="product_add.php">Add New Product</a></li>
                 <li><a href="products.php">All Products</a></li>
                 <li><a href="product_import.php">Import Products</a></li>
                 <li><a href="barcode.php">Generate Barcode</a></li>
             </ul>
         </li>
 
-        <!-- Stock Management -->
         <li>
             <a href="javascript: void(0);" class="has-arrow">
                 <i class="bx bx-archive"></i> <span>Stock Management</span>
             </a>
             <ul class="sub-menu">
-               
                 <li><a href="shop_stocks.php">Shop Stock</a></li>
-            
                 <li><a href="warehouse_stock.php">Warehouse Stock</a></li>
                 <li><a href="stock_history.php">Stock History</a></li>
                 <li><a href="stock_daily_report.php">O/C Stock</a></li>
@@ -146,7 +152,6 @@ try {
             </ul>
         </li>
         
-        <!-- Purchase Management -->
         <li>
             <a href="javascript: void(0);" class="has-arrow">
                 <i class="bx bx-purchase-tag"></i> <span>Purchase</span>
@@ -176,10 +181,8 @@ try {
                 <li><a href="report_sales_summary.php">Sales Report</a></li>
                 <li><a href="report_payment_methods.php">Payments Report</a></li>
                 <li><a href="seller_report.php">Seller Report</a></li>
-                   <li><a href="gst_report.php">Gst Reports</a></li>
-                   <li><a href="non_gst_report.php ">Non Gst Reports</a></li>
-                   
-                <!--<li><a href="gst-reports.php">GST Reports</a></li>-->
+                <li><a href="gst_report.php">Gst Reports</a></li>
+                <li><a href="non_gst_report.php">Non Gst Reports</a></li>
             </ul>
         </li>
         <?php endif; ?>
@@ -194,11 +197,10 @@ try {
             </a>
             <ul class="sub-menu">
                 <li><a href="users.php">User Management</a></li>
-                 <li><a href="invoice-settings.php">Invoice Settings</a></li>
-                 <li><a href="loyalty_settings.php">Loyalty Settings</a></li>
+                <li><a href="invoice-settings.php">Invoice Settings</a></li>
+                <li><a href="loyalty_settings.php">Loyalty Settings</a></li>
                 <li><a href="shops.php">Shop Management</a></li>
-                 <li><a href="gst_rates.php">GST Rate</a></li>
-                <!--<li><a href="company_settings.php">Company Settings</a></li>-->
+                <li><a href="gst_rates.php">GST Rate</a></li>
             </ul>
         </li>
         <?php endif; ?>
@@ -270,7 +272,6 @@ try {
 </style>
 
 <script>
-// Auto highlight current page in sidebar
 document.addEventListener('DOMContentLoaded', function() {
     const currentPage = window.location.pathname.split('/').pop();
     const menuLinks = document.querySelectorAll('.metismenu a');
@@ -280,7 +281,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (href && (href === currentPage || href.includes(currentPage))) {
             link.classList.add('active');
             
-            // Highlight parent menu item
             const parentMenu = link.closest('.sub-menu');
             if (parentMenu) {
                 const parentLink = parentMenu.previousElementSibling;
