@@ -1,0 +1,64 @@
+/* =========================
+   FOOTER CSS
+========================= */
+
+.footer{
+  background:#111827;
+  color:#d1d5db;
+  padding:60px 0 20px;
+}
+
+.footer h4,
+.footer h5{
+  color:#fff;
+  margin-bottom:20px;
+  font-weight:600;
+}
+
+.footer p,
+.footer li,
+.footer a{
+  color:#d1d5db;
+  font-size:14px;
+  line-height:1.8;
+}
+
+.footer ul{
+  list-style:none;
+  padding:0;
+  margin:0;
+}
+
+.footer ul li{
+  margin-bottom:8px;
+}
+
+.footer a:hover{
+  color:#fff;
+}
+
+.footer-social a{
+  display:inline-flex;
+  width:38px;
+  height:38px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(255,255,255,0.15);
+  color:#fff;
+  margin-right:8px;
+  transition:0.3s ease;
+}
+
+.footer-social a:hover{
+  background:var(--accent);
+  border-color:var(--accent);
+}
+
+.footer-bottom{
+  border-top:1px solid rgba(255,255,255,0.1);
+  margin-top:35px;
+  padding-top:18px;
+  text-align:center;
+  font-size:13px;
+  color:#9ca3af;
+}
