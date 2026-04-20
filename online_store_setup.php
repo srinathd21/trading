@@ -427,7 +427,7 @@ if (!empty($_SESSION['flash_success'])) {
     unset($_SESSION['flash_success']);
 }
 
-$previewUrl = build_store_url((string)$setup['store_slug']);
+$previewUrl = (string)$setup['store_slug'];
 ?>
 <!doctype html>
 <html lang="en">
@@ -492,7 +492,7 @@ $previewUrl = build_store_url((string)$setup['store_slug']);
                                         <div class="col-md-6">
                                             <label class="form-label">Store Slug <span class="text-danger">*</span></label>
                                             <input type="text" name="store_slug" id="store_slug" class="form-control" required value="<?= h($setup['store_slug']) ?>" placeholder="kesavan-traders">
-                                            <small class="text-muted">Store URL: <span id="slugPreview"><?= h($previewUrl !== '' ? $previewUrl : 'ecommer.in/your-store-slug') ?></span></small>
+                                            <small class="text-muted">Store URL: <span id="slugPreview"><?= h($previewUrl !== '' ? 'ecommer.in/billing/trading/'.$previewUrl : 'ecommer.in/your-store-slug') ?></span></small>
                                         </div>
 
                                         <div class="col-md-6">
@@ -646,10 +646,10 @@ $previewUrl = build_store_url((string)$setup['store_slug']);
                                 <div class="card-body">
                                     <p class="mb-2"><strong>Public URL</strong></p>
                                     <div class="border rounded p-3 bg-light break-word">
-                                        <?= h($previewUrl !== '' ? $previewUrl : 'ecommer.in/your-store-slug') ?>
+                                        <?= h($previewUrl !== '' ? 'ecommer.in/billing/trading/'.$previewUrl : 'ecommer.in/billing/trading/your-store-slug') ?>
                                     </div>
                                     <small class="text-muted d-block mt-2">
-                                        Each business must have a unique slug. Example: <strong>ecommer.in/kesavan-traders</strong>
+                                        Each business must have a unique slug. Example: <strong>ecommer.in/billing/trading/kesavan-traders</strong>
                                     </small>
                                 </div>
                             </div>
