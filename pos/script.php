@@ -304,39 +304,39 @@
 
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', function () {
-    console.log('POS System: Initializing...');
-    
-    try {
-        initializeApp();
-        setupEventListeners();
-        loadInitialData();
-        loadCartFromSession();
-        
-        // Setup GST Filter
-        setupGstFilter();
-        
-        // Setup Transport Section
-        setupTransportSection();
-        
-        // Add profit button after everything loads
-        setTimeout(() => {
-            addProfitButtonToFixedBottom();
-        }, 500);
-        
-        // Initialize shipping modal
-        setTimeout(() => {
-            if (typeof initShippingModal === 'function') {
-                initShippingModal();
+        console.log('POS System: Initializing...');
+
+        try {
+            initializeApp();
+            setupEventListeners();
+            loadInitialData();
+            loadCartFromSession();
+
+            // Setup GST Filter
+            setupGstFilter();
+
+            // Setup Transport Section
+            setupTransportSection();
+
+            // Add profit button after everything loads
+            setTimeout(() => {
+                addProfitButtonToFixedBottom();
+            }, 500);
+
+            // Initialize shipping modal
+            setTimeout(() => {
+                if (typeof initShippingModal === 'function') {
+                    initShippingModal();
+                }
+            }, 500);
+
+        } catch (error) {
+            console.error('POS System: Initialization failed:', error);
+            if (typeof showToast === 'function') {
+                showToast('System initialization failed. Please refresh the page.', 'danger');
             }
-        }, 500);
-        
-    } catch (error) {
-        console.error('POS System: Initialization failed:', error);
-        if (typeof showToast === 'function') {
-            showToast('System initialization failed. Please refresh the page.', 'danger');
         }
-    }
-});
+    });
     const style = document.createElement('style');
     style.textContent = `
     /* Category and Subcategory styling */
@@ -911,50 +911,50 @@
         }
     }
     async function checkAndGenerateInvoiceNumber(force = false) {
-    try {
-        const invoiceInput = document.getElementById('invoice-number');
-        if (!invoiceInput) return null;
+        try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return null;
 
-        // if user already entered invoice number, keep it
-        if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
-            return invoiceInput.value.trim();
-        }
-
-        const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                prefix: GST_TYPE === 'gst' ? 'INV' : 'INVNG',
-                year_month: new Date().toISOString().substring(0, 7).replace('-', ''),
-                invoice_type: GST_TYPE
-            }),
-            timeout: 5000
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success && data.invoice_number) {
-            // only fill if empty or forced
-            if (force || !invoiceInput.value || invoiceInput.value.trim() === '') {
-                invoiceInput.value = data.invoice_number;
+            // if user already entered invoice number, keep it
+            if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
+                return invoiceInput.value.trim();
             }
-            return invoiceInput.value.trim();
-        } else {
-            console.warn('Could not generate invoice number:', data.message);
-            return invoiceInput.value.trim();
+
+            const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    prefix: GST_TYPE === 'gst' ? 'INV' : 'INVNG',
+                    year_month: new Date().toISOString().substring(0, 7).replace('-', ''),
+                    invoice_type: GST_TYPE
+                }),
+                timeout: 5000
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success && data.invoice_number) {
+                // only fill if empty or forced
+                if (force || !invoiceInput.value || invoiceInput.value.trim() === '') {
+                    invoiceInput.value = data.invoice_number;
+                }
+                return invoiceInput.value.trim();
+            } else {
+                console.warn('Could not generate invoice number:', data.message);
+                return invoiceInput.value.trim();
+            }
+        } catch (error) {
+            console.warn('Error generating invoice number:', error);
+            return document.getElementById('invoice-number')?.value?.trim() || null;
         }
-    } catch (error) {
-        console.warn('Error generating invoice number:', error);
-        return document.getElementById('invoice-number')?.value?.trim() || null;
     }
-}
     async function fetchWithTimeout(url, options = {}) {
         const { timeout = 10000, retries = 1, ...fetchOptions } = options;
 
@@ -1005,71 +1005,71 @@
     }
 
     function populateProductDropdownFromSearch(searchTerm = '') {
-    const select = document.getElementById('search-product');
-    if (!select) return;
+        const select = document.getElementById('search-product');
+        if (!select) return;
 
-    // Clear existing options
-    select.innerHTML = '<option value="">-- Search product --</option>';
+        // Clear existing options
+        select.innerHTML = '<option value="">-- Search product --</option>';
 
-    let productsToShow = [];
+        let productsToShow = [];
 
-    if (!searchTerm || searchTerm.trim().length < 2) {
-        productsToShow = PRODUCTS;
-    } else {
-        productsToShow = searchProductsLocally(searchTerm);
-    }
-
-    // GST / NON GST FILTER
-    if (typeof PRODUCT_GST_FILTER !== 'undefined') {
-        if (PRODUCT_GST_FILTER === 'gst') {
-            productsToShow = productsToShow.filter(product => {
-                const hsn = (product.hsn_code || '').toString().trim();
-                return hsn !== '' && hsn !== '0' && hsn.toLowerCase() !== 'null';
-            });
-        } else if (PRODUCT_GST_FILTER === 'non-gst') {
-            productsToShow = productsToShow.filter(product => {
-                const hsn = (product.hsn_code || '').toString().trim();
-                return hsn === '' || hsn === '0' || hsn.toLowerCase() === 'null';
-            });
+        if (!searchTerm || searchTerm.trim().length < 2) {
+            productsToShow = PRODUCTS;
+        } else {
+            productsToShow = searchProductsLocally(searchTerm);
         }
-    }
 
-    // Sort products: those with old stock first, then by name
-    productsToShow.sort((a, b) => {
-        const aHasOldStock = (a.shop_old_qty || 0) > 0;
-        const bHasOldStock = (b.shop_old_qty || 0) > 0;
+        // GST / NON GST FILTER
+        if (typeof PRODUCT_GST_FILTER !== 'undefined') {
+            if (PRODUCT_GST_FILTER === 'gst') {
+                productsToShow = productsToShow.filter(product => {
+                    const hsn = (product.hsn_code || '').toString().trim();
+                    return hsn !== '' && hsn !== '0' && hsn.toLowerCase() !== 'null';
+                });
+            } else if (PRODUCT_GST_FILTER === 'non-gst') {
+                productsToShow = productsToShow.filter(product => {
+                    const hsn = (product.hsn_code || '').toString().trim();
+                    return hsn === '' || hsn === '0' || hsn.toLowerCase() === 'null';
+                });
+            }
+        }
 
-        if (aHasOldStock && !bHasOldStock) return -1;
-        if (!aHasOldStock && bHasOldStock) return 1;
-        return (a.product_name || '').localeCompare(b.product_name || '');
-    });
+        // Sort products: those with old stock first, then by name
+        productsToShow.sort((a, b) => {
+            const aHasOldStock = (a.shop_old_qty || 0) > 0;
+            const bHasOldStock = (b.shop_old_qty || 0) > 0;
 
-    productsToShow.forEach((product, index) => {
-        try {
-            const option = document.createElement('option');
-            option.value = product.id;
+            if (aHasOldStock && !bHasOldStock) return -1;
+            if (!aHasOldStock && bHasOldStock) return 1;
+            return (a.product_name || '').localeCompare(b.product_name || '');
+        });
 
-            // Get stock values
-            const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
-            const shopStockSecondary = parseFloat(product.shop_stock_secondary) || 0;
-            const oldQty = parseFloat(product.shop_old_qty) || 0;
+        productsToShow.forEach((product, index) => {
+            try {
+                const option = document.createElement('option');
+                option.value = product.id;
 
-            // Determine if there's old stock
-            const hasOldStock = oldQty > 0;
+                // Get stock values
+                const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
+                const shopStockSecondary = parseFloat(product.shop_stock_secondary) || 0;
+                const oldQty = parseFloat(product.shop_old_qty) || 0;
 
-            // Calculate new stock quantity
-            const newStockQty = Math.max(0, shopStockPrimary - oldQty);
+                // Determine if there's old stock
+                const hasOldStock = oldQty > 0;
 
-            // COLORS FOR CATEGORY AND SUBCATEGORY
-            const categoryColor = getCategoryColor(product.category_name || '');
-            const subcategoryColor = getSubcategoryColor(product.subcategory_name || '');
+                // Calculate new stock quantity
+                const newStockQty = Math.max(0, shopStockPrimary - oldQty);
 
-            // Build display text with COLORED category and subcategory
-            let displayText = `${escapeHtml(product.product_name)}`;
+                // COLORS FOR CATEGORY AND SUBCATEGORY
+                const categoryColor = getCategoryColor(product.category_name || '');
+                const subcategoryColor = getSubcategoryColor(product.subcategory_name || '');
 
-            // Add stock type indicator
-            if (hasOldStock) {
-                displayText += ` <span style="
+                // Build display text with COLORED category and subcategory
+                let displayText = `${escapeHtml(product.product_name)}`;
+
+                // Add stock type indicator
+                if (hasOldStock) {
+                    displayText += ` <span style="
                     background-color: #f39c12;
                     color: white;
                     padding: 2px 8px;
@@ -1078,8 +1078,8 @@
                     font-weight: 600;
                     margin-left: 5px;
                 ">OLD STOCK</span>`;
-            } else if (shopStockPrimary > 0) {
-                displayText += ` <span style="
+                } else if (shopStockPrimary > 0) {
+                    displayText += ` <span style="
                     background-color: #3498db;
                     color: white;
                     padding: 2px 8px;
@@ -1088,25 +1088,25 @@
                     font-weight: 600;
                     margin-left: 5px;
                 ">NEW STOCK</span>`;
-            }
-
-            // Add colored category and subcategory
-            if (product.category_name) {
-                displayText += ` <span style="color: ${categoryColor}; font-weight: 500;">[${escapeHtml(product.category_name)}`;
-                if (product.subcategory_name) {
-                    displayText += ` <span style="color: ${subcategoryColor};">→ ${escapeHtml(product.subcategory_name)}</span>`;
                 }
-                displayText += ']</span>';
-            }
 
-            if (product.product_code) {
-                displayText += ` <span style="color: #6c757d; font-size: 0.9em;">${escapeHtml(product.product_code)}</span>`;
-            }
+                // Add colored category and subcategory
+                if (product.category_name) {
+                    displayText += ` <span style="color: ${categoryColor}; font-weight: 500;">[${escapeHtml(product.category_name)}`;
+                    if (product.subcategory_name) {
+                        displayText += ` <span style="color: ${subcategoryColor};">→ ${escapeHtml(product.subcategory_name)}</span>`;
+                    }
+                    displayText += ']</span>';
+                }
 
-            // GST / NON GST badge
-            const hsnCode = (product.hsn_code || '').toString().trim();
-            if (hsnCode !== '' && hsnCode !== '0' && hsnCode.toLowerCase() !== 'null') {
-                displayText += ` <span style="
+                if (product.product_code) {
+                    displayText += ` <span style="color: #6c757d; font-size: 0.9em;">${escapeHtml(product.product_code)}</span>`;
+                }
+
+                // GST / NON GST badge
+                const hsnCode = (product.hsn_code || '').toString().trim();
+                if (hsnCode !== '' && hsnCode !== '0' && hsnCode.toLowerCase() !== 'null') {
+                    displayText += ` <span style="
                     background-color: #28a745;
                     color: white;
                     padding: 2px 8px;
@@ -1115,8 +1115,8 @@
                     font-weight: 600;
                     margin-left: 5px;
                 ">GST</span>`;
-            } else {
-                displayText += ` <span style="
+                } else {
+                    displayText += ` <span style="
                     background-color: #6c757d;
                     color: white;
                     padding: 2px 8px;
@@ -1125,12 +1125,12 @@
                     font-weight: 600;
                     margin-left: 5px;
                 ">NON GST</span>`;
-            }
+                }
 
-            // COLOR-CODED STOCK BADGES with old/new split
-            if (shopStockPrimary > 0) {
-                if (oldQty > 0) {
-                    displayText += ` <span style="
+                // COLOR-CODED STOCK BADGES with old/new split
+                if (shopStockPrimary > 0) {
+                    if (oldQty > 0) {
+                        displayText += ` <span style="
                         background-color: #f39c12;
                         color: white;
                         padding: 2px 8px;
@@ -1140,10 +1140,10 @@
                         display: inline-block;
                         margin: 2px 0;
                     ">📦 Old: ${Math.round(oldQty)} ${product.unit_of_measure}</span>`;
-                }
+                    }
 
-                if (newStockQty > 0) {
-                    displayText += ` <span style="
+                    if (newStockQty > 0) {
+                        displayText += ` <span style="
                         background-color: #3498db;
                         color: white;
                         padding: 2px 8px;
@@ -1153,14 +1153,14 @@
                         display: inline-block;
                         margin: 2px 0;
                     ">🆕: ${Math.round(newStockQty)} ${product.unit_of_measure}</span>`;
-                }
+                    }
 
-                if (product.secondary_unit && product.sec_unit_conversion) {
-                    const oldSecondary = oldQty * product.sec_unit_conversion;
-                    const newSecondary = newStockQty * product.sec_unit_conversion;
+                    if (product.secondary_unit && product.sec_unit_conversion) {
+                        const oldSecondary = oldQty * product.sec_unit_conversion;
+                        const newSecondary = newStockQty * product.sec_unit_conversion;
 
-                    if (oldSecondary > 0) {
-                        displayText += ` <span style="
+                        if (oldSecondary > 0) {
+                            displayText += ` <span style="
                             background-color: #f1c40f;
                             color: #2c3e50;
                             padding: 2px 8px;
@@ -1168,10 +1168,10 @@
                             font-size: 0.85em;
                             margin: 2px 0;
                         ">↳ Old: ${Math.round(oldSecondary)} ${product.secondary_unit}</span>`;
-                    }
+                        }
 
-                    if (newSecondary > 0) {
-                        displayText += ` <span style="
+                        if (newSecondary > 0) {
+                            displayText += ` <span style="
                             background-color: #85c1e9;
                             color: #1a5276;
                             padding: 2px 8px;
@@ -1179,10 +1179,10 @@
                             font-size: 0.85em;
                             margin: 2px 0;
                         ">↳ New: ${Math.round(newSecondary)} ${product.secondary_unit}</span>`;
+                        }
                     }
-                }
-            } else {
-                displayText += ` <span style="
+                } else {
+                    displayText += ` <span style="
                     background-color: #ffebee;
                     color: #c62828;
                     padding: 2px 8px;
@@ -1190,14 +1190,14 @@
                     font-size: 0.85em;
                     font-weight: 600;
                 ">⛔ Out of stock</span>`;
-            }
+                }
 
-            // Add price with color
-            const price = GLOBAL_PRICE_TYPE === 'wholesale'
-                ? (product.wholesale_price || product.retail_price || 0)
-                : (product.retail_price || 0);
+                // Add price with color
+                const price = GLOBAL_PRICE_TYPE === 'wholesale'
+                    ? (product.wholesale_price || product.retail_price || 0)
+                    : (product.retail_price || 0);
 
-            displayText += ` <span style="
+                displayText += ` <span style="
                 color: #2e7d32;
                 font-weight: 700;
                 background-color: #e8f5e9;
@@ -1205,50 +1205,50 @@
                 border-radius: 12px;
             ">₹${Math.round(price)}</span>`;
 
-            option.innerHTML = displayText;
+                option.innerHTML = displayText;
 
-            // Store data as attributes - include old_qty
-            option.dataset.productId = product.id;
-            option.dataset.productName = product.product_name;
-            option.dataset.productCode = product.product_code || '';
-            option.dataset.retail = product.retail_price || 0;
-            option.dataset.wholesale = product.wholesale_price || 0;
-            option.dataset.mrp = product.mrp || 0;
-            option.dataset.shopStockPrimary = shopStockPrimary;
-            option.dataset.shopStockSecondary = shopStockSecondary;
-            option.dataset.oldQty = oldQty;
-            option.dataset.newStockQty = newStockQty;
-            option.dataset.unit = product.unit_of_measure || 'PCS';
-            option.dataset.hsn = product.hsn_code || '';
-            option.dataset.cgst = product.cgst_rate || 0;
-            option.dataset.sgst = product.sgst_rate || 0;
-            option.dataset.igst = product.igst_rate || 0;
-            option.dataset.referral = product.referral_enabled || 0;
-            option.dataset.secondary = product.secondary_unit || '';
-            option.dataset.conversion = product.sec_unit_conversion || 1;
-            option.dataset.extraCharge = product.sec_unit_extra_charge || 0;
-            option.dataset.extraChargeType = product.sec_unit_price_type || 'fixed';
-            option.dataset.stockPrice = product.stock_price || 0;
-            option.dataset.categoryName = product.category_name || '';
-            option.dataset.subcategoryName = product.subcategory_name || '';
-            option.dataset.useBatchTracking = product.use_batch_tracking || 0;
+                // Store data as attributes - include old_qty
+                option.dataset.productId = product.id;
+                option.dataset.productName = product.product_name;
+                option.dataset.productCode = product.product_code || '';
+                option.dataset.retail = product.retail_price || 0;
+                option.dataset.wholesale = product.wholesale_price || 0;
+                option.dataset.mrp = product.mrp || 0;
+                option.dataset.shopStockPrimary = shopStockPrimary;
+                option.dataset.shopStockSecondary = shopStockSecondary;
+                option.dataset.oldQty = oldQty;
+                option.dataset.newStockQty = newStockQty;
+                option.dataset.unit = product.unit_of_measure || 'PCS';
+                option.dataset.hsn = product.hsn_code || '';
+                option.dataset.cgst = product.cgst_rate || 0;
+                option.dataset.sgst = product.sgst_rate || 0;
+                option.dataset.igst = product.igst_rate || 0;
+                option.dataset.referral = product.referral_enabled || 0;
+                option.dataset.secondary = product.secondary_unit || '';
+                option.dataset.conversion = product.sec_unit_conversion || 1;
+                option.dataset.extraCharge = product.sec_unit_extra_charge || 0;
+                option.dataset.extraChargeType = product.sec_unit_price_type || 'fixed';
+                option.dataset.stockPrice = product.stock_price || 0;
+                option.dataset.categoryName = product.category_name || '';
+                option.dataset.subcategoryName = product.subcategory_name || '';
+                option.dataset.useBatchTracking = product.use_batch_tracking || 0;
 
-            select.appendChild(option);
+                select.appendChild(option);
 
-        } catch (productError) {
-            console.warn('Error processing product:', productError);
-        }
-    });
+            } catch (productError) {
+                console.warn('Error processing product:', productError);
+            }
+        });
 
-    // Refresh Select2
-    if (typeof $.fn.select2 !== 'undefined') {
-        try {
-            $('#search-product').trigger('change.select2');
-        } catch (select2Error) {
-            console.warn('Select2 refresh error:', select2Error);
+        // Refresh Select2
+        if (typeof $.fn.select2 !== 'undefined') {
+            try {
+                $('#search-product').trigger('change.select2');
+            } catch (select2Error) {
+                console.warn('Select2 refresh error:', select2Error);
+            }
         }
     }
-}
 
     function getCategoryColor(categoryName) {
         const colorMap = {
@@ -1303,9 +1303,9 @@
 
         try {
             const btnSaveTransport = document.getElementById('btnSaveTransport');
-if (btnSaveTransport) {
-    btnSaveTransport.addEventListener('click', saveTransportDetails);
-}
+            if (btnSaveTransport) {
+                btnSaveTransport.addEventListener('click', saveTransportDetails);
+            }
             // Product selection - USE A DIFFERENT APPROACH TO AVOID RECURSION
             $('#search-product').on('change.select2', function (e) {
                 // Use a flag to prevent recursion
@@ -1347,7 +1347,11 @@ if (btnSaveTransport) {
                 updateCartPriceTypes();
                 populateProductDropdownFromSearch();
             });
-
+            // Invoice type change
+document.getElementById('invoice-type').addEventListener('change', function () {
+    GST_TYPE = this.value === 'non-gst' ? 'non-gst' : 'gst';
+    checkAndGenerateInvoiceNumber(true);
+});
             // Invoice type change
             document.getElementById('invoice-type').addEventListener('change', async function () {
                 GST_TYPE = this.value;
@@ -1871,6 +1875,11 @@ if (btnSaveTransport) {
                 updateCartPriceTypes();
                 populateProductDropdownFromSearch();
             });
+            // Invoice type change
+document.getElementById('invoice-type').addEventListener('change', function () {
+    GST_TYPE = this.value === 'non-gst' ? 'non-gst' : 'gst';
+    checkAndGenerateInvoiceNumber(true);
+});
             // Add this to setupEventListeners() function:
             document.getElementById('search-product').addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && this.value) {
@@ -4826,77 +4835,77 @@ if (btnSaveTransport) {
 
     // ==================== INVOICE FUNCTIONS ====================
     function generateInvoiceNumber(force = false) {
-    try {
-        const invoiceInput = document.getElementById('invoice-number');
-        if (!invoiceInput) return '';
+        try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return '';
 
-        // do not overwrite manual value
-        if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
-            return invoiceInput.value.trim();
+            // do not overwrite manual value
+            if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
+                return invoiceInput.value.trim();
+            }
+
+            const prefix = GST_TYPE === 'gst' ? 'INV' : 'INVNG';
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const yearMonth = year.toString() + month;
+
+            const tempNumber = `${prefix}${yearMonth}-9999`;
+            invoiceInput.value = tempNumber;
+
+            fetchLatestInvoiceNumber(prefix, yearMonth, force);
+
+            return tempNumber;
+        } catch (error) {
+            console.error('POS System: Error generating invoice number:', error);
+            return 'INV-ERROR-' + Date.now();
         }
-
-        const prefix = GST_TYPE === 'gst' ? 'INV' : 'INVNG';
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = (now.getMonth() + 1).toString().padStart(2, '0');
-        const yearMonth = year.toString() + month;
-
-        const tempNumber = `${prefix}${yearMonth}-9999`;
-        invoiceInput.value = tempNumber;
-
-        fetchLatestInvoiceNumber(prefix, yearMonth, force);
-
-        return tempNumber;
-    } catch (error) {
-        console.error('POS System: Error generating invoice number:', error);
-        return 'INV-ERROR-' + Date.now();
     }
-}
 
     async function fetchLatestInvoiceNumber(prefix, yearMonth, force = false) {
-    try {
-        const invoiceInput = document.getElementById('invoice-number');
-        if (!invoiceInput) return;
+        try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return;
 
-        // do not overwrite manual value
-        if (!force && invoiceInput.value && !invoiceInput.value.endsWith('-9999')) {
-            return;
-        }
-
-        const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                prefix: prefix,
-                year_month: yearMonth,
-                invoice_type: GST_TYPE
-            }),
-            timeout: 5000
-        });
-
-        if (!response.ok) {
-            console.warn('Could not fetch latest invoice number from server');
-            return;
-        }
-
-        const data = await response.json();
-
-        if (data.success && data.invoice_number) {
             // do not overwrite manual value
             if (!force && invoiceInput.value && !invoiceInput.value.endsWith('-9999')) {
                 return;
             }
 
-            invoiceInput.value = data.invoice_number;
-            console.log('Updated invoice number to:', data.invoice_number);
+            const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    prefix: prefix,
+                    year_month: yearMonth,
+                    invoice_type: GST_TYPE
+                }),
+                timeout: 5000
+            });
+
+            if (!response.ok) {
+                console.warn('Could not fetch latest invoice number from server');
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.success && data.invoice_number) {
+                // do not overwrite manual value
+                if (!force && invoiceInput.value && !invoiceInput.value.endsWith('-9999')) {
+                    return;
+                }
+
+                invoiceInput.value = data.invoice_number;
+                console.log('Updated invoice number to:', data.invoice_number);
+            }
+        } catch (error) {
+            console.warn('Error fetching latest invoice number:', error);
         }
-    } catch (error) {
-        console.warn('Error fetching latest invoice number:', error);
     }
-}
     let isGeneratingBill = false;
     async function generateBill() {
         try {
@@ -4929,14 +4938,14 @@ if (btnSaveTransport) {
 
             const currentInvoiceNumber = (document.getElementById('invoice-number').value || '').trim();
 
-if (!currentInvoiceNumber) {
-    showWarningModal('Invoice Number Required', 'Please enter invoice number');
-    document.getElementById('invoice-number').focus();
-    document.getElementById('invoice-number').select();
-    return;
-}
+            if (!currentInvoiceNumber) {
+                showWarningModal('Invoice Number Required', 'Please enter invoice number');
+                document.getElementById('invoice-number').focus();
+                document.getElementById('invoice-number').select();
+                return;
+            }
 
-console.log('Using invoice number:', currentInvoiceNumber);
+            console.log('Using invoice number:', currentInvoiceNumber);
             console.log('Using invoice number:', currentInvoiceNumber);
 
             // Check customer credit limit if customer exists
@@ -5009,84 +5018,84 @@ console.log('Using invoice number:', currentInvoiceNumber);
 
             // Prepare invoice data
             // Prepare invoice data
-const invoiceData = {
-    customer_name: customerName,
-    customer_phone: document.getElementById('customer-contact').value || '',
-    customer_address: document.getElementById('customer-address').value || '',
-    customer_gstin: document.getElementById('customer-gstin').value || '',
-    customer_id: CURRENT_CUSTOMER_ID,
+            const invoiceData = {
+                customer_name: customerName,
+                customer_phone: document.getElementById('customer-contact').value || '',
+                customer_address: document.getElementById('customer-address').value || '',
+                customer_gstin: document.getElementById('customer-gstin').value || '',
+                customer_id: CURRENT_CUSTOMER_ID,
 
-    invoice_number: (document.getElementById('invoice-number').value || '').trim(),
-    invoice_date: (document.getElementById('date').value || '').trim(),
-    date: (document.getElementById('date').value || '').trim(),
+                invoice_number: (document.getElementById('invoice-number').value || '').trim(),
+                invoice_date: (document.getElementById('date').value || '').trim(),
+                date: (document.getElementById('date').value || '').trim(),
 
-    invoice_type: GST_TYPE,
-    price_type: GLOBAL_PRICE_TYPE,
-    referral_id: SELECTED_REFERRAL_ID,
-    points_used: POINTS_USED,
-    points_discount: totals.pointsDiscount,
+                invoice_type: GST_TYPE,
+                price_type: GLOBAL_PRICE_TYPE,
+                referral_id: SELECTED_REFERRAL_ID,
+                points_used: POINTS_USED,
+                points_discount: totals.pointsDiscount,
 
-    subtotal: totals.subtotal,
-    discount: document.getElementById('additional-dis').value,
-    discount_type: document.getElementById('overall-discount-type').value,
-    overall_discount: totals.overallDiscount,
-    total_cgst: totals.totalCGST,
-    total_sgst: totals.totalSGST,
-    total_igst: totals.totalIGST,
-    total_taxable: totals.totalTaxable,
-    total_gst: totals.totalGST,
-    grand_total: totals.grandTotal,
-    referral_commission: totals.totalReferralCommission,
+                subtotal: totals.subtotal,
+                discount: document.getElementById('additional-dis').value,
+                discount_type: document.getElementById('overall-discount-type').value,
+                overall_discount: totals.overallDiscount,
+                total_cgst: totals.totalCGST,
+                total_sgst: totals.totalSGST,
+                total_igst: totals.totalIGST,
+                total_taxable: totals.totalTaxable,
+                total_gst: totals.totalGST,
+                grand_total: totals.grandTotal,
+                referral_commission: totals.totalReferralCommission,
 
-    shipping_details: {
-    name: SHIPPING_DETAILS.name || '',
-    contact: SHIPPING_DETAILS.contact || '',
-    gstin: SHIPPING_DETAILS.gstin || '',
-    address: SHIPPING_DETAILS.address || '',
-    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
-    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
-    transport_type: SHIPPING_DETAILS.transport_type || '',
-    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
-},
-    items: CART.map(item => ({
-        product_id: item.product_id,
-        name: item.name,
-        code: item.code,
-        quantity: item.quantity,
-        unit: item.unit,
-        price: item.price,
-        price_type: item.price_type,
-        discount_value: item.discount_value,
-        discount_type: item.discount_type,
-        total: item.price * item.quantity,
-        hsn_code: item.hsn_code,
-        cgst_rate: item.cgst_rate,
-        sgst_rate: item.sgst_rate,
-        igst_rate: item.igst_rate,
-        taxable_value: calculateItemGST(item).taxable,
-        cgst_amount: calculateItemGST(item).cgst,
-        sgst_amount: calculateItemGST(item).sgst,
-        igst_amount: calculateItemGST(item).igst,
-        stock_price: item.stock_price,
-        referral_enabled: item.referral_enabled,
-        referral_type: item.referral_type,
-        referral_value: item.referral_value,
-        referral_commission: calculateItemReferralCommission(item),
-        is_secondary_unit: item.is_secondary_unit,
-        sec_unit_conversion: item.sec_unit_conversion,
-        quantity_in_primary: item.quantity_in_primary || (
-            item.is_secondary_unit
-                ? (item.quantity / item.sec_unit_conversion)
-                : item.quantity
-        )
-    })),
+                shipping_details: {
+                    name: SHIPPING_DETAILS.name || '',
+                    contact: SHIPPING_DETAILS.contact || '',
+                    gstin: SHIPPING_DETAILS.gstin || '',
+                    address: SHIPPING_DETAILS.address || '',
+                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
+                    transport_type: SHIPPING_DETAILS.transport_type || '',
+                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+                },
+                items: CART.map(item => ({
+                    product_id: item.product_id,
+                    name: item.name,
+                    code: item.code,
+                    quantity: item.quantity,
+                    unit: item.unit,
+                    price: item.price,
+                    price_type: item.price_type,
+                    discount_value: item.discount_value,
+                    discount_type: item.discount_type,
+                    total: item.price * item.quantity,
+                    hsn_code: item.hsn_code,
+                    cgst_rate: item.cgst_rate,
+                    sgst_rate: item.sgst_rate,
+                    igst_rate: item.igst_rate,
+                    taxable_value: calculateItemGST(item).taxable,
+                    cgst_amount: calculateItemGST(item).cgst,
+                    sgst_amount: calculateItemGST(item).sgst,
+                    igst_amount: calculateItemGST(item).igst,
+                    stock_price: item.stock_price,
+                    referral_enabled: item.referral_enabled,
+                    referral_type: item.referral_type,
+                    referral_value: item.referral_value,
+                    referral_commission: calculateItemReferralCommission(item),
+                    is_secondary_unit: item.is_secondary_unit,
+                    sec_unit_conversion: item.sec_unit_conversion,
+                    quantity_in_primary: item.quantity_in_primary || (
+                        item.is_secondary_unit
+                            ? (item.quantity / item.sec_unit_conversion)
+                            : item.quantity
+                    )
+                })),
 
-    payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
-    payment_details: paymentData,
-    pending_amount: paymentData.totalPaid < totals.grandTotal
-        ? (totals.grandTotal - paymentData.totalPaid)
-        : 0
-};
+                payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
+                payment_details: paymentData,
+                pending_amount: paymentData.totalPaid < totals.grandTotal
+                    ? (totals.grandTotal - paymentData.totalPaid)
+                    : 0
+            };
 
             console.log('📤 Invoice Data to be saved:', JSON.stringify(invoiceData, null, 2));
 
@@ -5120,69 +5129,69 @@ const invoiceData = {
                 console.log('📊 Server Response Data:', data);
 
                 if (data.success) {
-    const invoiceId = data.invoice_id || invoiceData.invoice_number;
-    console.log('✅ Invoice Saved Successfully!', {
-        invoice_number: invoiceData.invoice_number,
-        invoice_id: invoiceId,
-        timestamp: new Date().toISOString()
-    });
+                    const invoiceId = data.invoice_id || invoiceData.invoice_number;
+                    console.log('✅ Invoice Saved Successfully!', {
+                        invoice_number: invoiceData.invoice_number,
+                        invoice_id: invoiceId,
+                        timestamp: new Date().toISOString()
+                    });
 
-    hideLoading();
+                    hideLoading();
 
-    showSuccessModal(
-        'Invoice Saved Successfully!',
-        `Invoice #${invoiceData.invoice_number} has been saved.`,
-        function () {
-            // Clear cart and session after successful save
-            CART = [];
-            clearCartFromSession();
+                    showSuccessModal(
+                        'Invoice Saved Successfully!',
+                        `Invoice #${invoiceData.invoice_number} has been saved.`,
+                        function () {
+                            // Clear cart and session after successful save
+                            CART = [];
+                            clearCartFromSession();
 
-            // Clear shipping details from memory
-            SHIPPING_DETAILS = {
-                name: '',
-                contact: '',
-                gstin: '',
-                address: '',
-                vehicle_number: '',
-                transport_type: '',
-                charges: 0
-            };
+                            // Clear shipping details from memory
+                            SHIPPING_DETAILS = {
+                                name: '',
+                                contact: '',
+                                gstin: '',
+                                address: '',
+                                vehicle_number: '',
+                                transport_type: '',
+                                charges: 0
+                            };
 
-            // Clear shipping details from session storage
-            sessionStorage.removeItem('pos_shipping_details');
+                            // Clear shipping details from session storage
+                            sessionStorage.removeItem('pos_shipping_details');
 
-            // Update shipping display to show empty state
-            if (typeof updateShippingDetailsHorizontal === 'function') {
-                updateShippingDetailsHorizontal();
-            }
+                            // Update shipping display to show empty state
+                            if (typeof updateShippingDetailsHorizontal === 'function') {
+                                updateShippingDetailsHorizontal();
+                            }
 
-            // Clear shipping charges row from total summary
-            const shippingRow = document.getElementById('shipping-charges-row');
-            if (shippingRow) {
-                shippingRow.style.display = 'none';
-            }
+                            // Clear shipping charges row from total summary
+                            const shippingRow = document.getElementById('shipping-charges-row');
+                            if (shippingRow) {
+                                shippingRow.style.display = 'none';
+                            }
 
-            // Clear shipping summary if exists
-            const shippingSummary = document.getElementById('shippingSummary');
-            if (shippingSummary) {
-                shippingSummary.classList.remove('show');
-                shippingSummary.innerHTML = '';
-            }
+                            // Clear shipping summary if exists
+                            const shippingSummary = document.getElementById('shippingSummary');
+                            if (shippingSummary) {
+                                shippingSummary.classList.remove('show');
+                                shippingSummary.innerHTML = '';
+                            }
 
-            // Refresh full page
-            window.location.reload();
-        }
-    );
+                            // Refresh full page
+                            window.location.reload();
+                        }
+                    );
 
-} else {
-    console.error('❌ Server returned error:', {
-        success: data.success,
-        message: data.message,
-        data: data
-    });
-    hideLoading();
-    throw new Error(data.message || 'Unknown server error');
-}
+                } else {
+                    console.error('❌ Server returned error:', {
+                        success: data.success,
+                        message: data.message,
+                        data: data
+                    });
+                    hideLoading();
+                    throw new Error(data.message || 'Unknown server error');
+                }
 
             } catch (fetchError) {
                 console.error('❌ Invoice Save Error:', {
@@ -5278,12 +5287,12 @@ const invoiceData = {
 
             const currentInvoiceNumber = (document.getElementById('invoice-number').value || '').trim();
 
-if (!currentInvoiceNumber) {
-    showWarningModal('Invoice Number Required', 'Please enter invoice number');
-    document.getElementById('invoice-number').focus();
-    document.getElementById('invoice-number').select();
-    return;
-}
+            if (!currentInvoiceNumber) {
+                showWarningModal('Invoice Number Required', 'Please enter invoice number');
+                document.getElementById('invoice-number').focus();
+                document.getElementById('invoice-number').select();
+                return;
+            }
             console.log('Using invoice number for print:', currentInvoiceNumber);
 
             // Show loading modal
@@ -5293,84 +5302,84 @@ if (!currentInvoiceNumber) {
             const paymentData = collectPaymentData();
 
             const invoiceData = {
-    action: 'print',
-    customer_name: customerName,
-    customer_phone: document.getElementById('customer-contact').value || '',
-    customer_address: document.getElementById('customer-address').value || '',
-    customer_gstin: document.getElementById('customer-gstin').value || '',
-    customer_id: CURRENT_CUSTOMER_ID,
+                action: 'print',
+                customer_name: customerName,
+                customer_phone: document.getElementById('customer-contact').value || '',
+                customer_address: document.getElementById('customer-address').value || '',
+                customer_gstin: document.getElementById('customer-gstin').value || '',
+                customer_id: CURRENT_CUSTOMER_ID,
 
-    invoice_number: (currentInvoiceNumber || '').trim(),
-    invoice_date: (document.getElementById('date').value || '').trim(),
-    date: (document.getElementById('date').value || '').trim(),
+                invoice_number: (currentInvoiceNumber || '').trim(),
+                invoice_date: (document.getElementById('date').value || '').trim(),
+                date: (document.getElementById('date').value || '').trim(),
 
-    invoice_type: GST_TYPE,
-    price_type: GLOBAL_PRICE_TYPE,
-    referral_id: SELECTED_REFERRAL_ID,
-    points_used: POINTS_USED,
-    points_discount: totals.pointsDiscount,
-    subtotal: totals.subtotal,
-    discount: document.getElementById('additional-dis').value,
-    discount_type: document.getElementById('overall-discount-type').value,
-    overall_discount: totals.overallDiscount,
-    total_cgst: totals.totalCGST,
-    total_sgst: totals.totalSGST,
-    total_igst: totals.totalIGST,
-    total_taxable: totals.totalTaxable,
-    total_gst: totals.totalGST,
-    grand_total: totals.grandTotal,
-    referral_commission: totals.totalReferralCommission,
+                invoice_type: GST_TYPE,
+                price_type: GLOBAL_PRICE_TYPE,
+                referral_id: SELECTED_REFERRAL_ID,
+                points_used: POINTS_USED,
+                points_discount: totals.pointsDiscount,
+                subtotal: totals.subtotal,
+                discount: document.getElementById('additional-dis').value,
+                discount_type: document.getElementById('overall-discount-type').value,
+                overall_discount: totals.overallDiscount,
+                total_cgst: totals.totalCGST,
+                total_sgst: totals.totalSGST,
+                total_igst: totals.totalIGST,
+                total_taxable: totals.totalTaxable,
+                total_gst: totals.totalGST,
+                grand_total: totals.grandTotal,
+                referral_commission: totals.totalReferralCommission,
 
-    shipping_details: {
-    name: SHIPPING_DETAILS.name || '',
-    contact: SHIPPING_DETAILS.contact || '',
-    gstin: SHIPPING_DETAILS.gstin || '',
-    address: SHIPPING_DETAILS.address || '',
-    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
-    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
-    transport_type: SHIPPING_DETAILS.transport_type || '',
-    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
-},
+                shipping_details: {
+                    name: SHIPPING_DETAILS.name || '',
+                    contact: SHIPPING_DETAILS.contact || '',
+                    gstin: SHIPPING_DETAILS.gstin || '',
+                    address: SHIPPING_DETAILS.address || '',
+                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
+                    transport_type: SHIPPING_DETAILS.transport_type || '',
+                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+                },
 
-    items: CART.map(item => ({
-        product_id: item.product_id,
-        name: item.name,
-        code: item.code,
-        quantity: item.quantity,
-        unit: item.unit,
-        price: item.price,
-        price_type: item.price_type,
-        discount_value: item.discount_value,
-        discount_type: item.discount_type,
-        total: item.price * item.quantity,
-        hsn_code: item.hsn_code,
-        cgst_rate: item.cgst_rate,
-        sgst_rate: item.sgst_rate,
-        igst_rate: item.igst_rate,
-        taxable_value: calculateItemGST(item).taxable,
-        cgst_amount: calculateItemGST(item).cgst,
-        sgst_amount: calculateItemGST(item).sgst,
-        igst_amount: calculateItemGST(item).igst,
-        stock_price: item.stock_price,
-        referral_enabled: item.referral_enabled,
-        referral_type: item.referral_type,
-        referral_value: item.referral_value,
-        referral_commission: calculateItemReferralCommission(item),
-        is_secondary_unit: item.is_secondary_unit,
-        sec_unit_conversion: item.sec_unit_conversion,
-        quantity_in_primary: item.quantity_in_primary || (
-            item.is_secondary_unit
-                ? (item.quantity / item.sec_unit_conversion)
-                : item.quantity
-        )
-    })),
+                items: CART.map(item => ({
+                    product_id: item.product_id,
+                    name: item.name,
+                    code: item.code,
+                    quantity: item.quantity,
+                    unit: item.unit,
+                    price: item.price,
+                    price_type: item.price_type,
+                    discount_value: item.discount_value,
+                    discount_type: item.discount_type,
+                    total: item.price * item.quantity,
+                    hsn_code: item.hsn_code,
+                    cgst_rate: item.cgst_rate,
+                    sgst_rate: item.sgst_rate,
+                    igst_rate: item.igst_rate,
+                    taxable_value: calculateItemGST(item).taxable,
+                    cgst_amount: calculateItemGST(item).cgst,
+                    sgst_amount: calculateItemGST(item).sgst,
+                    igst_amount: calculateItemGST(item).igst,
+                    stock_price: item.stock_price,
+                    referral_enabled: item.referral_enabled,
+                    referral_type: item.referral_type,
+                    referral_value: item.referral_value,
+                    referral_commission: calculateItemReferralCommission(item),
+                    is_secondary_unit: item.is_secondary_unit,
+                    sec_unit_conversion: item.sec_unit_conversion,
+                    quantity_in_primary: item.quantity_in_primary || (
+                        item.is_secondary_unit
+                            ? (item.quantity / item.sec_unit_conversion)
+                            : item.quantity
+                    )
+                })),
 
-    payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
-    payment_details: paymentData,
-    pending_amount: paymentData.totalPaid < totals.grandTotal
-        ? (totals.grandTotal - paymentData.totalPaid)
-        : 0
-};
+                payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
+                payment_details: paymentData,
+                pending_amount: paymentData.totalPaid < totals.grandTotal
+                    ? (totals.grandTotal - paymentData.totalPaid)
+                    : 0
+            };
 
             console.log('📤 Sending invoice data for print...', invoiceData);
 
@@ -5395,79 +5404,79 @@ if (!currentInvoiceNumber) {
                 console.log('📊 Print Save Response Data:', data);
 
                 if (data.success) {
-    const invoiceId = data.invoice_id;
-    console.log('✅ Invoice Saved for Print! Invoice ID:', invoiceId);
+                    const invoiceId = data.invoice_id;
+                    console.log('✅ Invoice Saved for Print! Invoice ID:', invoiceId);
 
-    hideLoading();
+                    hideLoading();
 
-    // Clear cart and session after successful save
-    CART = [];
-    clearCartFromSession();
+                    // Clear cart and session after successful save
+                    CART = [];
+                    clearCartFromSession();
 
-    // Clear shipping details from memory
-    SHIPPING_DETAILS = {
-        name: '',
-        contact: '',
-        gstin: '',
-        address: '',
-        vehicle_number: '',
-        transport_type: '',
-        charges: 0
-    };
+                    // Clear shipping details from memory
+                    SHIPPING_DETAILS = {
+                        name: '',
+                        contact: '',
+                        gstin: '',
+                        address: '',
+                        vehicle_number: '',
+                        transport_type: '',
+                        charges: 0
+                    };
 
-    // Clear shipping details from session storage
-    sessionStorage.removeItem('pos_shipping_details');
+                    // Clear shipping details from session storage
+                    sessionStorage.removeItem('pos_shipping_details');
 
-    // Update shipping display to show empty state
-    if (typeof updateShippingDetailsHorizontal === 'function') {
-        updateShippingDetailsHorizontal();
-    }
+                    // Update shipping display to show empty state
+                    if (typeof updateShippingDetailsHorizontal === 'function') {
+                        updateShippingDetailsHorizontal();
+                    }
 
-    // Clear shipping charges row from total summary
-    const shippingRow = document.getElementById('shipping-charges-row');
-    if (shippingRow) {
-        shippingRow.style.display = 'none';
-    }
+                    // Clear shipping charges row from total summary
+                    const shippingRow = document.getElementById('shipping-charges-row');
+                    if (shippingRow) {
+                        shippingRow.style.display = 'none';
+                    }
 
-    // Clear shipping summary from address section if it exists
-    const shippingSummary = document.getElementById('shippingSummary');
-    if (shippingSummary) {
-        shippingSummary.classList.remove('show');
-        shippingSummary.innerHTML = '';
-    }
+                    // Clear shipping summary from address section if it exists
+                    const shippingSummary = document.getElementById('shippingSummary');
+                    if (shippingSummary) {
+                        shippingSummary.classList.remove('show');
+                        shippingSummary.innerHTML = '';
+                    }
 
-    showSuccessModal(
-        'Invoice Saved Successfully!',
-        'Opening print preview...',
-        function () {
-            let printWindow = null;
+                    showSuccessModal(
+                        'Invoice Saved Successfully!',
+                        'Opening print preview...',
+                        function () {
+                            let printWindow = null;
 
-            if (data.print_url) {
-                console.log('Opening print URL:', data.print_url);
-                printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
-            } else {
-                const defaultPrintUrl = `invoice_print.php?invoice_id=${invoiceId}`;
-                printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
-            }
+                            if (data.print_url) {
+                                console.log('Opening print URL:', data.print_url);
+                                printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
+                            } else {
+                                const defaultPrintUrl = `invoice_print.php?invoice_id=${invoiceId}`;
+                                printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
+                            }
 
-            if (!printWindow) {
-                showWarningToast('Popup blocked. Please allow popups for print preview.');
-            } else {
-                printWindow.focus();
-            }
+                            if (!printWindow) {
+                                showWarningToast('Popup blocked. Please allow popups for print preview.');
+                            } else {
+                                printWindow.focus();
+                            }
 
-            // Refresh full page after short delay
-            setTimeout(() => {
-                window.location.reload();
-            }, 700);
-        }
-    );
+                            // Refresh full page after short delay
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 700);
+                        }
+                    );
 
-} else {
-    console.error('❌ Print Save Error from server:', data.message);
-    hideLoading();
-    throw new Error(data.message || 'Unknown server error');
-}
+                } else {
+                    console.error('❌ Print Save Error from server:', data.message);
+                    hideLoading();
+                    throw new Error(data.message || 'Unknown server error');
+                }
 
             } catch (fetchError) {
                 console.error('❌ Print Bill Save Error:', {
@@ -7341,15 +7350,15 @@ if (!currentInvoiceNumber) {
 
     // ==================== SHIPPING DETAILS FUNCTIONS ====================
     let SHIPPING_DETAILS = {
-    name: '',
-    contact: '',
-    gstin: '',
-    address: '',
-    vehicle_number: '',
-    shipping_charges: 0,
-    transport_type: '',
-    transport_charge: 0
-};
+        name: '',
+        contact: '',
+        gstin: '',
+        address: '',
+        vehicle_number: '',
+        shipping_charges: 0,
+        transport_type: '',
+        transport_charge: 0
+    };
     function initShippingModal() {
         try {
             const shippingBtn = document.getElementById('btnShippingDetails');
@@ -7386,24 +7395,24 @@ if (!currentInvoiceNumber) {
         return hsn !== '' && hsn.toLowerCase() !== 'null' && hsn !== '0';
     }
     function saveTransportDetails() {
-    try {
-        SHIPPING_DETAILS.transport_type = (document.getElementById('transportType')?.value || '').trim();
-        SHIPPING_DETAILS.charges = parseFloat(document.getElementById('transportCharge')?.value || 0);
+        try {
+            SHIPPING_DETAILS.transport_type = (document.getElementById('transportType')?.value || '').trim();
+            SHIPPING_DETAILS.charges = parseFloat(document.getElementById('transportCharge')?.value || 0);
 
-        saveShippingDetailsToSession();
-        updateShippingDetailsHorizontal();
-        updateBillingSummary();
+            saveShippingDetailsToSession();
+            updateShippingDetailsHorizontal();
+            updateBillingSummary();
 
-        if (typeof showToast === 'function') {
-            showToast('Transport details saved', 'success');
-        }
-    } catch (error) {
-        console.error('Error saving transport details:', error);
-        if (typeof showToast === 'function') {
-            showToast('Error saving transport details', 'danger');
+            if (typeof showToast === 'function') {
+                showToast('Transport details saved', 'success');
+            }
+        } catch (error) {
+            console.error('Error saving transport details:', error);
+            if (typeof showToast === 'function') {
+                showToast('Error saving transport details', 'danger');
+            }
         }
     }
-}
     function getFilteredProductsByGstType(products) {
         if (!Array.isArray(products)) return [];
 
@@ -7447,7 +7456,7 @@ if (!currentInvoiceNumber) {
             if (transportTypeInput) {
                 transportTypeInput.value = SHIPPING_DETAILS.transport_type || '';
             }
-           
+
             document.getElementById('shipping-charges').value = SHIPPING_DETAILS.charges || 0;
 
             const modal = new bootstrap.Modal(document.getElementById('shippingModal'));
@@ -7462,22 +7471,22 @@ if (!currentInvoiceNumber) {
     function saveShippingDetails() {
         try {
             const shippingData = {
-    name: document.getElementById('shipping-name').value.trim(),
-    contact: document.getElementById('shipping-contact').value.trim(),
-    gstin: document.getElementById('shipping-gstin').value.trim().toUpperCase(),
-    address: document.getElementById('shipping-address').value.trim(),
-    vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
+                name: document.getElementById('shipping-name').value.trim(),
+                contact: document.getElementById('shipping-contact').value.trim(),
+                gstin: document.getElementById('shipping-gstin').value.trim().toUpperCase(),
+                address: document.getElementById('shipping-address').value.trim(),
+                vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
 
-    shipping_charges: parseFloat(document.getElementById('shipping-charges').value) || 0,
+                shipping_charges: parseFloat(document.getElementById('shipping-charges').value) || 0,
 
-    transport_type: document.getElementById('shipping-transport-type')
-        ? document.getElementById('shipping-transport-type').value.trim()
-        : '',
+                transport_type: document.getElementById('shipping-transport-type')
+                    ? document.getElementById('shipping-transport-type').value.trim()
+                    : '',
 
-    transport_charge: document.getElementById('transportCharge')
-        ? (parseFloat(document.getElementById('transportCharge').value) || 0)
-        : 0
-};
+                transport_charge: document.getElementById('transportCharge')
+                    ? (parseFloat(document.getElementById('transportCharge').value) || 0)
+                    : 0
+            };
 
             SHIPPING_DETAILS = shippingData;
             saveShippingDetailsToSession();
