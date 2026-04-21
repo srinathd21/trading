@@ -1,6 +1,10 @@
 <?php
 date_default_timezone_set('Asia/Kolkata');
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/config/database.php';
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
@@ -94,7 +98,6 @@ if ($slug === '') {
 
 /* =========================================================
    LOAD STORE
-   Using different named placeholders to avoid HY093 issues.
 ========================================================= */
 $storeSql = "
     SELECT
@@ -301,6 +304,8 @@ $wishlistPageUrl     = sf_store_url($slug, 'wishlist');
 $checkoutPageUrl     = sf_store_url($slug, 'checkout');
 $confirmationPageUrl = sf_store_url($slug, 'confirmation');
 $trackPageUrl        = sf_store_url($slug, 'track');
+$loginPageUrl        = sf_store_url($slug, 'login');
+$logoutPageUrl       = sf_store_url($slug, 'logout');
 
 /* =========================================================
    LOAD CATEGORIES
@@ -437,10 +442,29 @@ if (!defined('STORE_FRONT')) {
 }
 
 /* =========================================================
+   LOGOUT ROUTE
+========================================================= */
+if ($page === 'logout') {
+    unset($_SESSION['customer_id']);
+    unset($_SESSION['online_customer_id']);
+    unset($_SESSION['storefront_customer_id']);
+    unset($_SESSION['store_customer_id']);
+    unset($_SESSION['web_customer_id']);
+    unset($_SESSION['customer_name']);
+    unset($_SESSION['customer_email']);
+    unset($_SESSION['customer_phone']);
+    unset($_SESSION['customer_is_online']);
+
+    header('Location: ' . sf_store_url($slug, 'login'));
+    exit();
+}
+
+/* =========================================================
    PAGE ROUTING
 ========================================================= */
 $templateMap = [
     'index'         => __DIR__ . '/online-store/index.php',
+    'home'          => __DIR__ . '/online-store/index.php',
     'store'         => __DIR__ . '/online-store/store.php',
     'categories'    => __DIR__ . '/online-store/categories.php',
     'contact'       => __DIR__ . '/online-store/contact.php',
@@ -452,6 +476,7 @@ $templateMap = [
     'checkout'      => __DIR__ . '/online-store/checkout.php',
     'confirmation'  => __DIR__ . '/online-store/confirmation.php',
     'track'         => __DIR__ . '/online-store/track.php',
+    'login'         => __DIR__ . '/online-store/login.php',
 ];
 
 /* default page fallback */
