@@ -3,6 +3,10 @@ if (!defined('STORE_FRONT')) {
     die('Direct access not allowed.');
 }
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 /* =========================
    SAFE FALLBACKS
 ========================= */
@@ -32,6 +36,37 @@ $searchQuery       = trim((string)($_GET['q'] ?? ''));
 $sortBy            = trim((string)($_GET['sort'] ?? 'latest'));
 
 /* =========================
+   CUSTOMER LOGIN CHECK
+========================= */
+$customerLoggedIn = false;
+
+$possibleCustomerSessionKeys = [
+    'customer_id',
+    'online_customer_id',
+    'storefront_customer_id',
+    'store_customer_id',
+    'web_customer_id'
+];
+
+foreach ($possibleCustomerSessionKeys as $sessionKey) {
+    if (!empty($_SESSION[$sessionKey])) {
+        $customerLoggedIn = true;
+        break;
+    }
+}
+
+if (!$customerLoggedIn) {
+    $redirectUrl = 'storefront.php?slug=' . urlencode((string)$slug) . '&page=store';
+
+    if (!empty($_SERVER['QUERY_STRING'])) {
+        $redirectUrl = 'storefront.php?' . $_SERVER['QUERY_STRING'];
+    }
+
+    header('Location: storefront.php?slug=' . urlencode((string)$slug) . '&page=login&redirect=' . urlencode($redirectUrl));
+    exit();
+}
+
+/* =========================
    HELPERS
 ========================= */
 if (!function_exists('sf_h')) {
@@ -59,6 +94,20 @@ if (!function_exists('sf_trim_text')) {
     }
 }
 
+if (!function_exists('sf_product_fallback_image')) {
+    function sf_product_fallback_image($productName = '', $categoryName = ''): string {
+        $label = trim((string)$productName);
+        if ($label === '') {
+            $label = trim((string)$categoryName);
+        }
+        if ($label === '') {
+            $label = 'Product';
+        }
+
+        return 'https://via.placeholder.com/700x700/f3f4f6/111827?text=' . rawurlencode($label);
+    }
+}
+
 if (!function_exists('sf_normalize_image_path')) {
     function sf_normalize_image_path($path, string $fallback = ''): string {
         $path = trim((string)($path ?? ''));
@@ -77,7 +126,9 @@ if (!function_exists('sf_normalize_image_path')) {
         }
 
         $path = str_replace('\\', '/', $path);
-        return ltrim($path, '/');
+        $normalized = ltrim($path, '/');
+
+        return $normalized !== '' ? $normalized : $fallback;
     }
 }
 
@@ -404,12 +455,14 @@ if (file_exists($heroFile)) include $heroFile;
       <div class="row g-4">
         <?php foreach ($filteredProducts as $product): ?>
           <?php
-            $productId    = (int)($product['id'] ?? 0);
-            $productName  = (string)($product['product_name'] ?? 'Product');
-            $productDesc  = sf_trim_text($product['description'] ?? '', 85);
-            $productImage = sf_normalize_image_path($product['image_path'] ?? '', 'https://via.placeholder.com/700x700?text=Product');
-            $price        = (float)($product['retail_price'] ?? 0);
-            $mrp          = (float)($product['mrp'] ?? 0);
+            $productId     = (int)($product['id'] ?? 0);
+            $productName   = (string)($product['product_name'] ?? 'Product');
+            $categoryName  = (string)($product['category_name'] ?? '');
+            $productDesc   = sf_trim_text($product['description'] ?? '', 85);
+            $fallbackImage = sf_product_fallback_image($productName, $categoryName);
+            $productImage  = sf_normalize_image_path($product['image_path'] ?? '', $fallbackImage);
+            $price         = (float)($product['retail_price'] ?? 0);
+            $mrp           = (float)($product['mrp'] ?? 0);
 
             $badgeText = '';
             if ($mrp > 0 && $mrp > $price) {
@@ -432,7 +485,11 @@ if (file_exists($heroFile)) include $heroFile;
                     <i class="bi bi-heart"></i>
                   </button>
 
-                  <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($productName); ?>">
+                  <img
+                    src="<?php echo sf_h($productImage); ?>"
+                    alt="<?php echo sf_h($productName); ?>"
+                    onerror="this.onerror=null;this.src='<?php echo sf_h($fallbackImage); ?>';"
+                  >
                 </div>
 
                 <div class="product-info">
