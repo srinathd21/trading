@@ -45,6 +45,14 @@ if (!function_exists('sf_only_digits')) {
     }
 }
 
+if (!function_exists('sf_column_exists')) {
+    function sf_column_exists(PDO $pdo, string $table, string $column): bool {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+        $stmt->execute([$column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    }
+}
+
 /* =========================
    LOGIN CHECK
 ========================= */
@@ -92,8 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
     $password         = (string)($_POST['password'] ?? '');
     $confirm_password = (string)($_POST['confirm_password'] ?? '');
 
-    $phoneDigits    = sf_only_digits($form['phone']);
-    $altPhoneDigits = sf_only_digits($form['alt_phone']);
+    $phoneDigits = sf_only_digits($form['phone']);
 
     if ($form['name'] === '') {
         $error = 'Please enter customer name.';
@@ -115,12 +122,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
         $error = 'Password and confirm password do not match.';
     } else {
         try {
+            $businessIdValue = 0;
+
+            if (isset($businessId) && (int)$businessId > 0) {
+                $businessIdValue = (int)$businessId;
+            } elseif (isset($storeRow['business_id']) && (int)$storeRow['business_id'] > 0) {
+                $businessIdValue = (int)$storeRow['business_id'];
+            }
+
+            if ($businessIdValue <= 0) {
+                throw new Exception('Business ID not found.');
+            }
+
+            if (!sf_column_exists($pdo, 'customers', 'password')) {
+                throw new Exception("Column 'password' not found in customers table.");
+            }
+
+            if (!sf_column_exists($pdo, 'customers', 'is_online_customer')) {
+                throw new Exception("Column 'is_online_customer' not found in customers table.");
+            }
+
             $checkSql = "
                 SELECT id, name, phone, email
                 FROM customers
-                WHERE
-                    phone = :phone
-                    OR (:email <> '' AND LOWER(email) = LOWER(:email))
+                WHERE phone = :phone
+                   OR (:email <> '' AND LOWER(email) = LOWER(:email))
                 LIMIT 1
             ";
             $checkStmt = $pdo->prepare($checkSql);
@@ -131,20 +157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
             $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
-                if (
-                    !empty($existing['phone']) &&
-                    sf_only_digits((string)$existing['phone']) === $phoneDigits
-                ) {
+                if (!empty($existing['phone']) && sf_only_digits((string)$existing['phone']) === $phoneDigits) {
                     $error = 'This phone number is already registered.';
                 } else {
                     $error = 'This email is already registered.';
                 }
             } else {
-                $businessId = (int)($businessId ?? ($storeRow['business_id'] ?? 0));
-                if ($businessId <= 0) {
-                    throw new Exception('Business not found.');
-                }
-
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
                 $insertSql = "
@@ -169,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
                         :alt_phone,
                         :email,
                         :password,
-                        1,
+                        :is_online_customer,
                         :address,
                         'credit',
                         0.00,
@@ -179,14 +197,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
 
                 $insertStmt = $pdo->prepare($insertSql);
                 $insertStmt->execute([
-                    ':business_id'   => $businessId,
-                    ':customer_type' => $form['customer_type'],
-                    ':name'          => $form['name'],
-                    ':phone'         => $form['phone'],
-                    ':alt_phone'     => $form['alt_phone'] !== '' ? $form['alt_phone'] : null,
-                    ':email'         => $form['email'] !== '' ? $form['email'] : null,
-                    ':password'      => $hashedPassword,
-                    ':address'       => $form['address'] !== '' ? $form['address'] : null,
+                    ':business_id'        => $businessIdValue,
+                    ':customer_type'      => $form['customer_type'],
+                    ':name'               => $form['name'],
+                    ':phone'              => $form['phone'],
+                    ':alt_phone'          => $form['alt_phone'] !== '' ? $form['alt_phone'] : null,
+                    ':email'              => $form['email'] !== '' ? $form['email'] : null,
+                    ':password'           => $hashedPassword,
+                    ':is_online_customer' => 1,
+                    ':address'            => $form['address'] !== '' ? $form['address'] : null,
                 ]);
 
                 $newCustomerId = (int)$pdo->lastInsertId();
@@ -203,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
                 exit();
             }
         } catch (Exception $e) {
-            $error = 'Sign up failed. Please try again.';
+            $error = 'Sign up failed: ' . $e->getMessage();
         }
     }
 }
@@ -410,10 +429,6 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
 
                 <?php if ($error !== ''): ?>
                   <div class="alert alert-danger"><?php echo sf_h($error); ?></div>
-                <?php endif; ?>
-
-                <?php if ($success !== ''): ?>
-                  <div class="alert alert-success"><?php echo sf_h($success); ?></div>
                 <?php endif; ?>
 
                 <form method="POST" autocomplete="off">
