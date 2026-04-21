@@ -672,11 +672,9 @@ if (file_exists($mobileNavFile)) {
 
     <div class="row g-4">
       <?php if (!empty($products)): ?>
-        <?php foreach ($products as $product): ?>
+        <?php foreach (array_slice($products, 0, 4) as $product): ?>
           <?php
             $productImage = sf_normalize_image_path($product['image_path'] ?? '', 'https://via.placeholder.com/700x700?text=Product');
-            $price = (float)($product['retail_price'] ?? 0);
-            $mrp   = (float)($product['mrp'] ?? 0);
           ?>
           <div class="col-6 col-md-4 col-lg-3">
             <a href="<?php echo sf_h($productOpenBase . '&id=' . (int)$product['id']); ?>" class="product-showcase">
@@ -684,11 +682,8 @@ if (file_exists($mobileNavFile)) {
               <div class="product-showcase-body">
                 <h5><?php echo sf_h($product['product_name'] ?? 'Product'); ?></h5>
                 <p><?php echo sf_h(sf_trim_text($product['description'] ?? '', 85) ?: ($product['category_name'] ?? 'View product details')); ?></p>
-                <div class="product-price-line">
-                  <?php echo sf_h(sf_money($price, $currencySymbol)); ?>
-                  <?php if ($mrp > $price && $mrp > 0): ?>
-                    <span><?php echo sf_h(sf_money($mrp, $currencySymbol)); ?></span>
-                  <?php endif; ?>
+                <div class="mt-2">
+                  <span class="btn btn-sm btn-outline-dark">View Product</span>
                 </div>
               </div>
             </a>
@@ -700,6 +695,14 @@ if (file_exists($mobileNavFile)) {
         </div>
       <?php endif; ?>
     </div>
+
+    <?php if (!empty($products) && count($products) > 4): ?>
+      <div class="text-center mt-4">
+        <a href="storefront.php?slug=kesavan-traders&page=store" class="btn btn-landing-primary">
+          Show More
+        </a>
+      </div>
+    <?php endif; ?>
   </div>
 </section>
 

@@ -74051,3 +74051,657 @@
     "attempts": 0,
     "final_seq": 2
 }
+[2026-04-21 05:07:23] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "BAE\/2025-2026\/",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "BAE\/2025-2026\/",
+    "full_prefix": "BAE\/2025-2026\/"
+}
+[2026-04-21 05:07:23] Generated invoice number | {
+    "invoice_number": "BAE\/2025-2026\/0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-21 05:07:24] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "BAE\/2025-2026\/",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "BAE\/2025-2026\/",
+    "full_prefix": "BAE\/2025-2026\/"
+}
+[2026-04-21 05:07:24] Generated invoice number | {
+    "invoice_number": "BAE\/2025-2026\/0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-21 05:07:29] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "BAE\/2025-2026\/",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "BAE\/2025-2026\/",
+    "full_prefix": "BAE\/2025-2026\/"
+}
+[2026-04-21 05:07:29] Generated invoice number | {
+    "invoice_number": "BAE\/2025-2026\/0001",
+    "attempts": 0,
+    "final_seq": 1
+}
+[2026-04-21 10:39:17] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:39:17] Generated invoice number | {
+    "invoice_number": "INV202604-0016",
+    "attempts": 0,
+    "final_seq": 16
+}
+[2026-04-21 10:40:22] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:40:22] Generated invoice number | {
+    "invoice_number": "INV202604-0016",
+    "attempts": 0,
+    "final_seq": 16
+}
+[2026-04-21 10:40:31] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-21 10:40:31] Action: save
+[2026-04-21 10:40:31] Raw input received | {
+    "raw": "{\"customer_name\":\"Walk-in Customer\",\"customer_phone\":\"\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0016\",\"invoice_date\":\"2026-04-21\",\"date\":\"2026-04-21\",\"invoice_type\":\"gst\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":2883,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":219.89,\"total_sgst\":219.89,\"total_igst\":0,\"total_taxable\":2443.22,\"total_gst\":439.78,\"grand_total\":2883,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"shipping_charges\":0,\"transport_type\":\"\",\"transport_charge\":0},\"items\":[{\"product_id\":1104,\"name\":\"6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)\",\"code\":\"PIPE-006-GR\",\"quantity\":3,\"unit\":\"pcs\",\"price\":961,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":2883,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":2443.220338983051,\"cgst_amount\":219.88983050847446,\"sgst_amount\":219.88983050847446,\"igst_amount\":0,\"stock_price\":612,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":4.5,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":3}],\"payment_method\":\"cash\",\"payment_details\":{\"cash\":2883,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":0,\"totalPaid\":2883,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":null},\"pending_amount\":0}"
+}
+[2026-04-21 10:40:31] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "Walk-in Customer",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0016"
+}
+[2026-04-21 10:40:31] Transaction started
+[2026-04-21 10:40:31] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-21 10:40:31] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-21 10:40:31] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-21 10:40:31] Customer address | {
+    "address": ""
+}
+[2026-04-21 10:40:31] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-21 10:40:31] HSN check | {
+    "has_hsn": true
+}
+[2026-04-21 10:40:31] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-21 10:40:31] Created new customer | {
+    "customer_id": "261"
+}
+[2026-04-21 10:40:31] Created new customer points record | {
+    "customer_id": "261"
+}
+[2026-04-21 10:40:31] Using user-entered invoice number and date | {
+    "invoice_number": "INV202604-0016",
+    "invoice_date": "2026-04-21",
+    "created_at": "2026-04-21 10:40:31"
+}
+[2026-04-21 10:40:31] Payment summary | {
+    "subtotal": 2883,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 2883,
+    "total_paid": 2883,
+    "change_given": 0,
+    "pending_amount": 0,
+    "payment_status": "paid",
+    "payment_method": "cash",
+    "credit_due_date": null
+}
+[2026-04-21 10:40:31] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-21 10:40:31] Invoice created | {
+    "invoice_id": "419",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-21 10:40:31] Processing item #1 | {
+    "product_id": 1104,
+    "name": "6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)",
+    "code": "PIPE-006-GR",
+    "quantity": 3,
+    "unit": "pcs",
+    "price": 961,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 2883,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 2443.220338983051,
+    "cgst_amount": 219.88983050847446,
+    "sgst_amount": 219.88983050847446,
+    "igst_amount": 0,
+    "stock_price": 612,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 4.5,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 3
+}
+[2026-04-21 10:40:31] Product stock info | {
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 4,
+    "current_total_sec_units": 3,
+    "old_qty": 3,
+    "use_batch_tracking": true,
+    "batch_id": 126
+}
+[2026-04-21 10:40:31] Primary unit calculation | {
+    "qty_requested": 3,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3
+}
+[2026-04-21 10:40:31] Stock availability check | {
+    "quantity_to_check": 3,
+    "total_available_primary": 4,
+    "total_available_secondary": 3,
+    "old_qty": 3,
+    "current_stock": 4
+}
+[2026-04-21 10:40:32] Item #1 saved | {
+    "item_id": "695",
+    "unit": "pcs",
+    "quantity_sold": 3,
+    "quantity_in_primary": 3,
+    "quantity_in_secondary": 3,
+    "profit": 1047
+}
+[2026-04-21 10:40:32] Using batch tracking with iterative deduction | {
+    "batch_id": 126,
+    "old_qty": 3,
+    "current_stock": 4,
+    "quantity_to_deduct": 3
+}
+[2026-04-21 10:40:32] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 712,
+    "old_purchase_price": 612,
+    "old_mrp": 850,
+    "new_mrp": 850,
+    "retail_price": 961.2,
+    "wholesale_price": 868.64,
+    "old_retail_price": 826.2,
+    "old_wholesale_price": 746.64,
+    "old_selling_price": 826.2,
+    "current_stock": 4,
+    "old_qty": 3
+}
+[2026-04-21 10:40:32] Iterative deduction #1 of 3 | {
+    "current_old_qty": 3,
+    "current_quantity": 4
+}
+[2026-04-21 10:40:32] Deducted one unit | {
+    "old_qty_before": 3,
+    "old_qty_after": 2,
+    "quantity_before": 4,
+    "quantity_after": 3,
+    "sec_units_deducted": 1
+}
+[2026-04-21 10:40:32] Iterative deduction #2 of 3 | {
+    "current_old_qty": 2,
+    "current_quantity": 3
+}
+[2026-04-21 10:40:32] Deducted one unit | {
+    "old_qty_before": 2,
+    "old_qty_after": 1,
+    "quantity_before": 3,
+    "quantity_after": 2,
+    "sec_units_deducted": 1
+}
+[2026-04-21 10:40:32] Iterative deduction #3 of 3 | {
+    "current_old_qty": 1,
+    "current_quantity": 2
+}
+[2026-04-21 10:40:32] Deducted one unit | {
+    "old_qty_before": 1,
+    "old_qty_after": 0,
+    "quantity_before": 2,
+    "quantity_after": 1,
+    "sec_units_deducted": 1
+}
+[2026-04-21 10:40:32] Old stock exhausted at deduction #3 | {
+    "new_old_qty": 0,
+    "updated_quantity": 1,
+    "quantity_received": 1
+}
+[2026-04-21 10:40:32] Batch completion condition met. Updating prices... | {
+    "purchase_price": 712,
+    "retail_price": 961.2,
+    "wholesale_price": 868.64,
+    "new_mrp": 850
+}
+[2026-04-21 10:40:32] Product prices updated | {
+    "new_stock_price": 712,
+    "new_retail_price": 961.2,
+    "new_wholesale_price": 868.64,
+    "new_mrp": 850
+}
+[2026-04-21 10:40:32] Batch tracking reset after price update
+[2026-04-21 10:40:32] Iterative deduction completed | {
+    "total_deducted": 3,
+    "price_updated": "Yes"
+}
+[2026-04-21 10:40:32] Selling from OLD stock | {
+    "old_purchase_price": 612,
+    "new_purchase_price": 712,
+    "selling_price": 961.2,
+    "margin_before": 36.329588014981276,
+    "margin_after": 25.92592592592593
+}
+[2026-04-21 10:40:32] Margin DECREASE - Loss | {
+    "margin_decrease": "10.403662089055%",
+    "loss_amount": 99.97919267582186
+}
+[2026-04-21 10:40:33] Updated invoice item with profit/loss | {
+    "item_id": "695",
+    "new_batch_product_profit": 0,
+    "new_batch_product_loss": 99.97919267582186
+}
+[2026-04-21 10:40:33] Secondary units out of sync after iterative deduction, correcting... | {
+    "calculated": 1,
+    "stored": 0,
+    "difference": 1
+}
+[2026-04-21 10:40:33] Secondary units synchronized after iterative deduction
+[2026-04-21 10:40:33] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260421-7477",
+    "old_stock": 4,
+    "new_stock": 1,
+    "quantity_removed": 3
+}
+[2026-04-21 10:40:33] Final stock status | {
+    "final_quantity": "1.0000",
+    "final_secondary_units": "1.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-21 10:40:33] Stock deduction completed for item #1 | {
+    "product_id": 1104,
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "sold_quantity": "3 pcs",
+    "converted_primary": "3 pcs",
+    "converted_secondary": "3 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-21 10:40:33] Points earned | {
+    "points_earned": 28.83
+}
+[2026-04-21 10:40:33] Points earning recorded
+[2026-04-21 10:40:33] GST summary saved
+[2026-04-21 10:40:33] Transaction committed successfully
+[2026-04-21 10:40:33] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-21 10:40:36] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:40:37] Generated invoice number | {
+    "invoice_number": "INV202604-0017",
+    "attempts": 0,
+    "final_seq": 17
+}
+[2026-04-21 10:48:23] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:48:23] Generated invoice number | {
+    "invoice_number": "INV202604-0017",
+    "attempts": 0,
+    "final_seq": 17
+}
+[2026-04-21 10:48:29] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:48:29] Generated invoice number | {
+    "invoice_number": "INV202604-0017",
+    "attempts": 0,
+    "final_seq": 17
+}
+[2026-04-21 10:48:46] === NEW INVOICE SAVE REQUEST STARTED ===
+[2026-04-21 10:48:46] Action: save
+[2026-04-21 10:48:46] Raw input received | {
+    "raw": "{\"customer_name\":\"Walk-in Customer\",\"customer_phone\":\"\",\"customer_address\":\"\",\"customer_gstin\":\"\",\"customer_id\":null,\"invoice_number\":\"INV202604-0017\",\"invoice_date\":\"2026-04-21\",\"date\":\"2026-04-21\",\"invoice_type\":\"gst\",\"price_type\":\"retail\",\"referral_id\":null,\"points_used\":0,\"points_discount\":0,\"subtotal\":827,\"discount\":\"0\",\"discount_type\":\"rupees\",\"overall_discount\":0,\"total_cgst\":63.08,\"total_sgst\":63.08,\"total_igst\":0,\"total_taxable\":700.85,\"total_gst\":126.15,\"grand_total\":827,\"referral_commission\":0,\"shipping_details\":{\"name\":\"\",\"contact\":\"\",\"gstin\":\"\",\"address\":\"\",\"vehicle_number\":\"\",\"shipping_charges\":0,\"transport_type\":\"\",\"transport_charge\":0},\"items\":[{\"product_id\":1104,\"name\":\"6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)\",\"code\":\"PIPE-006-GR\",\"quantity\":1,\"unit\":\"pcs\",\"price\":827,\"price_type\":\"retail\",\"discount_value\":0,\"discount_type\":\"percentage\",\"total\":827,\"hsn_code\":\"12345\",\"cgst_rate\":9,\"sgst_rate\":9,\"igst_rate\":0,\"taxable_value\":700.8474576271187,\"cgst_amount\":63.076271186440636,\"sgst_amount\":63.076271186440636,\"igst_amount\":0,\"stock_price\":712,\"referral_enabled\":1,\"referral_type\":\"percentage\",\"referral_value\":4.5,\"referral_commission\":0,\"is_secondary_unit\":false,\"sec_unit_conversion\":1,\"quantity_in_primary\":1}],\"payment_method\":\"cash\",\"payment_details\":{\"cash\":827,\"upi\":0,\"bank\":0,\"cheque\":0,\"credit\":0,\"totalPaid\":827,\"upi_reference\":\"\",\"bank_reference\":\"\",\"cheque_number\":\"\",\"credit_reference\":\"\",\"credit_due_date\":null},\"pending_amount\":0}"
+}
+[2026-04-21 10:48:46] Input parsed successfully | {
+    "item_count": 1,
+    "gst_type": "gst",
+    "customer_name": "Walk-in Customer",
+    "points_used": 0,
+    "points_discount": 0,
+    "invoice_number": "INV202604-0017"
+}
+[2026-04-21 10:48:46] Transaction started
+[2026-04-21 10:48:46] Context loaded | {
+    "business_id": 25,
+    "shop_id": 32,
+    "seller_id": 27
+}
+[2026-04-21 10:48:46] Loyalty settings | {
+    "points_per_amount": 0.01,
+    "amount_per_point": 100,
+    "redeem_value_per_point": 1,
+    "min_points_to_redeem": 50,
+    "expiry_months": null,
+    "is_active": 1
+}
+[2026-04-21 10:48:46] GST handling | {
+    "frontend_gst_type": "gst",
+    "force_non_gst": false
+}
+[2026-04-21 10:48:46] Customer address | {
+    "address": ""
+}
+[2026-04-21 10:48:46] GST settings loaded | {
+    "is_gst_enabled": 1,
+    "is_inclusive": 1
+}
+[2026-04-21 10:48:46] HSN check | {
+    "has_hsn": true
+}
+[2026-04-21 10:48:46] Invoice type decided | {
+    "gst_status": 1,
+    "invoice_type": "tax_invoice"
+}
+[2026-04-21 10:48:46] Created new customer | {
+    "customer_id": "262"
+}
+[2026-04-21 10:48:46] Created new customer points record | {
+    "customer_id": "262"
+}
+[2026-04-21 10:48:46] Using user-entered invoice number and date | {
+    "invoice_number": "INV202604-0017",
+    "invoice_date": "2026-04-21",
+    "created_at": "2026-04-21 10:48:46"
+}
+[2026-04-21 10:48:46] Payment summary | {
+    "subtotal": 827,
+    "overall_discount": 0,
+    "points_discount": 0,
+    "total": 827,
+    "total_paid": 827,
+    "change_given": 0,
+    "pending_amount": 0,
+    "payment_status": "paid",
+    "payment_method": "cash",
+    "credit_due_date": null
+}
+[2026-04-21 10:48:46] Referral info | {
+    "referral_id": null,
+    "commission": 0
+}
+[2026-04-21 10:48:46] Invoice created | {
+    "invoice_id": "420",
+    "points_used": 0,
+    "points_discount": 0
+}
+[2026-04-21 10:48:46] Processing item #1 | {
+    "product_id": 1104,
+    "name": "6 inch PVC Pipe SCH 80 (Category 1 - Sub 1)",
+    "code": "PIPE-006-GR",
+    "quantity": 1,
+    "unit": "pcs",
+    "price": 827,
+    "price_type": "retail",
+    "discount_value": 0,
+    "discount_type": "percentage",
+    "total": 827,
+    "hsn_code": "12345",
+    "cgst_rate": 9,
+    "sgst_rate": 9,
+    "igst_rate": 0,
+    "taxable_value": 700.8474576271187,
+    "cgst_amount": 63.076271186440636,
+    "sgst_amount": 63.076271186440636,
+    "igst_amount": 0,
+    "stock_price": 712,
+    "referral_enabled": 1,
+    "referral_type": "percentage",
+    "referral_value": 4.5,
+    "referral_commission": 0,
+    "is_secondary_unit": false,
+    "sec_unit_conversion": 1,
+    "quantity_in_primary": 1
+}
+[2026-04-21 10:48:46] Product stock info | {
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "unit_of_measure": "pcs",
+    "secondary_unit": null,
+    "sec_unit_conversion": 1,
+    "current_stock": 2,
+    "current_total_sec_units": 1,
+    "old_qty": 1,
+    "use_batch_tracking": true,
+    "batch_id": 127
+}
+[2026-04-21 10:48:46] Primary unit calculation | {
+    "qty_requested": 1,
+    "unit_requested": "pcs",
+    "quantity_in_primary": 1,
+    "quantity_in_secondary": 1
+}
+[2026-04-21 10:48:46] Stock availability check | {
+    "quantity_to_check": 1,
+    "total_available_primary": 2,
+    "total_available_secondary": 1,
+    "old_qty": 1,
+    "current_stock": 2
+}
+[2026-04-21 10:48:46] Item #1 saved | {
+    "item_id": "696",
+    "unit": "pcs",
+    "quantity_sold": 1,
+    "quantity_in_primary": 1,
+    "quantity_in_secondary": 1,
+    "profit": 115
+}
+[2026-04-21 10:48:46] Using batch tracking with iterative deduction | {
+    "batch_id": 127,
+    "old_qty": 1,
+    "current_stock": 2,
+    "quantity_to_deduct": 1
+}
+[2026-04-21 10:48:46] Batch info | {
+    "quantity_received": 1,
+    "purchase_price": 612.3,
+    "old_purchase_price": 712,
+    "old_mrp": 850,
+    "new_mrp": 850,
+    "retail_price": 826.61,
+    "wholesale_price": 747.01,
+    "old_retail_price": 961.2,
+    "old_wholesale_price": 868.64,
+    "old_selling_price": 961.2,
+    "current_stock": 2,
+    "old_qty": 1
+}
+[2026-04-21 10:48:46] Iterative deduction #1 of 1 | {
+    "current_old_qty": 1,
+    "current_quantity": 2
+}
+[2026-04-21 10:48:46] Deducted one unit | {
+    "old_qty_before": 1,
+    "old_qty_after": 0,
+    "quantity_before": 2,
+    "quantity_after": 1,
+    "sec_units_deducted": 1
+}
+[2026-04-21 10:48:47] Old stock exhausted at deduction #1 | {
+    "new_old_qty": 0,
+    "updated_quantity": 1,
+    "quantity_received": 1
+}
+[2026-04-21 10:48:47] Batch completion condition met. Updating prices... | {
+    "purchase_price": 612.3,
+    "retail_price": 826.61,
+    "wholesale_price": 747.01,
+    "new_mrp": 850
+}
+[2026-04-21 10:48:47] Product prices updated | {
+    "new_stock_price": 612.3,
+    "new_retail_price": 826.61,
+    "new_wholesale_price": 747.01,
+    "new_mrp": 850
+}
+[2026-04-21 10:48:47] Batch tracking reset after price update
+[2026-04-21 10:48:47] Iterative deduction completed | {
+    "total_deducted": 1,
+    "price_updated": "Yes"
+}
+[2026-04-21 10:48:47] Selling from OLD stock | {
+    "old_purchase_price": 712,
+    "new_purchase_price": 612.3,
+    "selling_price": 826.61,
+    "margin_before": 13.865063330954138,
+    "margin_after": 25.926373985313518
+}
+[2026-04-21 10:48:47] Margin INCREASE - Profit | {
+    "margin_increase": "12.061310654359%",
+    "profit_amount": 99.74703911155207
+}
+[2026-04-21 10:48:47] Updated invoice item with profit/loss | {
+    "item_id": "696",
+    "new_batch_product_profit": 99.74703911155207,
+    "new_batch_product_loss": 0
+}
+[2026-04-21 10:48:47] Secondary units out of sync after iterative deduction, correcting... | {
+    "calculated": 1,
+    "stored": 0,
+    "difference": 1
+}
+[2026-04-21 10:48:47] Secondary units synchronized after iterative deduction
+[2026-04-21 10:48:47] Stock adjustment recorded for item #1 | {
+    "adjustment_number": "ADJ20260421-9120",
+    "old_stock": 2,
+    "new_stock": 1,
+    "quantity_removed": 1
+}
+[2026-04-21 10:48:47] Final stock status | {
+    "final_quantity": "1.0000",
+    "final_secondary_units": "1.0000",
+    "final_old_qty": "0.0000",
+    "final_batch_tracking": 0,
+    "final_batch_id": "NULL"
+}
+[2026-04-21 10:48:47] Stock deduction completed for item #1 | {
+    "product_id": 1104,
+    "product_name": "6 inch PVC Pipe SCH 80",
+    "sold_quantity": "1 pcs",
+    "converted_primary": "1 pcs",
+    "converted_secondary": "1 ",
+    "batch_tracking_used": "Yes",
+    "old_stock_deducted": "N\/A"
+}
+[2026-04-21 10:48:47] Points earned | {
+    "points_earned": 8.27
+}
+[2026-04-21 10:48:47] Points earning recorded
+[2026-04-21 10:48:47] GST summary saved
+[2026-04-21 10:48:47] Transaction committed successfully
+[2026-04-21 10:48:47] === INVOICE SAVE COMPLETED SUCCESSFULLY ===
+[2026-04-21 10:48:50] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-21 10:48:50] Generated invoice number | {
+    "invoice_number": "INV202604-0018",
+    "attempts": 0,
+    "final_seq": 18
+}
+[2026-04-21 12:43:06] Generating next invoice number | {
+    "business_id": 28,
+    "shop_id": 37,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "BAE\/2025-2026\/",
+    "non_gst_prefix": "VSN",
+    "selected_prefix": "BAE\/2025-2026\/",
+    "full_prefix": "BAE\/2025-2026\/"
+}
+[2026-04-21 12:43:06] Generated invoice number | {
+    "invoice_number": "BAE\/2025-2026\/0001",
+    "attempts": 0,
+    "final_seq": 1
+}
