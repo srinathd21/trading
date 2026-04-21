@@ -130,9 +130,10 @@ $logoutUrl     = store_page_url('logout');
             </a>
           </div>
         <?php else: ?>
-          <a href="<?php echo store_h($loginUrl); ?>" class="btn btn-sm btn-dark ms-2">
-            Login
-          </a>
+          <div class="d-flex align-items-center ms-2 gap-2">
+    <a href="<?php echo store_h($loginUrl); ?>" class="btn btn-sm btn-outline-dark">Login</a>
+    <a href="<?php echo store_h(store_page_url('signup')); ?>" class="btn btn-sm btn-dark">Sign Up</a>
+</div>
         <?php endif; ?>
 
         <button

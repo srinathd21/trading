@@ -477,6 +477,7 @@ $templateMap = [
     'confirmation'  => __DIR__ . '/online-store/confirmation.php',
     'track'         => __DIR__ . '/online-store/track.php',
     'login'         => __DIR__ . '/online-store/login.php',
+    'signup' => __DIR__ . '/online-store/signup.php',
 ];
 
 /* default page fallback */
