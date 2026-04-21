@@ -377,9 +377,15 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
                 </form>
 
                 <div class="mt-4 text-center text-muted">
-                  Back to store?
-                  <a href="<?php echo sf_h($storePageUrl); ?>" class="small-link">Continue Shopping</a>
-                </div>
+  Back to store?
+  <a href="<?php echo sf_h($storePageUrl); ?>" class="small-link">Continue Shopping</a>
+</div>
+
+<div class="mt-3 text-center">
+  <a href="storefront.php?slug=<?php echo urlencode($slug); ?>&page=signup&redirect=<?php echo urlencode($redirect); ?>" class="btn btn-outline-dark">
+    Create Account
+  </a>
+</div>
 
                 <?php if ($supportPhone !== '' || $supportEmail !== ''): ?>
                   <div class="mt-4 pt-3 border-top">
