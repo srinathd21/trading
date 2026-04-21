@@ -5,6 +5,10 @@ if (!function_exists('store_h')) {
     }
 }
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $currentSlug = trim((string)($_GET['slug'] ?? ''));
 
 $baseStoreUrl = 'storefront.php';
@@ -50,13 +54,22 @@ if (isset($displayName) && trim((string)$displayName) !== '') {
     $storeBrandName = 'ONLINE STORE';
 }
 
+/* customer login session */
+$isCustomerLoggedIn = false;
+$customerName = '';
+
+if (!empty($_SESSION['customer_id']) || !empty($_SESSION['online_customer_id']) || !empty($_SESSION['storefront_customer_id'])) {
+    $isCustomerLoggedIn = true;
+    $customerName = trim((string)($_SESSION['customer_name'] ?? 'Customer'));
+}
+
 $homeUrl       = store_page_url();
 $shopUrl       = store_page_url('store');
 $categoriesUrl = store_page_url('categories');
-$offersUrl     = store_page_url('offers');
-$contactUrl    = store_page_url('contact');
 $searchUrl     = store_page_url('search');
 $wishlistUrl   = store_page_url('wishlist');
+$loginUrl      = store_page_url('login', ['redirect' => store_page_url($currentPage, $_GET)]);
+$logoutUrl     = store_page_url('logout');
 ?>
 
 <nav class="navbar main-navbar sticky-top">
@@ -92,7 +105,7 @@ $wishlistUrl   = store_page_url('wishlist');
     <div class="desktop-nav-wrapper">
       <ul class="navbar-nav mx-auto mb-0 flex-row">
         <li class="nav-item">
-          <a class="nav-link <?php echo $currentPage === 'home' ? 'active' : ''; ?>" href="<?php echo store_h($homeUrl); ?>">
+          <a class="nav-link <?php echo ($currentPage === 'home' || $currentPage === 'index') ? 'active' : ''; ?>" href="<?php echo store_h($homeUrl); ?>">
             Home
           </a>
         </li>
@@ -106,16 +119,6 @@ $wishlistUrl   = store_page_url('wishlist');
             Categories
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link <?php echo $currentPage === 'offers' ? 'active' : ''; ?>" href="<?php echo store_h($offersUrl); ?>">
-            Offers
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link <?php echo $currentPage === 'contact' ? 'active' : ''; ?>" href="<?php echo store_h($contactUrl); ?>">
-            Contact
-          </a>
-        </li>
       </ul>
 
       <div class="nav-icons d-flex align-items-center ms-auto">
@@ -127,12 +130,27 @@ $wishlistUrl   = store_page_url('wishlist');
           <i class="bi bi-heart"></i>
         </a>
 
+        <?php if ($isCustomerLoggedIn): ?>
+          <div class="d-flex align-items-center ms-2">
+            <span class="me-2 fw-semibold text-dark">
+              <i class="bi bi-person-circle me-1"></i><?php echo store_h($customerName); ?>
+            </span>
+            <a href="<?php echo store_h($logoutUrl); ?>" class="btn btn-sm btn-outline-dark">
+              Logout
+            </a>
+          </div>
+        <?php else: ?>
+          <a href="<?php echo store_h($loginUrl); ?>" class="btn btn-sm btn-dark ms-2">
+            Login
+          </a>
+        <?php endif; ?>
+
         <button
           type="button"
           id="openCartBtn"
           data-bs-toggle="offcanvas"
           data-bs-target="#sideCart"
-          aria-controls="sideCart"
+          aria-controls="#sideCart"
           aria-label="Open cart"
         >
           <i class="bi bi-cart3"></i>
