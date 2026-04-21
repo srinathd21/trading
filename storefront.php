@@ -291,8 +291,8 @@ $youtubeUrl   = trim((string)($storeRow['youtube_url'] ?? ''));
 /* =========================================================
    URLS
 ========================================================= */
-$storeUrl            = sf_store_url($slug, 'home');
-$homePageUrl         = sf_store_url($slug, 'home');
+$storeUrl            = sf_store_url($slug, 'index');
+$homePageUrl         = sf_store_url($slug, 'index');
 $storePageUrl        = sf_store_url($slug, 'store');
 $categoryPageUrl     = sf_store_url($slug, 'categories');
 $contactPageUrl      = sf_store_url($slug, 'contact');
@@ -463,7 +463,7 @@ if ($page === 'logout') {
    PAGE ROUTING
 ========================================================= */
 $templateMap = [
-    'index'         => __DIR__ . '/index.php',
+    'index'         => __DIR__ . '/online-store/home.php',
     'home'          => __DIR__ . '/online-store/home.php',
     'store'         => __DIR__ . '/online-store/store.php',
     'categories'    => __DIR__ . '/online-store/categories.php',
