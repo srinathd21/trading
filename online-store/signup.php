@@ -34,21 +34,24 @@ $storeAddress    = $storeAddress ?? '';
    HELPERS
 ========================= */
 if (!function_exists('sf_h')) {
-    function sf_h($value): string {
+    function sf_h($value): string
+    {
         return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
     }
 }
 
 if (!function_exists('sf_only_digits')) {
-    function sf_only_digits(string $value): string {
+    function sf_only_digits(string $value): string
+    {
         return preg_replace('/\D+/', '', $value);
     }
 }
 
 if (!function_exists('sf_column_exists')) {
-    function sf_column_exists(PDO $pdo, string $table, string $column): bool {
+    function sf_column_exists(PDO $pdo, string $table, string $column): bool
+    {
         $sql = "
-            SELECT COUNT(*) 
+            SELECT COUNT(*)
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE()
               AND TABLE_NAME = :table_name
@@ -62,6 +65,7 @@ if (!function_exists('sf_column_exists')) {
         return (int)$stmt->fetchColumn() > 0;
     }
 }
+
 /* =========================
    LOGIN CHECK
 ========================= */
@@ -155,13 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
                 SELECT id, name, phone, email
                 FROM customers
                 WHERE phone = :phone
-                   OR (:email <> '' AND LOWER(email) = LOWER(:email))
+                   OR (:email_check <> '' AND LOWER(email) = LOWER(:email_match))
                 LIMIT 1
             ";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([
-                ':phone' => $form['phone'],
-                ':email' => $form['email']
+                ':phone'       => $form['phone'],
+                ':email_check' => $form['email'],
+                ':email_match' => $form['email']
             ]);
             $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -438,6 +443,10 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
 
                 <?php if ($error !== ''): ?>
                   <div class="alert alert-danger"><?php echo sf_h($error); ?></div>
+                <?php endif; ?>
+
+                <?php if ($success !== ''): ?>
+                  <div class="alert alert-success"><?php echo sf_h($success); ?></div>
                 <?php endif; ?>
 
                 <form method="POST" autocomplete="off">
