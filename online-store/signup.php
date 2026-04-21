@@ -155,19 +155,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['customer_signup'])) {
                 throw new Exception("Column 'is_online_customer' not found in customers table.");
             }
 
-            $checkSql = "
-                SELECT id, name, phone, email
-                FROM customers
-                WHERE phone = :phone
-                   OR (:email_check <> '' AND LOWER(email) = LOWER(:email_match))
-                LIMIT 1
-            ";
-            $checkStmt = $pdo->prepare($checkSql);
-            $checkStmt->execute([
-                ':phone'       => $form['phone'],
-                ':email_check' => $form['email'],
-                ':email_match' => $form['email']
-            ]);
+            $params = [':phone' => $form['phone']];
+
+$checkSql = "
+    SELECT id, name, phone, email
+    FROM customers
+    WHERE phone = :phone
+";
+
+if (!empty($form['email'])) {
+    $checkSql .= " OR LOWER(email) = LOWER(:email)";
+    $params[':email'] = $form['email'];
+}
+
+$checkSql .= " LIMIT 1";
+
+$checkStmt = $pdo->prepare($checkSql);
+$checkStmt->execute($params);
+
+
             $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
