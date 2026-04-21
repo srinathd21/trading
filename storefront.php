@@ -291,8 +291,8 @@ $youtubeUrl   = trim((string)($storeRow['youtube_url'] ?? ''));
 /* =========================================================
    URLS
 ========================================================= */
-$storeUrl            = sf_store_url($slug, 'index');
-$homePageUrl         = sf_store_url($slug, 'index');
+$storeUrl            = sf_store_url($slug, 'home');
+$homePageUrl         = sf_store_url($slug, 'home');
 $storePageUrl        = sf_store_url($slug, 'store');
 $categoryPageUrl     = sf_store_url($slug, 'categories');
 $contactPageUrl      = sf_store_url($slug, 'contact');
