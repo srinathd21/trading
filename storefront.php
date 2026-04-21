@@ -463,8 +463,8 @@ if ($page === 'logout') {
    PAGE ROUTING
 ========================================================= */
 $templateMap = [
-    'index'         => __DIR__ . '/online-store/index.php',
-    'home'          => __DIR__ . '/online-store/index.php',
+    'index'         => __DIR__ . '/online-store/home.php',
+    'home'          => __DIR__ . '/online-store/home.php',
     'store'         => __DIR__ . '/online-store/store.php',
     'categories'    => __DIR__ . '/online-store/categories.php',
     'contact'       => __DIR__ . '/online-store/contact.php',
@@ -482,7 +482,7 @@ $templateMap = [
 
 /* default page fallback */
 if ($page === '') {
-    $page = 'index';
+    $page = 'home';
 }
 
 if (!isset($templateMap[$page])) {
