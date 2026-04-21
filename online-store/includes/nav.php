@@ -63,7 +63,7 @@ if (!empty($_SESSION['customer_id']) || !empty($_SESSION['online_customer_id']) 
     $customerName = trim((string)($_SESSION['customer_name'] ?? 'Customer'));
 }
 
-$homeUrl       = store_page_url(home);
+$homeUrl       = store_page_url();
 $shopUrl       = store_page_url('store');
 $categoriesUrl = store_page_url('categories');
 $loginUrl      = store_page_url('login', ['redirect' => store_page_url($currentPage, $_GET)]);
