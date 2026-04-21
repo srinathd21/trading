@@ -464,7 +464,7 @@ if ($page === 'logout') {
 ========================================================= */
 $templateMap = [
     'index'         => __DIR__ . '/index.php',
-    'home'          => __DIR__ . '/online-store/index.php',
+    'home'          => __DIR__ . '/online-store/home.php',
     'store'         => __DIR__ . '/online-store/store.php',
     'categories'    => __DIR__ . '/online-store/categories.php',
     'contact'       => __DIR__ . '/online-store/contact.php',
