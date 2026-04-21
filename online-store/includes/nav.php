@@ -66,8 +66,6 @@ if (!empty($_SESSION['customer_id']) || !empty($_SESSION['online_customer_id']) 
 $homeUrl       = store_page_url();
 $shopUrl       = store_page_url('store');
 $categoriesUrl = store_page_url('categories');
-$searchUrl     = store_page_url('search');
-$wishlistUrl   = store_page_url('wishlist');
 $loginUrl      = store_page_url('login', ['redirect' => store_page_url($currentPage, $_GET)]);
 $logoutUrl     = store_page_url('logout');
 ?>
@@ -122,14 +120,6 @@ $logoutUrl     = store_page_url('logout');
       </ul>
 
       <div class="nav-icons d-flex align-items-center ms-auto">
-        <a href="<?php echo store_h($searchUrl); ?>" aria-label="Search">
-          <i class="bi bi-search"></i>
-        </a>
-
-        <a href="<?php echo store_h($wishlistUrl); ?>" aria-label="Wishlist">
-          <i class="bi bi-heart"></i>
-        </a>
-
         <?php if ($isCustomerLoggedIn): ?>
           <div class="d-flex align-items-center ms-2">
             <span class="me-2 fw-semibold text-dark">
