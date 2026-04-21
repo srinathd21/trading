@@ -463,7 +463,7 @@ if ($page === 'logout') {
    PAGE ROUTING
 ========================================================= */
 $templateMap = [
-    'index'         => __DIR__ . '/online-store/index.php',
+    'index'         => __DIR__ . '/index.php',
     'home'          => __DIR__ . '/online-store/index.php',
     'store'         => __DIR__ . '/online-store/store.php',
     'categories'    => __DIR__ . '/online-store/categories.php',

@@ -3,6 +3,10 @@ if (!defined('STORE_FRONT')) {
     die('Direct access not allowed.');
 }
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 /* =========================
    SAFE FALLBACKS
 ========================= */
@@ -24,8 +28,8 @@ $supportPhone    = $supportPhone ?? '';
 $supportEmail    = $supportEmail ?? '';
 $whatsappNumber  = $whatsappNumber ?? '';
 $storeAddress    = $storeAddress ?? '';
-$enableCOD       = (int)($enableCOD ?? 1);
-$businessId      = (int)($businessId ?? ($store['business_id'] ?? 0));
+$enableCOD       = 1;
+$businessId      = (int)($businessId ?? ($store['business_id'] ?? ($storeRow['business_id'] ?? 0)));
 
 /* =========================
    DB CHECK
@@ -77,6 +81,23 @@ if (!function_exists('sf_generate_order_number')) {
     }
 }
 
+if (!function_exists('sf_table_has_column')) {
+    function sf_table_has_column(PDO $pdo, string $table, string $column): bool {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+        ");
+        $stmt->execute([
+            ':table_name'  => $table,
+            ':column_name' => $column
+        ]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+}
+
 /* =========================
    INCLUDE VARIABLES
 ========================= */
@@ -96,21 +117,62 @@ $confirmationPageBaseUrl = 'storefront.php?slug=' . urlencode($slug) . '&page=co
 $cartPageUrl             = 'storefront.php?slug=' . urlencode($slug) . '&page=cart';
 
 /* =========================
+   LOGGED IN CUSTOMER
+========================= */
+$loggedInCustomerId = 0;
+$loggedInCustomer = null;
+
+$possibleCustomerIds = [
+    (int)($_SESSION['customer_id'] ?? 0),
+    (int)($_SESSION['online_customer_id'] ?? 0),
+    (int)($_SESSION['storefront_customer_id'] ?? 0),
+    (int)($_SESSION['store_customer_id'] ?? 0),
+    (int)($_SESSION['web_customer_id'] ?? 0),
+];
+
+foreach ($possibleCustomerIds as $cid) {
+    if ($cid > 0) {
+        $loggedInCustomerId = $cid;
+        break;
+    }
+}
+
+if ($loggedInCustomerId > 0) {
+    try {
+        $customerStmt = $pdo->prepare("
+            SELECT id, business_id, name, phone, alt_phone, email, address
+            FROM customers
+            WHERE id = :id
+              AND business_id = :business_id
+            LIMIT 1
+        ");
+        $customerStmt->execute([
+            ':id' => $loggedInCustomerId,
+            ':business_id' => $businessId
+        ]);
+        $loggedInCustomer = $customerStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Throwable $e) {
+        $loggedInCustomer = null;
+    }
+}
+
+/* =========================
    FORM STATE
 ========================= */
+$addressRaw = trim((string)($loggedInCustomer['address'] ?? ''));
 $formError = '';
 $formData = [
-    'full_name'     => '',
-    'phone'         => '',
-    'email'         => '',
-    'alt_phone'     => '',
-    'address_line'  => '',
-    'city'          => '',
-    'state'         => '',
-    'pincode'       => '',
-    'landmark'      => '',
-    'payment_method'=> $enableCOD === 1 ? 'cod' : 'upi',
-    'order_note'    => '',
+    'full_name'      => trim((string)($loggedInCustomer['name'] ?? ($_SESSION['customer_name'] ?? ''))),
+    'phone'          => trim((string)($loggedInCustomer['phone'] ?? ($_SESSION['customer_phone'] ?? ''))),
+    'email'          => trim((string)($loggedInCustomer['email'] ?? ($_SESSION['customer_email'] ?? ''))),
+    'alt_phone'      => trim((string)($loggedInCustomer['alt_phone'] ?? '')),
+    'address_line'   => $addressRaw,
+    'city'           => '',
+    'state'          => '',
+    'pincode'        => '',
+    'landmark'       => '',
+    'payment_method' => 'cod',
+    'order_note'     => '',
 ];
 
 /* =========================
@@ -126,15 +188,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formData['state']          = trim((string)($_POST['state'] ?? ''));
     $formData['pincode']        = trim((string)($_POST['pincode'] ?? ''));
     $formData['landmark']       = trim((string)($_POST['landmark'] ?? ''));
-    $formData['payment_method'] = trim((string)($_POST['payment_method'] ?? ($enableCOD === 1 ? 'cod' : 'upi')));
+    $formData['payment_method'] = 'cod';
     $formData['order_note']     = trim((string)($_POST['order_note'] ?? ''));
 
     $cartJson = (string)($_POST['cart_json'] ?? '[]');
     $postedCartTotal = (float)($_POST['cart_total'] ?? 0);
 
-    $allowedPayments = ['cod', 'upi', 'bank'];
-    if (!in_array($formData['payment_method'], $allowedPayments, true)) {
-        $formData['payment_method'] = $enableCOD === 1 ? 'cod' : 'upi';
+    $cartItems = json_decode($cartJson, true);
+    if (!is_array($cartItems)) {
+        $cartItems = [];
     }
 
     if (
@@ -148,21 +210,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $formError = 'Please fill all required fields.';
     }
 
-    $cartItems = json_decode($cartJson, true);
-    if (!is_array($cartItems)) {
-        $cartItems = [];
-    }
-
     $normalizedItems = [];
     $subtotal = 0.00;
     $totalItems = 0;
 
     foreach ($cartItems as $item) {
-        $productId   = isset($item['id']) ? (int)$item['id'] : (isset($item['product_id']) ? (int)$item['product_id'] : null);
-        $productName = trim((string)($item['name'] ?? $item['product_name'] ?? ''));
-        $productImage= trim((string)($item['image'] ?? $item['product_image'] ?? ''));
-        $unitPrice   = (float)($item['price'] ?? 0);
-        $quantity    = (int)($item['qty'] ?? $item['quantity'] ?? 0);
+        $productId    = isset($item['id']) ? (int)$item['id'] : (isset($item['product_id']) ? (int)$item['product_id'] : null);
+        $productName  = trim((string)($item['name'] ?? $item['product_name'] ?? ''));
+        $productImage = trim((string)($item['image'] ?? $item['product_image'] ?? ''));
+        $unitPrice    = (float)($item['price'] ?? 0);
+        $quantity     = (int)($item['qty'] ?? $item['quantity'] ?? 0);
 
         if ($productName === '' || $unitPrice < 0 || $quantity <= 0) {
             continue;
@@ -200,59 +257,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $orderNumber = sf_generate_order_number();
 
-            $orderStmt = $pdo->prepare("
-                INSERT INTO online_store_orders (
-                    business_id,
-                    store_slug,
-                    order_number,
-                    customer_name,
-                    phone,
-                    email,
-                    alt_phone,
-                    address_line,
-                    city,
-                    state,
-                    pincode,
-                    landmark,
-                    payment_method,
-                    order_note,
-                    subtotal,
-                    delivery_charge,
-                    discount_amount,
-                    grand_total,
-                    total_items,
-                    order_status,
-                    payment_status,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :business_id,
-                    :store_slug,
-                    :order_number,
-                    :customer_name,
-                    :phone,
-                    :email,
-                    :alt_phone,
-                    :address_line,
-                    :city,
-                    :state,
-                    :pincode,
-                    :landmark,
-                    :payment_method,
-                    :order_note,
-                    :subtotal,
-                    :delivery_charge,
-                    :discount_amount,
-                    :grand_total,
-                    :total_items,
-                    :order_status,
-                    :payment_status,
-                    NOW(),
-                    NOW()
-                )
-            ");
+            $orderHasCustomerId = sf_table_has_column($pdo, 'online_store_orders', 'customer_id');
 
-            $orderStmt->execute([
+            if ($orderHasCustomerId) {
+                $orderSql = "
+                    INSERT INTO online_store_orders (
+                        business_id,
+                        customer_id,
+                        store_slug,
+                        order_number,
+                        customer_name,
+                        phone,
+                        email,
+                        alt_phone,
+                        address_line,
+                        city,
+                        state,
+                        pincode,
+                        landmark,
+                        payment_method,
+                        order_note,
+                        subtotal,
+                        delivery_charge,
+                        discount_amount,
+                        grand_total,
+                        total_items,
+                        order_status,
+                        payment_status,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        :business_id,
+                        :customer_id,
+                        :store_slug,
+                        :order_number,
+                        :customer_name,
+                        :phone,
+                        :email,
+                        :alt_phone,
+                        :address_line,
+                        :city,
+                        :state,
+                        :pincode,
+                        :landmark,
+                        :payment_method,
+                        :order_note,
+                        :subtotal,
+                        :delivery_charge,
+                        :discount_amount,
+                        :grand_total,
+                        :total_items,
+                        :order_status,
+                        :payment_status,
+                        NOW(),
+                        NOW()
+                    )
+                ";
+            } else {
+                $orderSql = "
+                    INSERT INTO online_store_orders (
+                        business_id,
+                        store_slug,
+                        order_number,
+                        customer_name,
+                        phone,
+                        email,
+                        alt_phone,
+                        address_line,
+                        city,
+                        state,
+                        pincode,
+                        landmark,
+                        payment_method,
+                        order_note,
+                        subtotal,
+                        delivery_charge,
+                        discount_amount,
+                        grand_total,
+                        total_items,
+                        order_status,
+                        payment_status,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        :business_id,
+                        :store_slug,
+                        :order_number,
+                        :customer_name,
+                        :phone,
+                        :email,
+                        :alt_phone,
+                        :address_line,
+                        :city,
+                        :state,
+                        :pincode,
+                        :landmark,
+                        :payment_method,
+                        :order_note,
+                        :subtotal,
+                        :delivery_charge,
+                        :discount_amount,
+                        :grand_total,
+                        :total_items,
+                        :order_status,
+                        :payment_status,
+                        NOW(),
+                        NOW()
+                    )
+                ";
+            }
+
+            $orderStmt = $pdo->prepare($orderSql);
+
+            $orderParams = [
                 ':business_id'     => $businessId,
                 ':store_slug'      => $slug,
                 ':order_number'    => $orderNumber,
@@ -265,7 +382,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':state'           => $formData['state'],
                 ':pincode'         => $formData['pincode'],
                 ':landmark'        => $formData['landmark'] !== '' ? $formData['landmark'] : null,
-                ':payment_method'  => $formData['payment_method'],
+                ':payment_method'  => 'cod',
                 ':order_note'      => $formData['order_note'] !== '' ? $formData['order_note'] : null,
                 ':subtotal'        => $subtotal,
                 ':delivery_charge' => $deliveryCharge,
@@ -273,8 +390,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':grand_total'     => $grandTotal,
                 ':total_items'     => $totalItems,
                 ':order_status'    => 'pending',
-                ':payment_status'  => $formData['payment_method'] === 'cod' ? 'pending' : 'pending'
-            ]);
+                ':payment_status'  => 'pending'
+            ];
+
+            if ($orderHasCustomerId) {
+                $orderParams[':customer_id'] = $loggedInCustomerId > 0 ? $loggedInCustomerId : null;
+            }
+
+            $orderStmt->execute($orderParams);
 
             $orderId = (int)$pdo->lastInsertId();
 
@@ -735,7 +858,7 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
         <div class="checkout-card">
           <h3>Billing & Shipping Details</h3>
           <p class="section-subtitle">
-            This page takes cart items from local storage and updates them live here.
+            <?php echo $loggedInCustomerId > 0 ? 'Your saved customer details are loaded below.' : 'Fill your order details below.'; ?>
           </p>
 
           <?php if ($formError !== ''): ?>
@@ -804,21 +927,9 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
             <div class="checkout-block">
               <h5>Payment Method</h5>
 
-              <?php if ($enableCOD === 1): ?>
               <div class="payment-option">
-                <input class="form-check-input" type="radio" name="payment_method" id="payment_cod" value="cod" <?php echo $formData['payment_method'] === 'cod' ? 'checked' : ''; ?>>
+                <input class="form-check-input" type="radio" name="payment_method" id="payment_cod" value="cod" checked>
                 <label for="payment_cod">Cash on Delivery</label>
-              </div>
-              <?php endif; ?>
-
-              <div class="payment-option">
-                <input class="form-check-input" type="radio" name="payment_method" id="payment_upi" value="upi" <?php echo $formData['payment_method'] === 'upi' ? 'checked' : ''; ?>>
-                <label for="payment_upi">UPI / Online Payment</label>
-              </div>
-
-              <div class="payment-option">
-                <input class="form-check-input" type="radio" name="payment_method" id="payment_bank" value="bank" <?php echo $formData['payment_method'] === 'bank' ? 'checked' : ''; ?>>
-                <label for="payment_bank">Bank Transfer</label>
               </div>
             </div>
 
