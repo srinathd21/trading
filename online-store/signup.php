@@ -47,12 +47,21 @@ if (!function_exists('sf_only_digits')) {
 
 if (!function_exists('sf_column_exists')) {
     function sf_column_exists(PDO $pdo, string $table, string $column): bool {
-        $stmt = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
-        $stmt->execute([$column]);
-        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+        $sql = "
+            SELECT COUNT(*) 
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':table_name'  => $table,
+            ':column_name' => $column
+        ]);
+        return (int)$stmt->fetchColumn() > 0;
     }
 }
-
 /* =========================
    LOGIN CHECK
 ========================= */
