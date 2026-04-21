@@ -32,7 +32,7 @@ $storeAddress            = $storeAddress ?? '';
 $footerText              = $footerText ?? ('© ' . date('Y') . ' ' . $displayName . '. All rights reserved.');
 $aboutUs                 = $aboutUs ?? '';
 $currencySymbol          = $currencySymbol ?? '₹';
-$storeUrl                = $storeUrl ?? ('storefront.php?slug=' . urlencode($slug) . '&page=home');
+$storeUrl                = $storeUrl ?? ('storefront.php?slug=' . urlencode($slug) . '&page=index');
 $storePageUrl            = $storePageUrl ?? ('storefront.php?slug=' . urlencode($slug) . '&page=store');
 $categoryPageUrl         = $categoryPageUrl ?? ('storefront.php?slug=' . urlencode($slug) . '&page=categories');
 $contactPageUrl          = $contactPageUrl ?? ('storefront.php?slug=' . urlencode($slug) . '&page=contact');
