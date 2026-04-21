@@ -454,7 +454,7 @@ $previewUrl = (string)$setup['store_slug'];
                                 <small class="text-muted ms-2"><?= h($current_business_name) ?></small>
                             </h4>
                             <?php if ($previewUrl !== ''): ?>
-                                <a href="<?= h($previewUrl) ?>online-store/home.php" target="_blank" class="btn btn-outline-primary">
+                                <a href="<?= h($previewUrl) ?>/online-store/home.php" target="_blank" class="btn btn-outline-primary">
                                     <i class="bx bx-link-external me-1"></i> Open Store
                                 </a>
                             <?php endif; ?>
