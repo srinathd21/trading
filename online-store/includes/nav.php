@@ -63,7 +63,7 @@ if (!empty($_SESSION['customer_id']) || !empty($_SESSION['online_customer_id']) 
     $customerName = trim((string)($_SESSION['customer_name'] ?? 'Customer'));
 }
 
-$homeUrl       = store_page_url();
+$homeUrl       = store_page_url(home);
 $shopUrl       = store_page_url('store');
 $categoriesUrl = store_page_url('categories');
 $loginUrl      = store_page_url('login', ['redirect' => store_page_url($currentPage, $_GET)]);
@@ -103,7 +103,7 @@ $logoutUrl     = store_page_url('logout');
     <div class="desktop-nav-wrapper">
       <ul class="navbar-nav mx-auto mb-0 flex-row">
         <li class="nav-item">
-          <a class="nav-link <?php echo ($currentPage === 'home' || $currentPage === 'index') ? 'active' : ''; ?>" href="<?php echo store_h($homeUrl); ?>">
+          <a class="nav-link <?php echo ($currentPage === 'home' || $currentPage === 'home') ? 'active' : ''; ?>" href="<?php echo store_h($homeUrl); ?>">
             Home
           </a>
         </li>
