@@ -170,17 +170,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($items as $item) {
                 $pid   = (int)($item['product_id'] ?? 0);
                 $qty   = (int)($item['quantity'] ?? 0);
-                $mrp   = (float)($item['mrp'] ?? 0);
-                $purchase_price = (float)($item['purchase_price'] ?? 0);
+
+                // IMPORTANT:
+                // Inclusive  : entered values are already FINAL values.
+                // Exclusive  : entered values are WITHOUT GST, so final values must be calculated and stored.
+                $entered_mrp            = (float)($item['mrp'] ?? 0);
+                $entered_purchase_price = (float)($item['purchase_price'] ?? 0);
+
+                // These values come from the selected-products cart UI.
+                // They are already FINAL values after GST for exclusive items.
+                // Inclusive items are already final as entered.
+                $posted_retail_price    = (float)($item['retail_price'] ?? 0);
+                $posted_wholesale_price = (float)($item['wholesale_price'] ?? 0);
+
+                $mrp                    = $entered_mrp;
+                $purchase_price         = $entered_purchase_price;
+
                 $discount_input = trim($item['discount'] ?? '');
                 $cgst  = (float)($item['cgst_rate'] ?? 0);
                 $sgst  = (float)($item['sgst_rate'] ?? 0);
                 $igst  = (float)($item['igst_rate'] ?? 0);
+                $gst_type = strtolower(trim($item['gst_type'] ?? 'inclusive'));
+                if (!in_array($gst_type, ['inclusive', 'exclusive'], true)) {
+                    $gst_type = 'inclusive';
+                }
+
                 $batch_number = !empty($item['batch_number']) ? trim($item['batch_number']) : null;
                 $expiry_date = !empty($item['expiry_date']) ? $item['expiry_date'] : null;
                 $manufacture_date = !empty($item['manufacture_date']) ? $item['manufacture_date'] : null;
 
-                if ($pid > 0 && $qty > 0 && $mrp >= 0 && $purchase_price >= 0) {
+                if ($pid > 0 && $qty > 0 && $entered_mrp >= 0 && $entered_purchase_price >= 0) {
                     // Get product details including markups
                     $product_stmt = $pdo->prepare("
                         SELECT p.*, 
@@ -197,34 +216,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$product) {
                         throw new Exception("Product not found");
                     }
-                    
-                    // Calculate retail and wholesale prices based on product markups
-                    $retail_price = $purchase_price;
-                    $wholesale_price = $purchase_price;
-                    
-                    if ($product['retail_price_value'] > 0) {
-                        if ($product['retail_price_type'] === 'percentage') {
-                            $retail_price = $purchase_price + ($purchase_price * $product['retail_price_value'] / 100);
-                        } else {
-                            $retail_price = $purchase_price + $product['retail_price_value'];
-                        }
+
+                    // If item did not post gst_type correctly, fall back to product GST type.
+                    if (empty($item['gst_type']) && !empty($product['gst_type']) && in_array($product['gst_type'], ['inclusive', 'exclusive'], true)) {
+                        $gst_type = $product['gst_type'];
                     }
-                    
-                    if ($product['wholesale_price_value'] > 0) {
-                        if ($product['wholesale_price_type'] === 'percentage') {
-                            $wholesale_price = $purchase_price + ($purchase_price * $product['wholesale_price_value'] / 100);
-                        } else {
-                            $wholesale_price = $purchase_price + $product['wholesale_price_value'];
-                        }
-                    }
-                    
-                    // For inclusive GST, calculate tax components
+
+                    // GST calculation and FINAL value conversion.
+                    // Rule:
+                    // Inclusive  : entered values are already FINAL after-GST values.
+                    // Exclusive  : entered values are WITHOUT GST, so calculate and store AFTER-GST values.
                     $total_gst_rate = $cgst + $sgst + $igst;
-                    $taxable_amount = $qty * $purchase_price / (1 + $total_gst_rate/100);
-                    $cgst_amt = $taxable_amount * $cgst / 100;
-                    $sgst_amt = $taxable_amount * $sgst / 100;
-                    $igst_amt = $taxable_amount * $igst / 100;
-                    $total_with_tax = $qty * $purchase_price;
+                    $entered_value  = $qty * $entered_purchase_price;
+
+                    if ($gst_type === 'exclusive') {
+                        // Purchase entered value is WITHOUT GST.
+                        $taxable_amount = $entered_value;
+                        $cgst_amt = $taxable_amount * $cgst / 100;
+                        $sgst_amt = $taxable_amount * $sgst / 100;
+                        $igst_amt = $taxable_amount * $igst / 100;
+
+                        $total_with_tax = $entered_value + $cgst_amt + $sgst_amt + $igst_amt;
+
+                        // Store AFTER-GST values in DB.
+                        $purchase_price = $entered_purchase_price + ($entered_purchase_price * $total_gst_rate / 100);
+                        $mrp            = $entered_mrp + ($entered_mrp * $total_gst_rate / 100);
+                    } else {
+                        // Inclusive entered values are already FINAL after-GST values.
+                        $total_with_tax = $entered_value;
+                        $taxable_amount = $total_gst_rate > 0
+                            ? $entered_value / (1 + $total_gst_rate / 100)
+                            : $entered_value;
+
+                        $cgst_amt = $taxable_amount * $cgst / 100;
+                        $sgst_amt = $taxable_amount * $sgst / 100;
+                        $igst_amt = $taxable_amount * $igst / 100;
+
+                        $purchase_price = $entered_purchase_price;
+                        $mrp            = $entered_mrp;
+                    }
+
+                    // Calculate retail and wholesale from entered purchase value first.
+                    // Then, for exclusive GST, store their AFTER-GST values.
+                    $retail_base_price = $entered_purchase_price;
+                    $wholesale_base_price = $entered_purchase_price;
+
+                    if ((float)$product['retail_price_value'] > 0) {
+                        if ($product['retail_price_type'] === 'percentage') {
+                            $retail_base_price = $entered_purchase_price + ($entered_purchase_price * (float)$product['retail_price_value'] / 100);
+                        } else {
+                            $retail_base_price = $entered_purchase_price + (float)$product['retail_price_value'];
+                        }
+                    }
+
+                    if ((float)$product['wholesale_price_value'] > 0) {
+                        if ($product['wholesale_price_type'] === 'percentage') {
+                            $wholesale_base_price = $entered_purchase_price + ($entered_purchase_price * (float)$product['wholesale_price_value'] / 100);
+                        } else {
+                            $wholesale_base_price = $entered_purchase_price + (float)$product['wholesale_price_value'];
+                        }
+                    }
+
+                    if ($gst_type === 'exclusive') {
+                        $retail_price = $retail_base_price + ($retail_base_price * $total_gst_rate / 100);
+                        $wholesale_price = $wholesale_base_price + ($wholesale_base_price * $total_gst_rate / 100);
+                    } else {
+                        $retail_price = $retail_base_price;
+                        $wholesale_price = $wholesale_base_price;
+                    }
+
+                    // Final safety: use UI calculated values when available.
+                    // This fixes cases where the UI shows Retail/Wholesale after GST (e.g. 1180),
+                    // but product markup fields in DB are 0, which would otherwise save purchase price value.
+                    if ($posted_retail_price > 0) {
+                        $retail_price = $posted_retail_price;
+                    }
+                    if ($posted_wholesale_price > 0) {
+                        $wholesale_price = $posted_wholesale_price;
+                    }
 
                     // Get HSN code for product
                     $hsn_stmt = $pdo->prepare("SELECT hsn_code FROM products WHERE id = ? AND business_id = ?");
@@ -235,10 +304,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $pdo->prepare("
                         INSERT INTO purchase_items 
                         (purchase_id, product_id, quantity, mrp, discount, discount_type, discount_value,
-                         purchase_price, retail_price, wholesale_price, hsn_code,
+                         purchase_price, retail_price, wholesale_price, hsn_code, gst_type,
                          cgst_rate, sgst_rate, igst_rate, 
                          cgst_amount, sgst_amount, igst_amount, total_price, business_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([
                         $purchase_id, 
@@ -252,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $retail_price,
                         $wholesale_price,
                         $hsn_code,
+                        $gst_type,
                         $cgst, 
                         $sgst, 
                         $igst,
@@ -265,7 +335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $grand_total += $total_with_tax;
                     $total_gst   += $cgst_amt + $sgst_amt + $igst_amt;
-                    $total_credit_amount += $cgst_amt + $sgst_amt;
+                    $total_credit_amount += $cgst_amt + $sgst_amt + $igst_amt;
 
                     // Check if price has changed from current product stock price
                     $price_changed = false;
@@ -336,10 +406,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          old_mrp, new_mrp,
                          retail_price, old_retail_price,
                          wholesale_price, old_wholesale_price,
+                         gst_type,
                          quantity_received, quantity_remaining,
                          received_date, manufacture_date, expiry_date, notes, 
                          is_increase, is_decrease, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
                     
                     $batch_stmt->execute([
@@ -358,6 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $old_retail_price,
                         $wholesale_price,
                         $old_wholesale_price,
+                        $gst_type,
                         $qty,
                         $qty,
                         $purchase_date,
@@ -417,16 +489,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $update_product_first_stock = $pdo->prepare("
                                 UPDATE products 
                                 SET mrp = ?,
+                                    stock_price = ?,
                                     retail_price = ?,
                                     wholesale_price = ?,
+                                    gst_type = ?,
                                     updated_at = NOW()
                                 WHERE id = ? AND business_id = ?
                             ");
                             
                             $update_product_first_stock->execute([
                                 $mrp,
+                                $purchase_price,
                                 $retail_price,
                                 $wholesale_price,
+                                $gst_type,
                                 $pid,
                                 $current_business_id
                             ]);
@@ -456,23 +532,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $update_product_new_stock = $pdo->prepare("
                             UPDATE products 
                             SET mrp = ?,
+                                stock_price = ?,
                                 retail_price = ?,
                                 wholesale_price = ?,
+                                gst_type = ?,
                                 updated_at = NOW()
                             WHERE id = ? AND business_id = ?
                         ");
                         
                         $update_product_new_stock->execute([
                             $mrp,
+                            $purchase_price,
                             $retail_price,
                             $wholesale_price,
+                            $gst_type,
                             $pid,
                             $current_business_id
                         ]);
                     }
 
-                    // Update product retail and wholesale prices if price changed (increase OR decrease)
-                    if ($price_changed || $mrp_changed) {
+                    // Update product retail and wholesale prices if price changed (increase OR decrease).
+                    // For zero-stock products we already updated mrp, stock_price, retail, wholesale and gst_type above.
+                    if (($price_changed || $mrp_changed) && !$is_first_stock) {
                         $update_fields = [];
                         $update_params = [];
                         
@@ -553,7 +634,7 @@ $prodSql = "SELECT p.id, p.product_name, p.product_code, p.barcode,
                    p.retail_price_type, p.retail_price_value,
                    p.wholesale_price_type, p.wholesale_price_value,
                    p.secondary_unit, p.sec_unit_conversion,
-                   p.hsn_code, 
+                   p.hsn_code, p.gst_type, 
                    COALESCE(g.cgst_rate, 0) as cgst_rate, 
                    COALESCE(g.sgst_rate, 0) as sgst_rate, 
                    COALESCE(g.igst_rate, 0) as igst_rate,
@@ -712,6 +793,7 @@ foreach ($prodRes as $p) {
         'secondary_unit' => $secondary_unit,
         'sec_unit_conversion' => $sec_unit_conversion,
         'hsn' => $hsn,
+        'gst_type' => in_array(($p['gst_type'] ?? 'inclusive'), ['inclusive', 'exclusive'], true) ? $p['gst_type'] : 'inclusive',
         'cgst' => $cgst,
         'sgst' => $sgst,
         'igst' => $igst,
@@ -735,9 +817,8 @@ foreach ($prodRes as $p) {
 <style>
 /* Scrollable purchase items section */
 .purchase-items-container {
-    max-height: 70vh;
-    overflow-y: auto;
-    padding-right: 10px;
+    overflow-y: visible;
+    padding-right: 0;
 }
 
 /* Product Search Section */
@@ -1053,6 +1134,108 @@ foreach ($prodRes as $p) {
     font-size: 0.75rem !important;
     padding: 0.25rem 0.5rem !important;
 }
+
+/* GST base/final value chips */
+.gst-value-hint {
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.76rem;
+    line-height: 1.2;
+}
+.gst-value-hint .base-chip,
+.gst-value-hint .final-chip,
+.gst-value-hint .gst-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid #d8e2ef;
+    background: #fff;
+    color: #495057;
+    white-space: nowrap;
+}
+.gst-value-hint .base-chip {
+    background: #fff8e1;
+    border-color: #ffe08a;
+    color: #7a5700;
+}
+.gst-value-hint .final-chip {
+    background: #e7f4ff;
+    border-color: #b6e0fe;
+    color: #074f7a;
+    font-weight: 600;
+}
+.gst-value-hint .gst-chip {
+    background: #eef9f1;
+    border-color: #b9e6c5;
+    color: #176b2c;
+}
+.gst-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+.gst-summary-cell {
+    background: #fff;
+    border: 1px solid #d8e2ef;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+.gst-summary-cell small {
+    display: block;
+    color: #6c757d;
+    font-size: 0.72rem;
+}
+.gst-summary-cell strong {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.9rem;
+}
+
+
+/* Compact purchase page layout */
+#purchaseForm .row.g-4 { --bs-gutter-y: .75rem; }
+.card { margin-bottom: .75rem; }
+.card-header { padding: .55rem .85rem; }
+.card-header h5 { font-size: .96rem; }
+.card-body { padding: .85rem; }
+.product-search-section { padding: .75rem; margin-bottom: .75rem; }
+.product-search-section .d-flex.mb-3 { margin-bottom: .55rem !important; }
+.product-search-section h5 { font-size: .9rem; margin-bottom: 0; }
+.form-label { font-size: .78rem; margin-bottom: .22rem; }
+.form-control, .form-select { min-height: 32px; height: 32px; padding: .28rem .48rem; font-size: .82rem; }
+textarea.form-control { height: auto; min-height: 32px; }
+.select2-container--default .select2-selection--single { height: 32px; min-height: 32px; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 30px; font-size: .82rem; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 30px; }
+.price-calculation-section, .batch-info-section, .product-details-card { padding: .6rem; margin-top: .5rem; }
+.price-calculation-section .row, .batch-info-section .row { --bs-gutter-y: .45rem; --bs-gutter-x: .6rem; }
+.gst-value-hint { margin-top: 3px; gap: 3px; font-size: .68rem; }
+.gst-value-hint .base-chip, .gst-value-hint .final-chip, .gst-value-hint .gst-chip { padding: 2px 5px; }
+.gst-summary-grid { gap: 5px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.gst-summary-cell { padding: 5px 7px; border-radius: 6px; }
+.gst-summary-cell small { font-size: .66rem; }
+.gst-summary-cell strong { font-size: .78rem; margin-top: 0; }
+#gstBreakupBox { padding: .35rem .45rem !important; }
+.bill-upload-section { padding: .75rem; }
+.bill-upload-section .fs-1 { font-size: 1.45rem !important; margin-bottom: .25rem !important; }
+.bill-upload-section p { font-size: .8rem; }
+.bill-preview { max-width: 140px; max-height: 110px; margin: 5px auto 0; }
+.bill-preview img, .bill-preview embed { max-height: 110px; }
+.selected-products-table { font-size: .78rem; }
+.selected-products-table th, .selected-products-table td { padding: .38rem .45rem; }
+.alert { padding: .55rem .75rem; margin-bottom: .75rem; }
+.btn { padding: .32rem .65rem; font-size: .82rem; }
+.btn-lg { padding: .45rem 1.25rem; font-size: .9rem; }
+.page-title-box { margin-bottom: .5rem; }
+.page-content { padding-bottom: .5rem; }
+@media (max-width: 767.98px) {
+    .gst-summary-grid { grid-template-columns: 1fr 1fr; }
+}
+
 </style>
 </head>
 <body data-sidebar="dark">
@@ -1107,7 +1290,7 @@ foreach ($prodRes as $p) {
                 <form method="POST" id="purchaseForm" enctype="multipart/form-data">
                     <div class="row g-4">
                         <!-- Purchase Details Card -->
-                        <div class="col-lg-4">
+                        <div class="col-12">
                             <div class="card card-hover border-start border-primary border-4 shadow-sm h-100">
                                 <div class="card-header bg-primary text-white">
                                     <h5 class="mb-0">
@@ -1115,72 +1298,74 @@ foreach ($prodRes as $p) {
                                     </h5>
                                 </div>
                                 <div class="card-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Number</label>
-                                        <input type="text" class="form-control bg-light" value="<?= $purchase_number ?>" readonly>
-                                    </div>
+    <div class="row g-2">
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Purchase Number</label>
+            <input type="text" class="form-control bg-light" value="<?= $purchase_number ?>" readonly>
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Date <span class="text-danger">*</span></label>
-                                        <input type="date" name="purchase_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
-                                    </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Purchase Date <span class="text-danger">*</span></label>
+            <input type="date" name="purchase_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Supplier <span class="text-danger">*</span></label>
-                                        <select name="manufacturer_id" class="form-select select2-supplier" required>
-                                            <option value="">-- Select Supplier --</option>
-                                            <?php foreach ($manufacturers as $m): ?>
-                                            <option value="<?= $m['id'] ?>">
-                                                <?= htmlspecialchars($m['name']) ?>
-                                            </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Supplier <span class="text-danger">*</span></label>
+            <select name="manufacturer_id" class="form-select select2-supplier" required>
+                <option value="">-- Select Supplier --</option>
+                <?php foreach ($manufacturers as $m): ?>
+                    <option value="<?= $m['id'] ?>">
+                        <?= htmlspecialchars($m['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Receive Stock At <span class="text-danger">*</span></label>
-                                        <select name="shop_id" class="form-select select2-shop" required>
-                                            <option value="">-- Select Location --</option>
-                                            <?php foreach ($shops as $shop): ?>
-                                            <option value="<?= $shop['id'] ?>">
-                                                <?= htmlspecialchars($shop['shop_name']) ?>
-                                                <?= $shop['is_warehouse'] ? ' (Warehouse)' : '' ?>
-                                            </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Receive Stock At <span class="text-danger">*</span></label>
+            <select name="shop_id" class="form-select select2-shop" required>
+                <option value="">-- Select Location --</option>
+                <?php foreach ($shops as $shop): ?>
+                    <option value="<?= $shop['id'] ?>">
+                        <?= htmlspecialchars($shop['shop_name']) ?>
+                        <?= $shop['is_warehouse'] ? ' (Warehouse)' : '' ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Invoice No.</label>
-                                        <input type="text" name="purchase_invoice_no" class="form-control" placeholder="Supplier's invoice number">
-                                    </div>
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Purchase Invoice No.</label>
+            <input type="text" name="purchase_invoice_no" class="form-control" placeholder="Supplier's invoice number">
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Bill/Reference No.</label>
-                                        <input type="text" name="reference" class="form-control" placeholder="Optional">
-                                    </div>
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Bill/Reference No.</label>
+            <input type="text" name="reference" class="form-control" placeholder="Optional">
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label">Bill Image (Optional)</label>
-                                        <div class="bill-upload-section" onclick="document.getElementById('billImage').click()">
-                                            <i class="bx bx-cloud-upload fs-1 text-primary mb-3"></i>
-                                            <p class="mb-1">Click to upload bill image</p>
-                                            <p class="text-muted small mb-0">Supports: JPG, PNG, GIF, WEBP, PDF (Max 10MB)</p>
-                                            <input type="file" name="bill_image" id="billImage" class="d-none" accept="image/*,.pdf">
-                                            <div id="billPreview" class="bill-preview"></div>
-                                        </div>
-                                    </div>
+        <div class="col-4">
+            <label class="form-label">Notes (Optional)</label>
+            <textarea name="notes" class="form-control" rows="3" placeholder="Any special instructions..."></textarea>
+        </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label">Notes (Optional)</label>
-                                        <textarea name="notes" class="form-control" rows="3" placeholder="Any special instructions..."></textarea>
-                                    </div>
-                                </div>
+        <div class="col-12">
+            <label class="form-label fw-bold">Bill Image (Optional)</label>
+            <div class="bill-upload-section w-100" onclick="document.getElementById('billImage').click()">
+                <i class="bx bx-cloud-upload fs-1 text-primary mb-3"></i>
+                <p class="mb-1">Click to upload bill image</p>
+                <p class="text-muted small mb-0">Supports: JPG, PNG, GIF, WEBP, PDF (Max 10MB)</p>
+                <input type="file" name="bill_image" id="billImage" class="d-none" accept="image/*,.pdf">
+                <div id="billPreview" class="bill-preview"></div>
+            </div>
+        </div>
+    </div>
+</div>
                             </div>
                         </div>
 
                         <!-- Products Section -->
-                        <div class="col-lg-8">
+                        <div class="col-12">
                             <div class="card shadow-sm h-100">
                                 <div class="card-header bg-light">
                                     <div class="d-flex justify-content-between align-items-center">
@@ -1200,7 +1385,7 @@ foreach ($prodRes as $p) {
                                             </button>
                                         </div>
                                         
-                                        <div class="row g-3">
+                                        <div class="row g-2">
                                             <div class="col-md-12">
                                                 <label class="form-label">Search Product</label>
                                                 <select id="productSelect" class="form-control select2-products">
@@ -1216,6 +1401,10 @@ foreach ($prodRes as $p) {
                                             <div class="col-md-3">
                                                 <label class="form-label">MRP <span class="text-danger">*</span></label>
                                                 <input type="number" step="0.01" min="0" id="mrp" class="form-control" value="0" required>
+                                                <div id="mrpGstHint" class="gst-value-hint">
+                                                    <span class="base-chip">Without GST: ₹0.00</span>
+                                                    <span class="final-chip">Final: ₹0.00</span>
+                                                </div>
                                             </div>
                                             
                                             <div class="col-md-3">
@@ -1227,6 +1416,11 @@ foreach ($prodRes as $p) {
                                                 <label class="form-label">Purchase Price <span class="text-danger">*</span></label>
                                                 <input type="number" step="0.01" min="0" id="purchasePrice" class="form-control manual-price-input" value="0" required>
                                                 <small class="text-muted">Manual entry - discount will auto-calculate</small>
+                                                <div id="purchasePriceGstHint" class="gst-value-hint">
+                                                    <span class="base-chip">Without GST: ₹0.00</span>
+                                                    <span class="gst-chip">GST: ₹0.00</span>
+                                                    <span class="final-chip">Final: ₹0.00</span>
+                                                </div>
                                             </div>
                                             
                                             <div class="col-md-3">
@@ -1237,18 +1431,30 @@ foreach ($prodRes as $p) {
                                             <!-- Price Calculation Section -->
                                             <div class="col-md-12">
                                                 <div id="priceCalculation" class="price-calculation-section" style="display:none;">
-                                                    <div class="row g-3">
+                                                    <div class="row g-2">
                                                         <div class="col-md-4">
                                                             <label class="form-label small">Calculated Purchase Price</label>
                                                             <input type="number" step="0.01" id="calculatedPurchasePrice" class="form-control bg-light" readonly>
+                                                            <div id="calculatedPurchasePriceGstHint" class="gst-value-hint">
+                                                                <span class="base-chip">Without GST: ₹0.00</span>
+                                                                <span class="final-chip">Final: ₹0.00</span>
+                                                            </div>
                                                         </div>
                                                         <div class="col-md-4">
                                                             <label class="form-label small">Retail Price <span id="retailMarkupBadge"></span></label>
                                                             <input type="number" step="0.01" id="retailPrice" class="form-control bg-light" readonly>
+                                                            <div id="retailPriceGstHint" class="gst-value-hint">
+                                                                <span class="base-chip">Without GST: ₹0.00</span>
+                                                                <span class="final-chip">Final: ₹0.00</span>
+                                                            </div>
                                                         </div>
                                                         <div class="col-md-4">
                                                             <label class="form-label small">Wholesale Price <span id="wholesaleMarkupBadge"></span></label>
                                                             <input type="number" step="0.01" id="wholesalePrice" class="form-control bg-light" readonly>
+                                                            <div id="wholesalePriceGstHint" class="gst-value-hint">
+                                                                <span class="base-chip">Without GST: ₹0.00</span>
+                                                                <span class="final-chip">Final: ₹0.00</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div class="price-details mt-2" id="priceDetails" style="display:none;">
@@ -1266,18 +1472,35 @@ foreach ($prodRes as $p) {
                                             
                                             <!-- Tax Rates -->
                                             <div class="col-md-12">
-                                                <div class="row g-2">
-                                                    <div class="col-4">
+                                                <div class="row g-2 align-items-end compact-tax-row">
+                                                    <div class="col-md-2 col-6">
+                                                        <label class="form-label small">GST Type</label>
+                                                        <select id="gstType" class="form-select">
+                                                            <option value="inclusive">Inclusive</option>
+                                                            <option value="exclusive">Exclusive</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-2 col-6">
                                                         <label class="form-label small">CGST %</label>
                                                         <input type="number" step="0.01" id="cgstRate" class="form-control" value="0">
                                                     </div>
-                                                    <div class="col-4">
+                                                    <div class="col-md-2 col-6">
                                                         <label class="form-label small">SGST %</label>
                                                         <input type="number" step="0.01" id="sgstRate" class="form-control" value="0">
                                                     </div>
-                                                    <div class="col-4">
+                                                    <div class="col-md-2 col-6">
                                                         <label class="form-label small">IGST %</label>
                                                         <input type="number" step="0.01" id="igstRate" class="form-control" value="0">
+                                                    </div>
+                                                    <div class="col-md-4 col-12">
+                                                        <label class="form-label small">GST Calculation</label>
+                                                        <div id="gstBreakupBox" class="alert alert-light border py-2 px-3 mb-0 small">
+                                                            <div class="gst-summary-grid">
+                                                                <div class="gst-summary-cell"><small>Without GST</small><strong>₹0.00</strong></div>
+                                                                <div class="gst-summary-cell"><small>GST</small><strong>₹0.00</strong></div>
+                                                                <div class="gst-summary-cell"><small>Final Value</small><strong>₹0.00</strong></div>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1285,7 +1508,7 @@ foreach ($prodRes as $p) {
                                             <!-- Batch Information Section -->
                                             <div class="col-md-12">
                                                 <div id="batchInfoSection" class="batch-info-section">
-                                                    <div class="row g-3">
+                                                    <div class="row g-2">
                                                         <div class="col-md-4">
                                                             <label class="form-label small">Batch Number</label>
                                                             <input type="text" id="batchNumber" class="form-control" placeholder="Auto-generated">
@@ -1443,7 +1666,7 @@ foreach ($prodRes as $p) {
             </div>
             <div class="modal-body">
                 <form id="quickAddProductForm">
-                    <div class="row g-3">
+                    <div class="row g-2">
                         <!-- Category Selection -->
                         <div class="col-md-6">
                             <label class="form-label">Category <span class="text-danger">*</span></label>
@@ -1668,8 +1891,77 @@ function findProductById(id) {
 }
 
 function formatMoney(n) { 
-    return '₹' + parseFloat(n).toFixed(2);
+    return '₹' + parseFloat(n || 0).toFixed(2);
 }
+
+function getGstRate(cgst, sgst, igst) {
+    return (parseFloat(cgst) || 0) + (parseFloat(sgst) || 0) + (parseFloat(igst) || 0);
+}
+
+function calculateUnitGstBreakup(value, cgst, sgst, igst, gstType = 'inclusive') {
+    const inputValue = parseFloat(value) || 0;
+    const rate = getGstRate(cgst, sgst, igst);
+    let withoutGst = inputValue;
+    let finalValue = inputValue;
+
+    if (rate > 0) {
+        if (gstType === 'exclusive') {
+            withoutGst = inputValue;
+            finalValue = inputValue + (inputValue * rate / 100);
+        } else {
+            finalValue = inputValue;
+            withoutGst = inputValue / (1 + rate / 100);
+        }
+    }
+
+    return {
+        inputValue,
+        withoutGst,
+        gstAmount: finalValue - withoutGst,
+        finalValue,
+        rate
+    };
+}
+
+
+function storedFinalToEntryValue(finalValue, cgst, sgst, igst, gstType = 'inclusive') {
+    const value = parseFloat(finalValue) || 0;
+    const rate = getGstRate(cgst, sgst, igst);
+
+    // Product table prices are already stored as final prices with GST.
+    // Inclusive: user enters final value.
+    // Exclusive: user enters without-GST value, so convert stored final -> base for input.
+    if (gstType === 'exclusive' && rate > 0) {
+        return value / (1 + rate / 100);
+    }
+    return value;
+}
+
+function entryValueToFinalValue(entryValue, cgst, sgst, igst, gstType = 'inclusive') {
+    return calculateUnitGstBreakup(entryValue, cgst, sgst, igst, gstType).finalValue;
+}
+
+function renderGstHint(selector, value, cgst, sgst, igst, gstType, showGst = false) {
+    const b = calculateUnitGstBreakup(value, cgst, sgst, igst, gstType);
+    const modeLabel = gstType === 'exclusive' ? 'After GST' : 'Final';
+    let html = `<span class="base-chip">Without GST: ${formatMoney(b.withoutGst)}</span>`;
+    if (showGst) {
+        html += `<span class="gst-chip">GST: ${formatMoney(b.gstAmount)}</span>`;
+    }
+    html += `<span class="final-chip">${modeLabel}: ${formatMoney(b.finalValue)}</span>`;
+    $(selector).html(html);
+}
+
+function resetGstHints() {
+    const empty2 = '<span class="base-chip">Without GST: ₹0.00</span><span class="final-chip">Final: ₹0.00</span>';
+    const empty3 = '<span class="base-chip">Without GST: ₹0.00</span><span class="gst-chip">GST: ₹0.00</span><span class="final-chip">Final: ₹0.00</span>';
+    $('#mrpGstHint').html(empty2);
+    $('#purchasePriceGstHint').html(empty3);
+    $('#calculatedPurchasePriceGstHint').html(empty2);
+    $('#retailPriceGstHint').html(empty2);
+    $('#wholesalePriceGstHint').html(empty2);
+}
+
 
 // Calculate purchase price from MRP and discount
 function calculatePurchasePriceFromDiscount(mrp, discountInput) {
@@ -1749,21 +2041,22 @@ function calculateSellingPrices(purchasePrice, product) {
 }
 
 // Calculate total for an item with GST
-function calculateItemTotal(price, quantity, cgst, sgst, igst) {
-    const total = price * quantity;
-    
-    const taxable = total / (1 + (cgst + sgst + igst) / 100);
-    const cgstAmt = taxable * cgst / 100;
-    const sgstAmt = taxable * sgst / 100;
-    const igstAmt = taxable * igst / 100;
-    
+function calculateItemTotal(price, quantity, cgst, sgst, igst, gstType = 'inclusive') {
+    const unitPrice = parseFloat(price) || 0;
+    const qty = parseFloat(quantity) || 0;
+    const unit = calculateUnitGstBreakup(unitPrice, cgst, sgst, igst, gstType);
+
     return {
-        taxable: taxable,
-        cgst: cgstAmt,
-        sgst: sgstAmt,
-        igst: igstAmt,
-        total: total,
-        gstCredit: cgstAmt + sgstAmt
+        enteredValue: unitPrice * qty,
+        taxable: unit.withoutGst * qty,
+        cgst: (unit.withoutGst * qty) * (parseFloat(cgst) || 0) / 100,
+        sgst: (unit.withoutGst * qty) * (parseFloat(sgst) || 0) / 100,
+        igst: (unit.withoutGst * qty) * (parseFloat(igst) || 0) / 100,
+        gstAmount: unit.gstAmount * qty,
+        total: unit.finalValue * qty,
+        gstCredit: unit.gstAmount * qty,
+        unitWithoutGst: unit.withoutGst,
+        unitFinal: unit.finalValue
     };
 }
 
@@ -1781,14 +2074,15 @@ function updatePriceCalculations() {
     const cgst = parseFloat($('#cgstRate').val()) || 0;
     const sgst = parseFloat($('#sgstRate').val()) || 0;
     const igst = parseFloat($('#igstRate').val()) || 0;
+    const gstType = $('#gstType').val() || 'inclusive';
     
     let purchasePrice;
     
     if (manualPriceUpdate) {
-        // Use manually entered purchase price directly
+        // Inclusive: user-entered purchase price is already FINAL with GST.
+        // Exclusive: user-entered purchase price is WITHOUT GST.
         purchasePrice = manualPurchasePrice;
         
-        // Calculate discount based on manual purchase price (for display only)
         if (mrp > 0 && purchasePrice < mrp) {
             const discountPercent = ((mrp - purchasePrice) / mrp) * 100;
             $('#discount').val(discountPercent.toFixed(1) + '%');
@@ -1796,7 +2090,6 @@ function updatePriceCalculations() {
             $('#discount').val('');
         }
     } else {
-        // Calculate purchase price from discount
         if (discount) {
             purchasePrice = calculatePurchasePriceFromDiscount(mrp, discount);
         } else {
@@ -1805,30 +2098,42 @@ function updatePriceCalculations() {
         $('#purchasePrice').val(purchasePrice.toFixed(2));
     }
     
-    // Calculate selling prices using constant markups
     const sellingPrices = calculateSellingPrices(purchasePrice, product);
+    const totals = calculateItemTotal(purchasePrice, quantity, cgst, sgst, igst, gstType);
+    const mrpBreakup = calculateUnitGstBreakup(mrp, cgst, sgst, igst, gstType);
+    const purchaseBreakup = calculateUnitGstBreakup(purchasePrice, cgst, sgst, igst, gstType);
+    const retailBreakup = calculateUnitGstBreakup(sellingPrices.retailPrice, cgst, sgst, igst, gstType);
+    const wholesaleBreakup = calculateUnitGstBreakup(sellingPrices.wholesalePrice, cgst, sgst, igst, gstType);
     
-    // Calculate totals (with inclusive GST handling)
-    const totals = calculateItemTotal(purchasePrice, quantity, cgst, sgst, igst);
+    // Show after-GST/final values in calculated fields.
+    $('#calculatedPurchasePrice').val(purchaseBreakup.finalValue.toFixed(2));
+    $('#retailPrice').val(retailBreakup.finalValue.toFixed(2));
+    $('#wholesalePrice').val(wholesaleBreakup.finalValue.toFixed(2));
+
+    renderGstHint('#mrpGstHint', mrp, cgst, sgst, igst, gstType, false);
+    renderGstHint('#purchasePriceGstHint', purchasePrice, cgst, sgst, igst, gstType, true);
+    renderGstHint('#calculatedPurchasePriceGstHint', purchasePrice, cgst, sgst, igst, gstType, true);
+    renderGstHint('#retailPriceGstHint', sellingPrices.retailPrice, cgst, sgst, igst, gstType, true);
+    renderGstHint('#wholesalePriceGstHint', sellingPrices.wholesalePrice, cgst, sgst, igst, gstType, true);
     
-    // Update display
-    $('#calculatedPurchasePrice').val(purchasePrice.toFixed(2));
-    $('#retailPrice').val(sellingPrices.retailPrice.toFixed(2));
-    $('#wholesalePrice').val(sellingPrices.wholesalePrice.toFixed(2));
-    
-    // Update markup badges to show constant percentages
     $('#retailMarkupBadge').html(`<span class="markup-badge">+${product.retail_markup_percent.toFixed(1)}%</span>`);
     $('#wholesaleMarkupBadge').html(`<span class="markup-badge">+${product.wholesale_markup_percent.toFixed(1)}%</span>`);
-    
-    // Update markup displays
     $('#retailMarkupDisplay').text(product.retail_markup_percent.toFixed(1) + '%');
     $('#wholesaleMarkupDisplay').text(product.wholesale_markup_percent.toFixed(1) + '%');
     
-    // Show price calculation section
+    $('#gstBreakupBox').html(`
+        <div class="gst-summary-grid">
+            <div class="gst-summary-cell"><small>Entered / Line Value</small><strong>${formatMoney(totals.enteredValue)}</strong></div>
+            <div class="gst-summary-cell"><small>Without GST / Taxable</small><strong>${formatMoney(totals.taxable)}</strong></div>
+            <div class="gst-summary-cell"><small>${gstType === 'exclusive' ? 'GST Added' : 'GST Included'}</small><strong>${formatMoney(totals.gstAmount)}</strong></div>
+            <div class="gst-summary-cell"><small>Final Value</small><strong>${formatMoney(totals.total)}</strong></div>
+            <div class="gst-summary-cell"><small>MRP Final</small><strong>${formatMoney(mrpBreakup.finalValue)}</strong></div>
+            <div class="gst-summary-cell"><small>Purchase Final</small><strong>${formatMoney(purchaseBreakup.finalValue)}</strong></div>
+        </div>
+    `);
+
     $('#priceCalculation').show();
     $('#priceDetails').show();
-    
-    // Check for price changes
     checkPriceChange(purchasePrice, product);
 }
 
@@ -1838,77 +2143,74 @@ function updateProductDetails(productId) {
     if (product) {
         currentProductId = productId;
         manualPriceUpdate = false; // Start in auto mode
-        
+
+        const cgst = parseFloat(product.cgst || 0);
+        const sgst = parseFloat(product.sgst || 0);
+        const igst = parseFloat(product.igst || 0);
+        const gstType = product.gst_type || 'inclusive';
+        const entryMrp = storedFinalToEntryValue(product.mrp, cgst, sgst, igst, gstType);
+        const entryStockPrice = storedFinalToEntryValue(product.stock_price, cgst, sgst, igst, gstType);
+
         $('#stockDisplay').val(product.total_stock);
-        $('#mrp').val(product.mrp || 0);
-        
-        // Calculate suggested discount based on current stock_price
-        if (product.mrp > 0 && product.stock_price > 0 && product.mrp > product.stock_price) {
-            const discountPercent = ((product.mrp - product.stock_price) / product.mrp) * 100;
+        $('#mrp').val(entryMrp.toFixed(2));
+
+        // Product DB prices are stored as final prices. For exclusive products we show the base value first.
+        if (entryMrp > 0 && entryStockPrice > 0 && entryMrp > entryStockPrice) {
+            const discountPercent = ((entryMrp - entryStockPrice) / entryMrp) * 100;
             $('#discount').val(discountPercent.toFixed(1) + '%');
-            // Calculate purchase price from discount
-            const purchasePrice = calculatePurchasePriceFromDiscount(product.mrp, discountPercent.toFixed(1) + '%');
-            $('#purchasePrice').val(purchasePrice.toFixed(2));
+            $('#purchasePrice').val(entryStockPrice.toFixed(2));
         } else {
             $('#discount').val('');
-            $('#purchasePrice').val(product.stock_price.toFixed(2));
+            $('#purchasePrice').val(entryStockPrice.toFixed(2));
         }
-        
+
         $('#quantity').val(1);
-        $('#cgstRate').val(product.cgst);
-        $('#sgstRate').val(product.sgst);
-        $('#igstRate').val(product.igst);
-        
+        $('#cgstRate').val(cgst);
+        $('#sgstRate').val(sgst);
+        $('#igstRate').val(igst);
+        $('#gstType').val(gstType);
+
         // Auto-generate batch number
         const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
         $('#batchNumber').val('BATCH-' + date + '-' + Math.floor(Math.random() * 1000));
-        
-        // Show product details
+
+        // Show product details. These are DB-stored final values.
         $('#productDetails').addClass('show').show();
         $('#productName').text(product.name);
         $('#productCode').text(product.code);
         $('#productHSN').text(product.hsn ? 'HSN: ' + product.hsn : '');
-        $('#mrpDisplay').text(product.mrp.toFixed(2));
-        $('#currentCost').text(product.stock_price.toFixed(2));
-        $('#currentRetailPrice').text(product.retail_price.toFixed(2));
-        $('#currentWholesalePrice').text(product.wholesale_price.toFixed(2));
-        
+        $('#mrpDisplay').text((parseFloat(product.mrp || 0)).toFixed(2));
+        $('#currentCost').text((parseFloat(product.stock_price || 0)).toFixed(2));
+        $('#currentRetailPrice').text((parseFloat(product.retail_price || 0)).toFixed(2));
+        $('#currentWholesalePrice').text((parseFloat(product.wholesale_price || 0)).toFixed(2));
+
         // Show last batch info
-        $('#lastBatchPrice').text(product.last_batch_price ? product.last_batch_price.toFixed(2) : '0.00');
-        $('#lastBatchRetail').text(product.last_batch_retail_price ? product.last_batch_retail_price.toFixed(2) : '0.00');
-        $('#lastBatchWholesale').text(product.last_batch_wholesale_price ? product.last_batch_wholesale_price.toFixed(2) : '0.00');
-        
+        $('#lastBatchPrice').text(product.last_batch_price ? parseFloat(product.last_batch_price).toFixed(2) : '0.00');
+        $('#lastBatchRetail').text(product.last_batch_retail_price ? parseFloat(product.last_batch_retail_price).toFixed(2) : '0.00');
+        $('#lastBatchWholesale').text(product.last_batch_wholesale_price ? parseFloat(product.last_batch_wholesale_price).toFixed(2) : '0.00');
+
         // Show stock info
         let stockHtml = '';
-        
         if (product.shop_stock > 0) {
-            if (product.shop_stock < 10) {
-                stockHtml += `<span class="stock-badge low-stock-badge">S:${product.shop_stock}</span>`;
-            } else {
-                stockHtml += `<span class="stock-badge shop-stock-badge">S:${product.shop_stock}</span>`;
-            }
+            stockHtml += `<span class="stock-badge ${product.shop_stock < 10 ? 'low-stock-badge' : 'shop-stock-badge'}">S:${product.shop_stock}</span>`;
         } else {
             stockHtml += `<span class="stock-badge out-of-stock-badge">S:0</span>`;
         }
-        
         stockHtml += ' ';
-        
         if (product.warehouse_stock > 0) {
             stockHtml += `<span class="stock-badge warehouse-stock-badge">W:${product.warehouse_stock}</span>`;
         } else {
             stockHtml += `<span class="stock-badge out-of-stock-badge">W:0</span>`;
         }
-        
         if (product.secondary_unit && product.sec_unit_conversion > 0) {
             stockHtml += `<span class="stock-badge secondary-unit-badge">${product.sec_unit_conversion} ${product.secondary_unit}</span>`;
         }
-        
         $('#productStockInfo').html(stockHtml);
-        
+
         // Show GST info
         let gstText = '';
         if (product.total_gst > 0) {
-            gstText = `GST: ${product.total_gst}% (Inclusive)`;
+            gstText = `GST: ${product.total_gst}% (${gstType === 'exclusive' ? 'Exclusive' : 'Inclusive'})`;
             if (product.cgst > 0) gstText += ` C:${product.cgst}%`;
             if (product.sgst > 0) gstText += ` S:${product.sgst}%`;
             if (product.igst > 0) gstText += ` I:${product.igst}%`;
@@ -1916,18 +2218,12 @@ function updateProductDetails(productId) {
             gstText = 'No GST';
         }
         $('#productGST').text(gstText);
-        
-        // Show constant markup percentages
-        $('#retailMarkupDisplay').text(product.retail_markup_percent.toFixed(1) + '%');
-        $('#wholesaleMarkupDisplay').text(product.wholesale_markup_percent.toFixed(1) + '%');
-        
-        // Calculate and show prices
+
+        $('#retailMarkupDisplay').text((parseFloat(product.retail_markup_percent || 0)).toFixed(1) + '%');
+        $('#wholesaleMarkupDisplay').text((parseFloat(product.wholesale_markup_percent || 0)).toFixed(1) + '%');
+
         updatePriceCalculations();
-        
-        // Show batch info section
         $('#batchInfoSection').addClass('show').show();
-        
-        // Focus on MRP field
         $('#mrp').focus().select();
     }
 }
@@ -1936,28 +2232,31 @@ function updateProductDetails(productId) {
 function checkPriceChange(newPurchasePrice, product) {
     const warningDiv = $('#priceChangeWarning');
     const warningText = $('#warningText');
-    
+    const gstType = $('#gstType').val() || product.gst_type || 'inclusive';
+    const cgst = parseFloat($('#cgstRate').val()) || 0;
+    const sgst = parseFloat($('#sgstRate').val()) || 0;
+    const igst = parseFloat($('#igstRate').val()) || 0;
+    const newFinalPrice = entryValueToFinalValue(newPurchasePrice, cgst, sgst, igst, gstType);
+    const oldFinalPrice = parseFloat(product.stock_price || 0);
+
     warningDiv.removeClass('price-increase-warning price-decrease-warning');
-    
-    if (product.stock_price > 0 && Math.abs(newPurchasePrice - product.stock_price) > 0.01) {
-        const priceDiff = newPurchasePrice - product.stock_price;
-        const percentDiff = (Math.abs(priceDiff) / product.stock_price) * 100;
+
+    if (oldFinalPrice > 0 && Math.abs(newFinalPrice - oldFinalPrice) > 0.01) {
+        const priceDiff = newFinalPrice - oldFinalPrice;
+        const percentDiff = (Math.abs(priceDiff) / oldFinalPrice) * 100;
         const direction = priceDiff > 0 ? 'increased' : 'decreased';
-        
-        let warningClass = priceDiff > 0 ? 'price-increase-warning' : 'price-decrease-warning';
+        const warningClass = priceDiff > 0 ? 'price-increase-warning' : 'price-decrease-warning';
+
         warningDiv.addClass(warningClass);
-        
-        warningText.html(`Purchase price ${direction} by ${percentDiff.toFixed(1)}% (from ₹${product.stock_price.toFixed(2)} to ₹${newPurchasePrice.toFixed(2)}).<br>
-                        This will create a new batch with separate pricing.`);
-        
+        warningText.html(`Final purchase price ${direction} by ${percentDiff.toFixed(1)}% (from ${formatMoney(oldFinalPrice)} to ${formatMoney(newFinalPrice)}).<br>This will create a new batch with separate pricing.`);
+
         if (product.last_batch_price > 0) {
-            const lastBatchDiff = newPurchasePrice - product.last_batch_price;
-            const lastBatchPercentDiff = (Math.abs(lastBatchDiff) / product.last_batch_price) * 100;
+            const lastBatch = parseFloat(product.last_batch_price || 0);
+            const lastBatchDiff = newFinalPrice - lastBatch;
+            const lastBatchPercentDiff = (Math.abs(lastBatchDiff) / lastBatch) * 100;
             const lastBatchDirection = lastBatchDiff > 0 ? 'higher' : 'lower';
-            
-            warningText.html(warningText.html() + `<br>Compared to last batch (₹${product.last_batch_price.toFixed(2)}): ${lastBatchPercentDiff.toFixed(1)}% ${lastBatchDirection}.`);
+            warningText.html(warningText.html() + `<br>Compared to last batch (${formatMoney(lastBatch)}): ${lastBatchPercentDiff.toFixed(1)}% ${lastBatchDirection}.`);
         }
-        
         warningDiv.show();
     } else {
         warningDiv.hide();
@@ -2001,6 +2300,7 @@ function addProductToCart() {
     const cgst = parseFloat($('#cgstRate').val()) || 0;
     const sgst = parseFloat($('#sgstRate').val()) || 0;
     const igst = parseFloat($('#igstRate').val()) || 0;
+    const gst_type = $('#gstType').val() || 'inclusive';
     const total_gst = cgst + sgst + igst;
     const hsn = product.hsn || '';
     const batch_number = $('#batchNumber').val() || '';
@@ -2048,7 +2348,7 @@ function addProductToCart() {
                 proceedWithAddProduct(product, {
                     productId, productName, productCode, shop_stock, warehouse_stock, total_stock,
                     secondary_unit, sec_unit_conversion, mrp, discount, purchasePrice, quantity,
-                    cgst, sgst, igst, total_gst, hsn, batch_number, manufacture_date, expiry_date
+                    cgst, sgst, igst, gst_type, total_gst, hsn, batch_number, manufacture_date, expiry_date
                 });
             }
         });
@@ -2058,7 +2358,7 @@ function addProductToCart() {
     proceedWithAddProduct(product, {
         productId, productName, productCode, shop_stock, warehouse_stock, total_stock,
         secondary_unit, sec_unit_conversion, mrp, discount, purchasePrice, quantity,
-        cgst, sgst, igst, total_gst, hsn, batch_number, manufacture_date, expiry_date
+        cgst, sgst, igst, gst_type, total_gst, hsn, batch_number, manufacture_date, expiry_date
     });
 }
 
@@ -2066,8 +2366,12 @@ function proceedWithAddProduct(product, data) {
     // Calculate selling prices and markups using constant percentages
     const sellingPrices = calculateSellingPrices(data.purchasePrice, product);
     
-    // Calculate totals (with inclusive GST handling)
-    const totals = calculateItemTotal(data.purchasePrice, data.quantity, data.cgst, data.sgst, data.igst);
+    // Calculate totals with inclusive/exclusive GST handling
+    const totals = calculateItemTotal(data.purchasePrice, data.quantity, data.cgst, data.sgst, data.igst, data.gst_type || 'inclusive');
+    const mrpBreakup = calculateUnitGstBreakup(data.mrp, data.cgst, data.sgst, data.igst, data.gst_type || 'inclusive');
+    const purchaseBreakup = calculateUnitGstBreakup(data.purchasePrice, data.cgst, data.sgst, data.igst, data.gst_type || 'inclusive');
+    const retailBreakup = calculateUnitGstBreakup(sellingPrices.retailPrice, data.cgst, data.sgst, data.igst, data.gst_type || 'inclusive');
+    const wholesaleBreakup = calculateUnitGstBreakup(sellingPrices.wholesalePrice, data.cgst, data.sgst, data.igst, data.gst_type || 'inclusive');
     
     // Determine if price increased or decreased
     const isIncrease = data.purchasePrice > product.stock_price;
@@ -2102,18 +2406,29 @@ function proceedWithAddProduct(product, data) {
         sgst: data.sgst,
         igst: data.igst,
         total_gst: data.total_gst,
+        gst_type: data.gst_type || 'inclusive',
         hsn: data.hsn,
         batch_number: data.batch_number,
         manufacture_date: data.manufacture_date,
         expiry_date: data.expiry_date,
         is_increase: isIncrease ? 1 : 0,
         is_decrease: isDecrease ? 1 : 0,
+        entered_value: totals.enteredValue,
         taxable: totals.taxable,
+        gst_amount: totals.gstAmount,
         cgst_amount: totals.cgst,
         sgst_amount: totals.sgst,
         igst_amount: totals.igst,
         total: totals.total,
-        gst_credit: totals.gstCredit
+        gst_credit: totals.gstCredit,
+        mrp_without_gst: mrpBreakup.withoutGst,
+        mrp_final: mrpBreakup.finalValue,
+        purchase_without_gst: purchaseBreakup.withoutGst,
+        purchase_final: purchaseBreakup.finalValue,
+        retail_without_gst: retailBreakup.withoutGst,
+        retail_final: retailBreakup.finalValue,
+        wholesale_without_gst: wholesaleBreakup.withoutGst,
+        wholesale_final: wholesaleBreakup.finalValue
     });
 
     // Update table
@@ -2142,6 +2457,9 @@ function resetProductFields() {
     $('#cgstRate').val('0');
     $('#sgstRate').val('0');
     $('#igstRate').val('0');
+    $('#gstType').val('inclusive');
+    $('#gstBreakupBox').html('<div class="gst-summary-grid"><div class="gst-summary-cell"><small>Without GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>Final Value</small><strong>₹0.00</strong></div></div>');
+    resetGstHints();
     $('#batchNumber').val('');
     $('#manufactureDate').val('');
     $('#expiryDate').val('');
@@ -2222,7 +2540,7 @@ function updateProductsTable() {
         // Add GST info to product display
         let gstInfo = '';
         if (product.total_gst > 0) {
-            gstInfo = `<br><small class="text-muted">GST: ${product.total_gst}% (Incl.)</small>`;
+            gstInfo = `<br><small class="${product.gst_type === 'exclusive' ? 'text-primary' : 'text-muted'}">GST: ${product.total_gst}% (${product.gst_type === 'exclusive' ? 'Exclusive' : 'Inclusive'})</small>`;
         }
         
         const row = $(`
@@ -2234,13 +2552,28 @@ function updateProductsTable() {
                     ${gstInfo}
                     ${batchInfo}
                     ${secondaryInfo}
-                    <br><small class="text-muted">MRP: ${formatMoney(product.mrp)} - ${product.discount || '0%'}</small>
+                    <br><small class="text-muted">MRP without GST: ${formatMoney(product.mrp_without_gst || product.mrp)}</small>
+                    <br><small class="text-primary">MRP final: ${formatMoney(product.mrp_final || product.mrp)} - ${product.discount || '0%'}</small>
                     ${markupInfo}
                 </td>
                 <td class="text-end">${product.quantity}</td>
-                <td class="text-end">${formatMoney(product.purchase_price)}</td>
-                <td class="text-end">${product.total_gst}%</td>
-                <td class="text-end fw-bold">${formatMoney(product.total)}</td>
+                <td class="text-end">
+                    <strong>${formatMoney(product.purchase_without_gst || product.taxable / product.quantity || 0)}</strong>
+                    <br><small class="text-muted">Without GST / Unit</small>
+                    <br><small class="text-primary">Final Unit: ${formatMoney(product.purchase_final || product.purchase_price)}</small>
+                </td>
+                <td class="text-end">
+                    ${product.total_gst}%
+                    <br><small class="${product.gst_type === 'exclusive' ? 'text-success' : 'text-muted'}">
+                        ${product.gst_type === 'exclusive' ? 'Added' : 'Included'}: ${formatMoney(product.gst_amount || 0)}
+                    </small>
+                    <br><small class="text-muted">Type: ${product.gst_type === 'exclusive' ? 'Exclusive' : 'Inclusive'}</small>
+                </td>
+                <td class="text-end fw-bold">
+                    ${formatMoney(product.total)}
+                    <br><small class="text-muted">Without GST: ${formatMoney(product.taxable || 0)}</small>
+                    <br><small class="text-primary">Entered: ${formatMoney(product.entered_value || (product.purchase_price * product.quantity))}</small>
+                </td>
                 <td class="text-center">
                     ${product.batch_number ? '<i class="bx bx-package text-info" title="Batch: ' + product.batch_number + '"></i>' : '-'}
                 </td>
@@ -2370,6 +2703,20 @@ function prepareFormForSubmit() {
             name: `items[${index}][purchase_price]`,
             value: product.purchase_price
         }).appendTo('#purchaseForm');
+
+        // Send UI calculated FINAL after-GST retail and wholesale values to PHP.
+        // PHP will save these directly instead of falling back to DB markup values.
+        $('<input>').attr({
+            type: 'hidden',
+            name: `items[${index}][retail_price]`,
+            value: product.retail_final || product.retail_price || 0
+        }).appendTo('#purchaseForm');
+
+        $('<input>').attr({
+            type: 'hidden',
+            name: `items[${index}][wholesale_price]`,
+            value: product.wholesale_final || product.wholesale_price || 0
+        }).appendTo('#purchaseForm');
         
         $('<input>').attr({
             type: 'hidden',
@@ -2387,6 +2734,12 @@ function prepareFormForSubmit() {
             type: 'hidden',
             name: `items[${index}][igst_rate]`,
             value: product.igst
+        }).appendTo('#purchaseForm');
+
+        $('<input>').attr({
+            type: 'hidden',
+            name: `items[${index}][gst_type]`,
+            value: product.gst_type || 'inclusive'
         }).appendTo('#purchaseForm');
         
         // Add batch info
@@ -2576,7 +2929,10 @@ function initializeSelect2() {
             $('#cgstRate').val('0');
             $('#sgstRate').val('0');
             $('#igstRate').val('0');
-            $('#batchNumber').val('');
+            $('#gstType').val('inclusive');
+    $('#gstBreakupBox').html('<div class="gst-summary-grid"><div class="gst-summary-cell"><small>Without GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>Final Value</small><strong>₹0.00</strong></div></div>');
+    resetGstHints();
+    $('#batchNumber').val('');
             $('#manufactureDate').val('');
             $('#expiryDate').val('');
         }
@@ -2605,7 +2961,10 @@ function initializeSelect2() {
         $('#cgstRate').val('0');
         $('#sgstRate').val('0');
         $('#igstRate').val('0');
-        $('#batchNumber').val('');
+        $('#gstType').val('inclusive');
+    $('#gstBreakupBox').html('<div class="gst-summary-grid"><div class="gst-summary-cell"><small>Without GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>Final Value</small><strong>₹0.00</strong></div></div>');
+    resetGstHints();
+    $('#batchNumber').val('');
         $('#manufactureDate').val('');
         $('#expiryDate').val('');
     });
@@ -2947,8 +3306,8 @@ $(document).ready(function() {
     });
     
     // MRP and other fields input handling
-    $('#mrp, #quantity, #cgstRate, #sgstRate, #igstRate').on('input', function() {
-        if (currentProductId && !manualPriceUpdate) {
+    $('#mrp, #quantity, #cgstRate, #sgstRate, #igstRate, #gstType').on('input change', function() {
+        if (currentProductId) {
             updatePriceCalculations();
         }
     });

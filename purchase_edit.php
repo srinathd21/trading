@@ -1,2678 +1,600 @@
 <?php
+/* purchase-edit.php - GST inclusive/exclusive edit page
+   Logic matched with add purchase page:
+   - Inclusive: entered value is already final value.
+   - Exclusive: entered value is without GST; final after GST is saved.
+   - products.mrp, products.stock_price, products.retail_price, products.wholesale_price save final after-GST values for exclusive.
+   - UI-calculated retail/wholesale final values are posted and saved.
+*/
+
 date_default_timezone_set('Asia/Kolkata');
 session_start();
 require_once 'config/database.php';
 
-// Authorization
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'warehouse_manager', 'stock_manager'])) {
     header('Location: login.php');
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
+$user_id = (int)$_SESSION['user_id'];
 $current_business_id = $_SESSION['current_business_id'] ?? null;
 
 if (!$current_business_id) {
-    $_SESSION['error'] = "Please select a business first.";
+    $_SESSION['error'] = 'Please select a business first.';
     header('Location: select_shop.php');
     exit();
 }
+$current_business_id = (int)$current_business_id;
 
-// Get purchase ID from URL
 $purchase_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if (!$purchase_id) {
-    $_SESSION['error'] = "Invalid purchase ID.";
+if ($purchase_id <= 0) {
+    $_SESSION['error'] = 'Invalid purchase ID.';
     header('Location: purchases.php');
     exit();
 }
 
-// Get current shop info for this business
-$shop_id = $_SESSION['current_shop_id'] ?? 1;
-$shop_name = $pdo->prepare("SELECT shop_name FROM shops WHERE id = ? AND business_id = ?");
-$shop_name->execute([$shop_id, $current_business_id]);
-$shop_name = $shop_name->fetchColumn() ?? 'Shop';
+function h($v) {
+    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
+}
 
-// Get warehouse info for THIS BUSINESS ONLY
-$warehouse = $pdo->prepare("SELECT id, shop_name FROM shops WHERE is_warehouse = 1 AND business_id = ? LIMIT 1");
-$warehouse->execute([$current_business_id]);
-$warehouse = $warehouse->fetch();
-$warehouse_id = $warehouse['id'] ?? 0;
-$warehouse_name = $warehouse['shop_name'] ?? 'Warehouse';
+function dbColumnExists(PDO $pdo, string $table, string $column): bool {
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+        $stmt->execute([$column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
 
-$success = $error = '';
+function finalFromEntered(float $value, float $gstRate, string $gstType): float {
+    if ($gstType === 'exclusive') {
+        return $value + ($value * $gstRate / 100);
+    }
+    return $value;
+}
 
-// Fetch purchase data
-$purchase_stmt = $pdo->prepare("
-    SELECT p.*, m.name as manufacturer_name, s.shop_name as receiving_shop_name
-    FROM purchases p
-    LEFT JOIN manufacturers m ON p.manufacturer_id = m.id AND m.business_id = p.business_id
-    LEFT JOIN shops s ON p.shop_id = s.id AND s.business_id = p.business_id
-    WHERE p.id = ? AND p.business_id = ?
-");
+$hasPurchaseItemGstType = dbColumnExists($pdo, 'purchase_items', 'gst_type');
+$hasBatchGstType = dbColumnExists($pdo, 'purchase_batches', 'gst_type');
+$hasProductGstType = dbColumnExists($pdo, 'products', 'gst_type');
+
+$shop_id = (int)($_SESSION['current_shop_id'] ?? 1);
+$shop_name_stmt = $pdo->prepare("SELECT shop_name FROM shops WHERE id = ? AND business_id = ?");
+$shop_name_stmt->execute([$shop_id, $current_business_id]);
+$shop_name = $shop_name_stmt->fetchColumn() ?: 'Shop';
+
+$warehouse_stmt = $pdo->prepare("SELECT id, shop_name FROM shops WHERE is_warehouse = 1 AND business_id = ? LIMIT 1");
+$warehouse_stmt->execute([$current_business_id]);
+$warehouse = $warehouse_stmt->fetch(PDO::FETCH_ASSOC);
+$warehouse_id = (int)($warehouse['id'] ?? 0);
+
+$purchase_stmt = $pdo->prepare("\n    SELECT p.*, m.name AS manufacturer_name, s.shop_name AS receiving_shop_name\n    FROM purchases p\n    LEFT JOIN manufacturers m ON p.manufacturer_id = m.id AND m.business_id = p.business_id\n    LEFT JOIN shops s ON p.shop_id = s.id AND s.business_id = p.business_id\n    WHERE p.id = ? AND p.business_id = ?\n");
 $purchase_stmt->execute([$purchase_id, $current_business_id]);
-$purchase = $purchase_stmt->fetch();
+$purchase = $purchase_stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$purchase) {
-    $_SESSION['error'] = "Purchase order not found.";
+    $_SESSION['error'] = 'Purchase order not found.';
     header('Location: purchases.php');
     exit();
 }
 
-// Fetch purchase items with batch information
-$items_stmt = $pdo->prepare("
-    SELECT pi.*, p.product_name, p.product_code, p.secondary_unit, p.sec_unit_conversion,
-           p.retail_price_type, p.retail_price_value,
-           p.wholesale_price_type, p.wholesale_price_value,
-           p.stock_price as original_stock_price,
-           pb.id as batch_id, pb.batch_number, pb.manufacture_date, pb.expiry_date,
-           pb.quantity_remaining as batch_quantity_remaining,
-           pb.old_mrp, pb.new_mrp as batch_mrp,
-           pb.old_retail_price, pb.retail_price as batch_retail_price,
-           pb.old_wholesale_price, pb.wholesale_price as batch_wholesale_price
-    FROM purchase_items pi
-    JOIN products p ON pi.product_id = p.id AND p.business_id = pi.business_id
-    LEFT JOIN purchase_batches pb ON pi.purchase_id = pb.purchase_id 
-        AND pi.product_id = pb.product_id AND pb.business_id = pi.business_id
-    WHERE pi.purchase_id = ? AND pi.business_id = ?
-    ORDER BY pi.id
-");
+$selectGstType = $hasPurchaseItemGstType ? "pi.gst_type AS item_gst_type," : "NULL AS item_gst_type,";
+$items_stmt = $pdo->prepare("\n    SELECT pi.*, $selectGstType\n           p.product_name, p.product_code, p.secondary_unit, p.sec_unit_conversion,\n           p.retail_price_type, p.retail_price_value,\n           p.wholesale_price_type, p.wholesale_price_value,\n           p.stock_price AS original_stock_price, p.mrp AS product_mrp,\n           " . ($hasProductGstType ? "p.gst_type AS product_gst_type," : "'inclusive' AS product_gst_type,") . "\n           pb.id AS batch_id, pb.batch_number, pb.manufacture_date, pb.expiry_date,\n           pb.quantity_remaining AS batch_quantity_remaining,\n           pb.old_mrp, pb.new_mrp AS batch_mrp,\n           pb.old_retail_price, pb.retail_price AS batch_retail_price,\n           pb.old_wholesale_price, pb.wholesale_price AS batch_wholesale_price\n    FROM purchase_items pi\n    JOIN products p ON pi.product_id = p.id AND p.business_id = pi.business_id\n    LEFT JOIN purchase_batches pb ON pi.purchase_id = pb.purchase_id\n        AND pi.product_id = pb.product_id AND pb.business_id = pi.business_id\n    WHERE pi.purchase_id = ? AND pi.business_id = ?\n    ORDER BY pi.id\n");
 $items_stmt->execute([$purchase_id, $current_business_id]);
-$purchase_items = $items_stmt->fetchAll();
+$purchase_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch Data - Only from current business
-$manufacturers = $pdo->prepare("
-    SELECT id, name 
-    FROM manufacturers 
-    WHERE business_id = ? 
-      AND is_active = 1 
-    ORDER BY name
-");
+$manufacturers = $pdo->prepare("SELECT id, name FROM manufacturers WHERE business_id = ? AND is_active = 1 ORDER BY name");
 $manufacturers->execute([$current_business_id]);
-$manufacturers = $manufacturers->fetchAll();
+$manufacturers = $manufacturers->fetchAll(PDO::FETCH_ASSOC);
 
-// Get shops only from current business
-$shops = $pdo->prepare("
-    SELECT id, shop_name, location_type, is_warehouse 
-    FROM shops 
-    WHERE business_id = ? 
-      AND is_active = 1 
-    ORDER BY is_warehouse DESC, shop_name
-");
+$shops = $pdo->prepare("SELECT id, shop_name, location_type, is_warehouse FROM shops WHERE business_id = ? AND is_active = 1 ORDER BY is_warehouse DESC, shop_name");
 $shops->execute([$current_business_id]);
-$shops = $shops->fetchAll();
+$shops = $shops->fetchAll(PDO::FETCH_ASSOC);
 
-// Bill image upload configuration
 $upload_dir = 'uploads/purchase_bills/';
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
-$max_file_size = 10 * 1024 * 1024; // 10MB
-
+$max_file_size = 10 * 1024 * 1024;
 if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0755, true);
 }
 
-// Process Form
+$success = $error = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $manufacturer_id = (int)($_POST['manufacturer_id'] ?? 0);
-    $purchase_date   = $_POST['purchase_date'] ?? date('Y-m-d');
-    $reference       = trim($_POST['reference'] ?? '');
+    $purchase_date = $_POST['purchase_date'] ?? date('Y-m-d');
+    $reference = trim($_POST['reference'] ?? '');
     $purchase_invoice_no = trim($_POST['purchase_invoice_no'] ?? '');
-    $notes           = trim($_POST['notes'] ?? '');
-    $shop_id         = (int)($_POST['shop_id'] ?? 0);
-    $items           = $_POST['items'] ?? [];
-    $payment_status  = $_POST['payment_status'] ?? 'unpaid';
-    $paid_amount     = (float)($_POST['paid_amount'] ?? 0);
+    $notes = trim($_POST['notes'] ?? '');
+    $shop_id = (int)($_POST['shop_id'] ?? 0);
+    $items = $_POST['items'] ?? [];
+    $payment_status = $_POST['payment_status'] ?? 'unpaid';
+    $paid_amount = (float)($_POST['paid_amount'] ?? 0);
 
     if ($manufacturer_id <= 0 || $shop_id <= 0 || empty($items)) {
-        $error = "Please select supplier, receiving shop and add at least one product.";
+        $error = 'Please select supplier, receiving shop and add at least one product.';
     } else {
         try {
             $pdo->beginTransaction();
 
-            // Handle bill image upload
-            $bill_image_path = $purchase['bill_image']; // Keep existing by default
-            
-            if (isset($_FILES['bill_image']) && $_FILES['bill_image']['error'] == UPLOAD_ERR_OK) {
+            $bill_image_path = $purchase['bill_image'] ?? null;
+            if (isset($_FILES['bill_image']) && $_FILES['bill_image']['error'] === UPLOAD_ERR_OK) {
                 $file = $_FILES['bill_image'];
-                $file_name = basename($file['name']);
-                $file_tmp = $file['tmp_name'];
-                $file_size = $file['size'];
-                $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-
-                $errors = [];
-                if (!in_array($file_ext, $allowed_extensions) && $file_ext !== 'pdf') {
-                    $errors[] = "Invalid file type. Only JPG, PNG, GIF, WEBP, PDF allowed.";
+                $file_ext = strtolower(pathinfo(basename($file['name']), PATHINFO_EXTENSION));
+                if (!in_array($file_ext, $allowed_extensions, true)) {
+                    throw new Exception('Invalid file type. Only JPG, PNG, GIF, WEBP, PDF allowed.');
                 }
-                if ($file_size > $max_file_size) {
-                    $errors[] = "File too large (max 10MB).";
+                if ((int)$file['size'] > $max_file_size) {
+                    throw new Exception('File too large (max 10MB).');
                 }
-
-                if (empty($errors)) {
-                    // Delete old bill image if exists
-                    if ($bill_image_path && file_exists($bill_image_path)) {
-                        @unlink($bill_image_path);
-                    }
-                    
-                    $unique_name = uniqid('bill_', true) . '_' . time() . '.' . $file_ext;
-                    $bill_image_path = $upload_dir . $unique_name;
-
-                    if (!move_uploaded_file($file_tmp, $bill_image_path)) {
-                        $errors[] = "Upload failed.";
-                    }
+                if ($bill_image_path && file_exists($bill_image_path)) {
+                    @unlink($bill_image_path);
                 }
-                if (!empty($errors)) {
-                    $error = implode("<br>", $errors);
-                    throw new Exception($error);
+                $unique_name = uniqid('bill_', true) . '_' . time() . '.' . $file_ext;
+                $bill_image_path = $upload_dir . $unique_name;
+                if (!move_uploaded_file($file['tmp_name'], $bill_image_path)) {
+                    throw new Exception('Upload failed.');
                 }
             }
 
-            // Update Purchase Record
-            $update_purchase = $pdo->prepare("
-                UPDATE purchases 
-                SET manufacturer_id = ?, purchase_date = ?, reference = ?,
-                    purchase_invoice_no = ?, bill_image = ?, notes = ?,
-                    shop_id = ?, payment_status = ?, paid_amount = ?,
-                    updated_at = NOW()
-                WHERE id = ? AND business_id = ?
-            ");
+            $update_purchase = $pdo->prepare("\n                UPDATE purchases\n                SET manufacturer_id = ?, purchase_date = ?, reference = ?,\n                    purchase_invoice_no = ?, bill_image = ?, notes = ?,\n                    shop_id = ?, payment_status = ?, paid_amount = ?,\n                    updated_at = NOW()\n                WHERE id = ? AND business_id = ?\n            ");
             $update_purchase->execute([
-                $manufacturer_id,
-                $purchase_date,
-                $reference,
-                $purchase_invoice_no ?: null,
-                $bill_image_path,
-                $notes,
-                $shop_id,
-                $payment_status,
-                $paid_amount,
-                $purchase_id,
-                $current_business_id
+                $manufacturer_id, $purchase_date, $reference, $purchase_invoice_no ?: null,
+                $bill_image_path, $notes, $shop_id, $payment_status, $paid_amount,
+                $purchase_id, $current_business_id
             ]);
 
-            // Get existing batches to track stock changes
-            $existing_batches_stmt = $pdo->prepare("
-                SELECT * FROM purchase_batches 
-                WHERE purchase_id = ? AND business_id = ?
-            ");
-            $existing_batches_stmt->execute([$purchase_id, $current_business_id]);
-            $existing_batches = $existing_batches_stmt->fetchAll();
-            
-            // First, restore stock from existing batches
-            foreach ($existing_batches as $batch) {
-                // Find product_stock records that have this batch_id
-                $stock_stmt = $pdo->prepare("
-                    SELECT id, quantity, old_qty 
-                    FROM product_stocks 
-                    WHERE product_id = ? AND shop_id = ? AND business_id = ? AND batch_id = ?
-                ");
-                $stock_stmt->execute([$batch['product_id'], $shop_id, $current_business_id, $batch['id']]);
-                $stock_records = $stock_stmt->fetchAll();
-                
-                foreach ($stock_records as $stock) {
-                    // Update stock: quantity = old_qty, old_qty = 0, batch_id = null, use_batch_tracking = 0
-                    $update_stock = $pdo->prepare("
-                        UPDATE product_stocks 
-                        SET quantity = old_qty,
-                            old_qty = 0,
-                            batch_id = NULL,
-                            use_batch_tracking = 0,
-                            last_updated = NOW()
-                        WHERE id = ?
-                    ");
-                    $update_stock->execute([$stock['id']]);
-                    
-                    // Log stock movement
-                    $movement_stmt = $pdo->prepare("
-                        INSERT INTO stock_movements 
-                        (product_id, stock_id, shop_id, business_id, movement_type, quantity, 
-                         reference_type, reference_id, notes, created_by, created_at)
-                        VALUES (?, ?, ?, ?, 'purchase_edit_restore', ?, 'purchase', ?, ?, ?, NOW())
-                    ");
-                    
-                    $movement_stmt->execute([
-                        $batch['product_id'],
-                        $stock['id'],
-                        $shop_id,
-                        $current_business_id,
-                        $batch['quantity_remaining'],
-                        $purchase_id,
-                        "Stock restored before editing purchase #{$purchase['purchase_number']}",
-                        $user_id
-                    ]);
+            /* Restore old stock from this purchase before re-applying edited items */
+            $old_items_stmt = $pdo->prepare("\n                SELECT pi.product_id, pi.quantity\n                FROM purchase_items pi\n                WHERE pi.purchase_id = ? AND pi.business_id = ?\n            ");
+            $old_items_stmt->execute([$purchase_id, $current_business_id]);
+            $old_items = $old_items_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $old_shop_id = (int)($purchase['shop_id'] ?? $shop_id);
+
+            foreach ($old_items as $oldItem) {
+                $oldPid = (int)$oldItem['product_id'];
+                $oldQty = (float)$oldItem['quantity'];
+                $stock_stmt = $pdo->prepare("\n                    SELECT id, quantity\n                    FROM product_stocks\n                    WHERE product_id = ? AND shop_id = ? AND business_id = ?\n                    LIMIT 1\n                ");
+                $stock_stmt->execute([$oldPid, $old_shop_id, $current_business_id]);
+                $stock = $stock_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($stock) {
+                    $newQty = max(0, (float)$stock['quantity'] - $oldQty);
+                    $pdo->prepare("UPDATE product_stocks SET quantity = ?, last_updated = NOW() WHERE id = ?")
+                        ->execute([$newQty, (int)$stock['id']]);
                 }
             }
 
-            // Delete existing purchase items, batches, and GST credits
-            $delete_items = $pdo->prepare("DELETE FROM purchase_items WHERE purchase_id = ? AND business_id = ?");
-            $delete_items->execute([$purchase_id, $current_business_id]);
-            
-            $delete_batches = $pdo->prepare("DELETE FROM purchase_batches WHERE purchase_id = ? AND business_id = ?");
-            $delete_batches->execute([$purchase_id, $current_business_id]);
-            
-            $delete_gst = $pdo->prepare("DELETE FROM gst_credits WHERE purchase_id = ? AND business_id = ?");
-            $delete_gst->execute([$purchase_id, $current_business_id]);
+            $pdo->prepare("DELETE FROM purchase_items WHERE purchase_id = ? AND business_id = ?")->execute([$purchase_id, $current_business_id]);
+            $pdo->prepare("DELETE FROM purchase_batches WHERE purchase_id = ? AND business_id = ?")->execute([$purchase_id, $current_business_id]);
+            $pdo->prepare("DELETE FROM gst_credits WHERE purchase_id = ? AND business_id = ?")->execute([$purchase_id, $current_business_id]);
 
             $grand_total = 0;
-            $total_gst   = 0;
+            $total_gst = 0;
             $total_credit_amount = 0;
 
             foreach ($items as $item) {
-                $pid   = (int)($item['product_id'] ?? 0);
-                $qty   = (int)($item['quantity'] ?? 0);
-                $mrp   = (float)($item['mrp'] ?? 0);
-                $purchase_price = (float)($item['purchase_price'] ?? 0);
+                $pid = (int)($item['product_id'] ?? 0);
+                $qty = (float)($item['quantity'] ?? 0);
+                $entered_mrp = (float)($item['mrp'] ?? 0);
+                $entered_purchase_price = (float)($item['purchase_price'] ?? 0);
+                $posted_retail_price = (float)($item['retail_price'] ?? 0);
+                $posted_wholesale_price = (float)($item['wholesale_price'] ?? 0);
                 $discount_input = trim($item['discount'] ?? '');
-                $cgst  = (float)($item['cgst_rate'] ?? 0);
-                $sgst  = (float)($item['sgst_rate'] ?? 0);
-                $igst  = (float)($item['igst_rate'] ?? 0);
+                $cgst = (float)($item['cgst_rate'] ?? 0);
+                $sgst = (float)($item['sgst_rate'] ?? 0);
+                $igst = (float)($item['igst_rate'] ?? 0);
+                $gst_type = strtolower(trim($item['gst_type'] ?? 'inclusive'));
+                if (!in_array($gst_type, ['inclusive', 'exclusive'], true)) {
+                    $gst_type = 'inclusive';
+                }
                 $batch_number = !empty($item['batch_number']) ? trim($item['batch_number']) : null;
                 $expiry_date = !empty($item['expiry_date']) ? $item['expiry_date'] : null;
                 $manufacture_date = !empty($item['manufacture_date']) ? $item['manufacture_date'] : null;
 
-                if ($pid > 0 && $qty > 0 && $mrp >= 0 && $purchase_price >= 0) {
-                    // Get product details including markups
-                    $product_stmt = $pdo->prepare("
-                        SELECT p.*, 
-                               COALESCE(g.cgst_rate, 0) as cgst_rate, 
-                               COALESCE(g.sgst_rate, 0) as sgst_rate, 
-                               COALESCE(g.igst_rate, 0) as igst_rate
-                        FROM products p 
-                        LEFT JOIN gst_rates g ON p.gst_id = g.id
-                        WHERE p.id = ? AND p.business_id = ?
-                    ");
-                    $product_stmt->execute([$pid, $current_business_id]);
-                    $product = $product_stmt->fetch();
-                    
-                    if (!$product) {
-                        throw new Exception("Product not found");
-                    }
-                    
-                    // Calculate retail and wholesale prices based on product markups
-                    $retail_price = $purchase_price;
-                    $wholesale_price = $purchase_price;
-                    
-                    if ($product['retail_price_value'] > 0) {
-                        if ($product['retail_price_type'] === 'percentage') {
-                            $retail_price = $purchase_price + ($purchase_price * $product['retail_price_value'] / 100);
-                        } else {
-                            $retail_price = $purchase_price + $product['retail_price_value'];
-                        }
-                    }
-                    
-                    if ($product['wholesale_price_value'] > 0) {
-                        if ($product['wholesale_price_type'] === 'percentage') {
-                            $wholesale_price = $purchase_price + ($purchase_price * $product['wholesale_price_value'] / 100);
-                        } else {
-                            $wholesale_price = $purchase_price + $product['wholesale_price_value'];
-                        }
-                    }
-                    
-                    // For inclusive GST, calculate tax components
-                    $total_gst_rate = $cgst + $sgst + $igst;
-                    $taxable_amount = $qty * $purchase_price / (1 + $total_gst_rate/100);
+                if ($pid <= 0 || $qty <= 0 || $entered_mrp < 0 || $entered_purchase_price < 0) {
+                    continue;
+                }
+
+                $product_stmt = $pdo->prepare("\n                    SELECT p.*,\n                           " . ($hasProductGstType ? "p.gst_type AS product_gst_type," : "'inclusive' AS product_gst_type,") . "\n                           COALESCE(g.cgst_rate, 0) AS cgst_rate,\n                           COALESCE(g.sgst_rate, 0) AS sgst_rate,\n                           COALESCE(g.igst_rate, 0) AS igst_rate\n                    FROM products p\n                    LEFT JOIN gst_rates g ON p.gst_id = g.id AND g.business_id = p.business_id\n                    WHERE p.id = ? AND p.business_id = ?\n                ");
+                $product_stmt->execute([$pid, $current_business_id]);
+                $product = $product_stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$product) {
+                    throw new Exception('Product not found');
+                }
+
+                $total_gst_rate = $cgst + $sgst + $igst;
+                $entered_value = $qty * $entered_purchase_price;
+
+                if ($gst_type === 'exclusive') {
+                    $taxable_amount = $entered_value;
                     $cgst_amt = $taxable_amount * $cgst / 100;
                     $sgst_amt = $taxable_amount * $sgst / 100;
                     $igst_amt = $taxable_amount * $igst / 100;
-                    $total_with_tax = $qty * $purchase_price; // This is the GST inclusive total
+                    $total_with_tax = $entered_value + $cgst_amt + $sgst_amt + $igst_amt;
 
-                    // Get HSN code for product
-                    $hsn_stmt = $pdo->prepare("SELECT hsn_code FROM products WHERE id = ? AND business_id = ?");
-                    $hsn_stmt->execute([$pid, $current_business_id]);
-                    $hsn_code = $hsn_stmt->fetchColumn() ?? '';
+                    $purchase_price = finalFromEntered($entered_purchase_price, $total_gst_rate, 'exclusive');
+                    $mrp = finalFromEntered($entered_mrp, $total_gst_rate, 'exclusive');
+                } else {
+                    $total_with_tax = $entered_value;
+                    $taxable_amount = $total_gst_rate > 0 ? $entered_value / (1 + $total_gst_rate / 100) : $entered_value;
+                    $cgst_amt = $taxable_amount * $cgst / 100;
+                    $sgst_amt = $taxable_amount * $sgst / 100;
+                    $igst_amt = $taxable_amount * $igst / 100;
 
-                    // Insert Purchase Item
-                    $stmt = $pdo->prepare("
-                        INSERT INTO purchase_items 
-                        (purchase_id, product_id, quantity, mrp, discount, discount_type, discount_value,
-                         purchase_price, retail_price, wholesale_price, hsn_code,
-                         cgst_rate, sgst_rate, igst_rate, 
-                         cgst_amount, sgst_amount, igst_amount, total_price, business_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $stmt->execute([
-                        $purchase_id, 
-                        $pid, 
-                        $qty, 
-                        $mrp,
-                        $discount_input,
-                        'percentage',
-                        (float)str_replace('%', '', $discount_input) ?: 0,
-                        $purchase_price,
-                        $retail_price,
-                        $wholesale_price,
-                        $hsn_code,
-                        $cgst, 
-                        $sgst, 
-                        $igst,
-                        $cgst_amt, 
-                        $sgst_amt, 
-                        $igst_amt,
-                        $total_with_tax, 
-                        $current_business_id
-                    ]);
-                    $purchase_item_id = $pdo->lastInsertId();
+                    $purchase_price = $entered_purchase_price;
+                    $mrp = $entered_mrp;
+                }
 
-                    $grand_total += $total_with_tax;
-                    $total_gst   += $cgst_amt + $sgst_amt + $igst_amt;
-                    $total_credit_amount += $cgst_amt + $sgst_amt;
-
-                    // Check if price has changed from current product stock price
-                    $price_changed = false;
-                    $is_increase = false;
-                    $is_decrease = false;
-                    
-                    if (abs($purchase_price - $product['stock_price']) > 0.01) {
-                        $price_changed = true;
-                        if ($purchase_price > $product['stock_price']) {
-                            $is_increase = true;
+                /* Use UI-calculated final retail/wholesale if posted. Fallback to backend markup logic. */
+                if ($posted_retail_price > 0) {
+                    $retail_price = $posted_retail_price;
+                } else {
+                    $retail_base = $entered_purchase_price;
+                    if ((float)$product['retail_price_value'] > 0) {
+                        if ($product['retail_price_type'] === 'percentage') {
+                            $retail_base = $entered_purchase_price + ($entered_purchase_price * (float)$product['retail_price_value'] / 100);
                         } else {
-                            $is_decrease = true;
+                            $retail_base = $entered_purchase_price + (float)$product['retail_price_value'];
                         }
                     }
-                    
-                    // Check if MRP has changed
-                    $mrp_changed = false;
-                    if (abs($mrp - $product['mrp']) > 0.01) {
-                        $mrp_changed = true;
+                    $retail_price = finalFromEntered($retail_base, $total_gst_rate, $gst_type);
+                }
+
+                if ($posted_wholesale_price > 0) {
+                    $wholesale_price = $posted_wholesale_price;
+                } else {
+                    $wholesale_base = $entered_purchase_price;
+                    if ((float)$product['wholesale_price_value'] > 0) {
+                        if ($product['wholesale_price_type'] === 'percentage') {
+                            $wholesale_base = $entered_purchase_price + ($entered_purchase_price * (float)$product['wholesale_price_value'] / 100);
+                        } else {
+                            $wholesale_base = $entered_purchase_price + (float)$product['wholesale_price_value'];
+                        }
                     }
-                    
-                    // Check if retail/wholesale prices have changed
-                    $retail_changed = abs($retail_price - $product['retail_price']) > 0.01;
-                    $wholesale_changed = abs($wholesale_price - $product['wholesale_price']) > 0.01;
-                    
-                    // Get old quantity from product_stocks table before update
-                    $stock_check = $pdo->prepare("
-                        SELECT id, quantity, old_qty, total_secondary_units 
-                        FROM product_stocks 
-                        WHERE product_id = ? AND shop_id = ? AND business_id = ?
-                    ");
-                    $stock_check->execute([$pid, $shop_id, $current_business_id]);
-                    $stock_record = $stock_check->fetch();
-                    
-                    $old_qty = 0;
-                    if ($stock_record) {
-                        $old_qty = $stock_record['quantity'];
+                    $wholesale_price = finalFromEntered($wholesale_base, $total_gst_rate, $gst_type);
+                }
+
+                $hsn_stmt = $pdo->prepare("SELECT hsn_code FROM products WHERE id = ? AND business_id = ?");
+                $hsn_stmt->execute([$pid, $current_business_id]);
+                $hsn_code = $hsn_stmt->fetchColumn() ?: '';
+
+                if ($hasPurchaseItemGstType) {
+                    $insert_item_sql = "\n                        INSERT INTO purchase_items\n                        (purchase_id, product_id, quantity, mrp, discount, discount_type, discount_value,\n                         purchase_price, retail_price, wholesale_price, hsn_code, gst_type,\n                         cgst_rate, sgst_rate, igst_rate,\n                         cgst_amount, sgst_amount, igst_amount, total_price, business_id)\n                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                    ";
+                    $insert_item_params = [
+                        $purchase_id, $pid, $qty, $mrp, $discount_input, 'percentage',
+                        (float)str_replace('%', '', $discount_input) ?: 0,
+                        $purchase_price, $retail_price, $wholesale_price, $hsn_code, $gst_type,
+                        $cgst, $sgst, $igst, $cgst_amt, $sgst_amt, $igst_amt, $total_with_tax, $current_business_id
+                    ];
+                } else {
+                    $insert_item_sql = "\n                        INSERT INTO purchase_items\n                        (purchase_id, product_id, quantity, mrp, discount, discount_type, discount_value,\n                         purchase_price, retail_price, wholesale_price, hsn_code,\n                         cgst_rate, sgst_rate, igst_rate,\n                         cgst_amount, sgst_amount, igst_amount, total_price, business_id)\n                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                    ";
+                    $insert_item_params = [
+                        $purchase_id, $pid, $qty, $mrp, $discount_input, 'percentage',
+                        (float)str_replace('%', '', $discount_input) ?: 0,
+                        $purchase_price, $retail_price, $wholesale_price, $hsn_code,
+                        $cgst, $sgst, $igst, $cgst_amt, $sgst_amt, $igst_amt, $total_with_tax, $current_business_id
+                    ];
+                }
+
+                $stmt = $pdo->prepare($insert_item_sql);
+                $stmt->execute($insert_item_params);
+                $purchase_item_id = (int)$pdo->lastInsertId();
+
+                $grand_total += $total_with_tax;
+                $total_gst += $cgst_amt + $sgst_amt + $igst_amt;
+                $total_credit_amount += $cgst_amt + $sgst_amt + $igst_amt;
+
+                $stock_check = $pdo->prepare("\n                    SELECT id, quantity, old_qty, total_secondary_units\n                    FROM product_stocks\n                    WHERE product_id = ? AND shop_id = ? AND business_id = ?\n                    LIMIT 1\n                ");
+                $stock_check->execute([$pid, $shop_id, $current_business_id]);
+                $stock_record = $stock_check->fetch(PDO::FETCH_ASSOC);
+                $old_qty = $stock_record ? (float)$stock_record['quantity'] : 0;
+                $is_first_stock = (!$stock_record || $old_qty <= 0);
+
+                $prev_batch_stmt = $pdo->prepare("\n                    SELECT purchase_price, selling_price, retail_price, wholesale_price, old_retail_price, old_wholesale_price\n                    FROM purchase_batches\n                    WHERE product_id = ? AND business_id = ?\n                    ORDER BY received_date DESC, id DESC\n                    LIMIT 1\n                ");
+                $prev_batch_stmt->execute([$pid, $current_business_id]);
+                $prev_batch = $prev_batch_stmt->fetch(PDO::FETCH_ASSOC);
+
+                $old_purchase_price = $prev_batch ? (float)$prev_batch['purchase_price'] : (float)$product['stock_price'];
+                $old_retail_price = $prev_batch ? (float)$prev_batch['retail_price'] : (float)$product['retail_price'];
+                $old_wholesale_price = $prev_batch ? (float)$prev_batch['wholesale_price'] : (float)$product['wholesale_price'];
+                $old_selling_price = $prev_batch ? (float)$prev_batch['selling_price'] : (float)$product['retail_price'];
+
+                $is_increase = $purchase_price > (float)$product['stock_price'];
+                $is_decrease = $purchase_price < (float)$product['stock_price'];
+                $batch_number = $batch_number ?: 'BATCH-' . date('Ymd') . '-' . str_pad((string)$purchase_item_id, 4, '0', STR_PAD_LEFT);
+
+                if ($hasBatchGstType) {
+                    $batch_sql = "\n                        INSERT INTO purchase_batches\n                        (business_id, product_id, purchase_id, shop_id, batch_number,\n                         purchase_price, old_purchase_price,\n                         selling_price, old_selling_price,\n                         old_mrp, new_mrp,\n                         retail_price, old_retail_price,\n                         wholesale_price, old_wholesale_price,\n                         gst_type,\n                         quantity_received, quantity_remaining,\n                         received_date, manufacture_date, expiry_date, notes,\n                         is_increase, is_decrease, created_at)\n                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())\n                    ";
+                    $batch_params = [
+                        $current_business_id, $pid, $purchase_id, $shop_id, $batch_number,
+                        $purchase_price, $old_purchase_price,
+                        $retail_price, $old_selling_price,
+                        (float)$product['mrp'], $mrp,
+                        $retail_price, $old_retail_price,
+                        $wholesale_price, $old_wholesale_price,
+                        $gst_type,
+                        $qty, $qty,
+                        $purchase_date, $manufacture_date, $expiry_date,
+                        'Batch from edited purchase ' . $purchase['purchase_number'],
+                        $is_increase ? 1 : 0, $is_decrease ? 1 : 0
+                    ];
+                } else {
+                    $batch_sql = "\n                        INSERT INTO purchase_batches\n                        (business_id, product_id, purchase_id, shop_id, batch_number,\n                         purchase_price, old_purchase_price,\n                         selling_price, old_selling_price,\n                         old_mrp, new_mrp,\n                         retail_price, old_retail_price,\n                         wholesale_price, old_wholesale_price,\n                         quantity_received, quantity_remaining,\n                         received_date, manufacture_date, expiry_date, notes,\n                         is_increase, is_decrease, created_at)\n                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())\n                    ";
+                    $batch_params = [
+                        $current_business_id, $pid, $purchase_id, $shop_id, $batch_number,
+                        $purchase_price, $old_purchase_price,
+                        $retail_price, $old_selling_price,
+                        (float)$product['mrp'], $mrp,
+                        $retail_price, $old_retail_price,
+                        $wholesale_price, $old_wholesale_price,
+                        $qty, $qty,
+                        $purchase_date, $manufacture_date, $expiry_date,
+                        'Batch from edited purchase ' . $purchase['purchase_number'],
+                        $is_increase ? 1 : 0, $is_decrease ? 1 : 0
+                    ];
+                }
+
+                $batch_stmt = $pdo->prepare($batch_sql);
+                $batch_stmt->execute($batch_params);
+                $batch_id = (int)$pdo->lastInsertId();
+
+                $total_secondary_units = null;
+                if (!empty($product['sec_unit_conversion']) && (float)$product['sec_unit_conversion'] > 0) {
+                    $total_secondary_units = $qty * (float)$product['sec_unit_conversion'];
+                }
+
+                if ($stock_record) {
+                    $new_quantity = $old_qty + $qty;
+                    $new_secondary_units = $stock_record['total_secondary_units'];
+                    if ($total_secondary_units !== null) {
+                        $new_secondary_units = ((float)($new_secondary_units ?? 0)) + $total_secondary_units;
                     }
+                    $pdo->prepare("\n                        UPDATE product_stocks\n                        SET quantity = ?, old_qty = ?, total_secondary_units = ?,\n                            use_batch_tracking = 1, batch_id = ?, last_updated = NOW()\n                        WHERE id = ?\n                    ")->execute([$new_quantity, $old_qty, $new_secondary_units, $batch_id, (int)$stock_record['id']]);
+                    $stock_id = (int)$stock_record['id'];
+                } else {
+                    $pdo->prepare("\n                        INSERT INTO product_stocks\n                        (product_id, shop_id, business_id, quantity, old_qty, total_secondary_units, use_batch_tracking, batch_id, last_updated)\n                        VALUES (?, ?, ?, ?, 0, ?, 1, ?, NOW())\n                    ")->execute([$pid, $shop_id, $current_business_id, $qty, $total_secondary_units, $batch_id]);
+                    $stock_id = (int)$pdo->lastInsertId();
+                }
 
-                    // Get previous batch prices for comparison
-                    $prev_batch_stmt = $pdo->prepare("
-                        SELECT purchase_price, selling_price, retail_price, wholesale_price,
-                               old_retail_price, old_wholesale_price
-                        FROM purchase_batches 
-                        WHERE product_id = ? AND business_id = ?
-                        ORDER BY received_date DESC, id DESC
-                        LIMIT 1
-                    ");
-                    $prev_batch_stmt->execute([$pid, $current_business_id]);
-                    $prev_batch = $prev_batch_stmt->fetch();
-
-                    // Get the current product prices as fallback for old prices
-                    $old_purchase_price = $prev_batch ? $prev_batch['purchase_price'] : $product['stock_price'];
-                    $old_retail_price = $prev_batch ? $prev_batch['retail_price'] : $product['retail_price'];
-                    $old_wholesale_price = $prev_batch ? $prev_batch['wholesale_price'] : $product['wholesale_price'];
-                    $old_selling_price = $prev_batch ? $prev_batch['selling_price'] : $product['retail_price'];
-
-                    // Create purchase batch record
-                    $batch_number = $batch_number ?: 'BATCH-' . date('Ymd') . '-' . str_pad($purchase_item_id, 4, '0', STR_PAD_LEFT);
-                    
-                    $batch_stmt = $pdo->prepare("
-                        INSERT INTO purchase_batches 
-                        (business_id, product_id, purchase_id, shop_id, batch_number, 
-                         purchase_price, old_purchase_price,
-                         selling_price, old_selling_price,
-                         old_mrp, new_mrp,
-                         retail_price, old_retail_price,
-                         wholesale_price, old_wholesale_price,
-                         quantity_received, quantity_remaining,
-                         received_date, manufacture_date, expiry_date, notes, 
-                         is_increase, is_decrease, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                    ");
-                    
-                    $batch_stmt->execute([
-                        $current_business_id,
-                        $pid,
-                        $purchase_id,
-                        $shop_id,
-                        $batch_number,
-                        $purchase_price,
-                        $old_purchase_price,
-                        $retail_price,
-                        $old_selling_price,
-                        $product['mrp'], // Old MRP
-                        $mrp, // New MRP
-                        $retail_price,
-                        $old_retail_price,
-                        $wholesale_price,
-                        $old_wholesale_price,
-                        $qty,
-                        $qty,
-                        $purchase_date,
-                        $manufacture_date,
-                        $expiry_date,
-                        'Batch from purchase ' . $purchase['purchase_number'],
-                        $is_increase ? 1 : 0,
-                        $is_decrease ? 1 : 0
+                try {
+                    $movement_stmt = $pdo->prepare("\n                        INSERT INTO stock_movements\n                        (product_id, stock_id, shop_id, business_id, movement_type, quantity, secondary_quantity,\n                         reference_type, reference_id, notes, created_by, created_at)\n                        VALUES (?, ?, ?, ?, 'purchase_edit_add', ?, ?, 'purchase', ?, ?, ?, NOW())\n                    ");
+                    $movement_stmt->execute([
+                        $pid, $stock_id, $shop_id, $current_business_id, $qty, $total_secondary_units ?? 0,
+                        $purchase_id, 'Stock added from edited purchase #' . $purchase['purchase_number'], $user_id
                     ]);
-                    
-                    $batch_id = $pdo->lastInsertId();
+                } catch (Throwable $ignored) {}
 
-                    // Update Stock in Correct Shop
-                    $total_secondary_units = null;
-                    if ($product['sec_unit_conversion'] && $product['sec_unit_conversion'] > 0) {
-                        $total_secondary_units = $qty * $product['sec_unit_conversion'];
-                    }
-
-                    if ($stock_record) {
-                        // Update existing stock
-                        $new_quantity = $old_qty + $qty;
-                        $new_secondary_units = $stock_record['total_secondary_units'];
-                        
-                        if ($total_secondary_units !== null) {
-                            $new_secondary_units = ($new_secondary_units ?? 0) + $total_secondary_units;
-                        }
-                        
-                        $update_query = "
-                            UPDATE product_stocks 
-                            SET quantity = ?, 
-                                old_qty = ?,
-                                total_secondary_units = ?,
-                                use_batch_tracking = ?,
-                                batch_id = ?,
-                                last_updated = NOW()
-                            WHERE product_id = ? AND shop_id = ? AND business_id = ?
-                        ";
-                        
-                        $pdo->prepare($update_query)->execute([
-                            $new_quantity,
-                            $old_qty,
-                            $new_secondary_units,
-                            1, // use_batch_tracking
-                            $batch_id,
-                            $pid,
-                            $shop_id,
-                            $current_business_id
-                        ]);
-                        
-                        // Log stock movement
-                        $movement_stmt = $pdo->prepare("
-                            INSERT INTO stock_movements 
-                            (product_id, stock_id, shop_id, business_id, movement_type, quantity, 
-                             secondary_quantity, reference_type, reference_id, notes, created_by, created_at)
-                            VALUES (?, ?, ?, ?, 'purchase_edit_add', ?, ?, 'purchase', ?, ?, ?, NOW())
-                        ");
-                        
-                        $movement_stmt->execute([
-                            $pid,
-                            $stock_record['id'],
-                            $shop_id,
-                            $current_business_id,
-                            $qty,
-                            $total_secondary_units ?? 0,
-                            $purchase_id,
-                            "Stock added from edited purchase #{$purchase['purchase_number']}",
-                            $user_id
-                        ]);
+                /* Update product prices. If product stock was 0, update all main price fields. */
+                if ($is_first_stock) {
+                    if ($hasProductGstType) {
+                        $pdo->prepare("\n                            UPDATE products\n                            SET mrp = ?, stock_price = ?, retail_price = ?, wholesale_price = ?, gst_type = ?, updated_at = NOW()\n                            WHERE id = ? AND business_id = ?\n                        ")->execute([$mrp, $purchase_price, $retail_price, $wholesale_price, $gst_type, $pid, $current_business_id]);
                     } else {
-                        // Insert new stock record
-                        $insert_query = "
-                            INSERT INTO product_stocks 
-                            (product_id, shop_id, business_id, quantity, 
-                             old_qty, total_secondary_units, use_batch_tracking,
-                             batch_id, last_updated) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                        ";
-                        
-                        $pdo->prepare($insert_query)->execute([
-                            $pid,
-                            $shop_id,
-                            $current_business_id,
-                            $qty,
-                            0,
-                            $total_secondary_units,
-                            1, // use_batch_tracking
-                            $batch_id
-                        ]);
-                        
-                        $stock_id = $pdo->lastInsertId();
-                        
-                        // Log stock movement
-                        $movement_stmt = $pdo->prepare("
-                            INSERT INTO stock_movements 
-                            (product_id, stock_id, shop_id, business_id, movement_type, quantity, 
-                             secondary_quantity, reference_type, reference_id, notes, created_by, created_at)
-                            VALUES (?, ?, ?, ?, 'purchase_edit_add', ?, ?, 'purchase', ?, ?, ?, NOW())
-                        ");
-                        
-                        $movement_stmt->execute([
-                            $pid,
-                            $stock_id,
-                            $shop_id,
-                            $current_business_id,
-                            $qty,
-                            $total_secondary_units ?? 0,
-                            $purchase_id,
-                            "Stock added from edited purchase #{$purchase['purchase_number']}",
-                            $user_id
-                        ]);
+                        $pdo->prepare("\n                            UPDATE products\n                            SET mrp = ?, stock_price = ?, retail_price = ?, wholesale_price = ?, updated_at = NOW()\n                            WHERE id = ? AND business_id = ?\n                        ")->execute([$mrp, $purchase_price, $retail_price, $wholesale_price, $pid, $current_business_id]);
                     }
-
-                    // Update product retail and wholesale prices ONLY if price increased
-                    if ($is_increase || $mrp_changed) {
-                        $update_fields = [];
-                        $update_params = [];
-                        
-                        if ($mrp_changed) {
-                            $update_fields[] = "mrp = ?";
-                            $update_params[] = $mrp;
-                        }
-                        
-                        if ($retail_changed && $is_increase) {
-                            $update_fields[] = "retail_price = ?";
-                            $update_params[] = $retail_price;
-                        }
-                        
-                        if ($wholesale_changed && $is_increase) {
-                            $update_fields[] = "wholesale_price = ?";
-                            $update_params[] = $wholesale_price;
-                        }
-                        
-                        if (!empty($update_fields)) {
-                            $update_fields[] = "updated_at = NOW()";
-                            $update_query = "UPDATE products SET " . implode(", ", $update_fields) . " WHERE id = ? AND business_id = ?";
-                            $update_params[] = $pid;
-                            $update_params[] = $current_business_id;
-                            $pdo->prepare($update_query)->execute($update_params);
-                        }
+                } else {
+                    $update_fields = [];
+                    $update_params = [];
+                    if (abs($mrp - (float)$product['mrp']) > 0.01) {
+                        $update_fields[] = 'mrp = ?';
+                        $update_params[] = $mrp;
+                    }
+                    if (abs($retail_price - (float)$product['retail_price']) > 0.01) {
+                        $update_fields[] = 'retail_price = ?';
+                        $update_params[] = $retail_price;
+                    }
+                    if (abs($wholesale_price - (float)$product['wholesale_price']) > 0.01) {
+                        $update_fields[] = 'wholesale_price = ?';
+                        $update_params[] = $wholesale_price;
+                    }
+                    if (!empty($update_fields)) {
+                        $update_fields[] = 'updated_at = NOW()';
+                        $update_params[] = $pid;
+                        $update_params[] = $current_business_id;
+                        $pdo->prepare('UPDATE products SET ' . implode(', ', $update_fields) . ' WHERE id = ? AND business_id = ?')
+                            ->execute($update_params);
                     }
                 }
             }
 
-            // Update Final Totals in purchases table
-            $pdo->prepare("
-                UPDATE purchases 
-                SET total_amount = ?, total_gst = ?
-                WHERE id = ? AND business_id = ?
-            ")->execute([$grand_total, $total_gst, $purchase_id, $current_business_id]);
+            $pdo->prepare("UPDATE purchases SET total_amount = ?, total_gst = ? WHERE id = ? AND business_id = ?")
+                ->execute([$grand_total, $total_gst, $purchase_id, $current_business_id]);
 
-            // Create GST credit record
             if ($total_credit_amount > 0) {
-                $gstmt = $pdo->prepare("
-                    INSERT INTO gst_credits 
-                    (business_id, purchase_id, purchase_number, purchase_invoice_no, 
-                     credit_amount, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, 'not_claimed', NOW())
-                ");
-                $gstmt->execute([
-                    $current_business_id,
-                    $purchase_id,
-                    $purchase['purchase_number'],
-                    $purchase_invoice_no ?: null,
-                    $total_credit_amount
-                ]);
+                $gstmt = $pdo->prepare("\n                    INSERT INTO gst_credits\n                    (business_id, purchase_id, purchase_number, purchase_invoice_no, credit_amount, status, created_at)\n                    VALUES (?, ?, ?, ?, ?, 'not_claimed', NOW())\n                ");
+                $gstmt->execute([$current_business_id, $purchase_id, $purchase['purchase_number'], $purchase_invoice_no ?: null, $total_credit_amount]);
             }
 
             $pdo->commit();
-            header("Location: purchases.php?id=" . $purchase_id . "&success=1");
+            header('Location: purchase_edit.php?id=' . $purchase_id . '&success=1');
             exit();
         } catch (Exception $e) {
             $pdo->rollBack();
-            if (isset($bill_image_path) && $bill_image_path != $purchase['bill_image'] && file_exists($bill_image_path)) {
+            if (isset($bill_image_path) && $bill_image_path !== ($purchase['bill_image'] ?? '') && file_exists($bill_image_path)) {
                 @unlink($bill_image_path);
             }
-            $error = "Failed to update purchase: " . $e->getMessage();
+            $error = 'Failed to update purchase: ' . $e->getMessage();
         }
     }
 }
 
-// Get products with shop and warehouse stock
 $prodSql = "SELECT p.id, p.product_name, p.product_code, p.barcode,
                    p.stock_price, p.mrp, p.retail_price, p.wholesale_price,
                    p.retail_price_type, p.retail_price_value,
                    p.wholesale_price_type, p.wholesale_price_value,
                    p.secondary_unit, p.sec_unit_conversion,
-                   p.hsn_code, 
-                   COALESCE(g.cgst_rate, 0) as cgst_rate, 
-                   COALESCE(g.sgst_rate, 0) as sgst_rate, 
-                   COALESCE(g.igst_rate, 0) as igst_rate,
+                   p.hsn_code, " . ($hasProductGstType ? "p.gst_type," : "'inclusive' AS gst_type,") . "
+                   COALESCE(g.cgst_rate, 0) AS cgst_rate,
+                   COALESCE(g.sgst_rate, 0) AS sgst_rate,
+                   COALESCE(g.igst_rate, 0) AS igst_rate,
                    c.category_name,
-                   COALESCE(ps_shop.quantity, 0) as shop_stock,
-                   COALESCE(ps_shop.old_qty, 0) as shop_old_qty,
-                   COALESCE(ps_shop.total_secondary_units, 0) as shop_secondary_units,
-                   COALESCE(ps_shop.use_batch_tracking, 0) as use_batch_tracking,
-                   COALESCE(ps_warehouse.quantity, 0) as warehouse_stock,
-                   COALESCE(ps_warehouse.total_secondary_units, 0) as warehouse_secondary_units,
-                   (
-                       SELECT purchase_price 
-                       FROM purchase_batches pb 
-                       WHERE pb.product_id = p.id 
-                         AND pb.business_id = p.business_id
-                         AND pb.quantity_remaining > 0
-                       ORDER BY pb.received_date DESC 
-                       LIMIT 1
-                   ) as last_batch_price,
-                   (
-                       SELECT retail_price 
-                       FROM purchase_batches pb 
-                       WHERE pb.product_id = p.id 
-                         AND pb.business_id = p.business_id
-                         AND pb.quantity_remaining > 0
-                       ORDER BY pb.received_date DESC 
-                       LIMIT 1
-                   ) as last_batch_retail_price,
-                   (
-                       SELECT wholesale_price 
-                       FROM purchase_batches pb 
-                       WHERE pb.product_id = p.id 
-                         AND pb.business_id = p.business_id
-                         AND pb.quantity_remaining > 0
-                       ORDER BY pb.received_date DESC 
-                       LIMIT 1
-                   ) as last_batch_wholesale_price,
-                   (
-                       SELECT old_mrp 
-                       FROM purchase_batches pb 
-                       WHERE pb.product_id = p.id 
-                         AND pb.business_id = p.business_id
-                         AND pb.quantity_remaining > 0
-                       ORDER BY pb.received_date DESC 
-                       LIMIT 1
-                   ) as last_batch_old_mrp,
-                   (
-                       SELECT new_mrp 
-                       FROM purchase_batches pb 
-                       WHERE pb.product_id = p.id 
-                         AND pb.business_id = p.business_id
-                         AND pb.quantity_remaining > 0
-                       ORDER BY pb.received_date DESC 
-                       LIMIT 1
-                   ) as last_batch_new_mrp
+                   COALESCE(ps_shop.quantity, 0) AS shop_stock,
+                   COALESCE(ps_shop.old_qty, 0) AS shop_old_qty,
+                   COALESCE(ps_shop.total_secondary_units, 0) AS shop_secondary_units,
+                   COALESCE(ps_shop.use_batch_tracking, 0) AS use_batch_tracking,
+                   COALESCE(ps_warehouse.quantity, 0) AS warehouse_stock,
+                   COALESCE(ps_warehouse.total_secondary_units, 0) AS warehouse_secondary_units,
+                   (SELECT purchase_price FROM purchase_batches pb WHERE pb.product_id = p.id AND pb.business_id = p.business_id AND pb.quantity_remaining > 0 ORDER BY pb.received_date DESC, pb.id DESC LIMIT 1) AS last_batch_price,
+                   (SELECT retail_price FROM purchase_batches pb WHERE pb.product_id = p.id AND pb.business_id = p.business_id AND pb.quantity_remaining > 0 ORDER BY pb.received_date DESC, pb.id DESC LIMIT 1) AS last_batch_retail_price,
+                   (SELECT wholesale_price FROM purchase_batches pb WHERE pb.product_id = p.id AND pb.business_id = p.business_id AND pb.quantity_remaining > 0 ORDER BY pb.received_date DESC, pb.id DESC LIMIT 1) AS last_batch_wholesale_price,
+                   (SELECT old_mrp FROM purchase_batches pb WHERE pb.product_id = p.id AND pb.business_id = p.business_id AND pb.quantity_remaining > 0 ORDER BY pb.received_date DESC, pb.id DESC LIMIT 1) AS last_batch_old_mrp,
+                   (SELECT new_mrp FROM purchase_batches pb WHERE pb.product_id = p.id AND pb.business_id = p.business_id AND pb.quantity_remaining > 0 ORDER BY pb.received_date DESC, pb.id DESC LIMIT 1) AS last_batch_new_mrp
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id AND c.business_id = p.business_id
             LEFT JOIN gst_rates g ON p.gst_id = g.id AND g.business_id = p.business_id
-            LEFT JOIN product_stocks ps_shop ON p.id = ps_shop.product_id 
-                AND ps_shop.shop_id = ? AND ps_shop.business_id = p.business_id
-            LEFT JOIN product_stocks ps_warehouse ON p.id = ps_warehouse.product_id 
-                AND ps_warehouse.shop_id = ? AND ps_warehouse.business_id = p.business_id
+            LEFT JOIN product_stocks ps_shop ON p.id = ps_shop.product_id AND ps_shop.shop_id = ? AND ps_shop.business_id = p.business_id
+            LEFT JOIN product_stocks ps_warehouse ON p.id = ps_warehouse.product_id AND ps_warehouse.shop_id = ? AND ps_warehouse.business_id = p.business_id
             WHERE p.is_active = 1 AND p.business_id = ?
             ORDER BY c.category_name, p.product_name";
-
 $prodStmt = $pdo->prepare($prodSql);
 $prodStmt->execute([$shop_id, $warehouse_id, $current_business_id]);
-$prodRes = $prodStmt->fetchAll();
+$prodRes = $prodStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $jsProducts = [];
 $barcodeMap = [];
-
 foreach ($prodRes as $p) {
     $pid = (int)$p['id'];
-    $name = htmlspecialchars($p['product_name']);
-    $mrp = (float)$p['mrp'];
     $stock_price = (float)$p['stock_price'];
     $retail_price = (float)$p['retail_price'];
     $wholesale_price = (float)$p['wholesale_price'];
-    $retail_price_type = $p['retail_price_type'];
-    $retail_price_value = (float)$p['retail_price_value'];
-    $wholesale_price_type = $p['wholesale_price_type'];
-    $wholesale_price_value = (float)$p['wholesale_price_value'];
-    $code = $p['product_code'] ? htmlspecialchars($p['product_code']) : sprintf('P%06d', $pid);
-    $barcode = htmlspecialchars($p['barcode'] ?? '');
-    $shop_stock = (int)$p['shop_stock'];
-    $shop_old_qty = (int)$p['shop_old_qty'];
-    $warehouse_stock = (int)$p['warehouse_stock'];
-    $total_stock = $shop_stock + $warehouse_stock;
-    $shop_secondary = (float)$p['shop_secondary_units'];
-    $warehouse_secondary = (float)$p['warehouse_secondary_units'];
-    $secondary_unit = htmlspecialchars($p['secondary_unit'] ?? '');
-    $sec_unit_conversion = (float)$p['sec_unit_conversion'];
-    $last_batch_price = (float)$p['last_batch_price'];
-    $last_batch_retail_price = (float)$p['last_batch_retail_price'];
-    $last_batch_wholesale_price = (float)$p['last_batch_wholesale_price'];
-    $last_batch_old_mrp = (float)$p['last_batch_old_mrp'];
-    $last_batch_new_mrp = (float)$p['last_batch_new_mrp'];
-    $use_batch_tracking = (int)$p['use_batch_tracking'];
-    $hsn = htmlspecialchars($p['hsn_code'] ?? '');
+    $retail_markup_percent = ($stock_price > 0 && $retail_price > $stock_price) ? (($retail_price - $stock_price) / $stock_price) * 100 : 0;
+    $wholesale_markup_percent = ($stock_price > 0 && $wholesale_price > $stock_price) ? (($wholesale_price - $stock_price) / $stock_price) * 100 : 0;
+    $code = $p['product_code'] ? h($p['product_code']) : sprintf('P%06d', $pid);
+    $barcode = h($p['barcode'] ?? '');
     $cgst = (float)($p['cgst_rate'] ?? 0);
     $sgst = (float)($p['sgst_rate'] ?? 0);
     $igst = (float)($p['igst_rate'] ?? 0);
     $total_gst = $cgst + $sgst + $igst;
-    $category = htmlspecialchars($p['category_name'] ?? 'Uncategorized');
-    
-    // Calculate suggested discount based on MRP and stock price
+
     $suggested_discount = '';
-    if ($mrp > 0 && $stock_price > 0 && $mrp > $stock_price) {
-        $discount_percent = (($mrp - $stock_price) / $mrp) * 100;
-        if ($discount_percent > 0) {
-            $suggested_discount = round($discount_percent, 1) . '%';
-        }
+    if ((float)$p['mrp'] > 0 && $stock_price > 0 && (float)$p['mrp'] > $stock_price) {
+        $suggested_discount = round((((float)$p['mrp'] - $stock_price) / (float)$p['mrp']) * 100, 1) . '%';
     }
-    
-    // Calculate retail markup percentage
-    $retail_markup_percent = 0;
-    if ($stock_price > 0 && $retail_price > $stock_price) {
-        $retail_markup_percent = (($retail_price - $stock_price) / $stock_price) * 100;
-    }
-    
-    // Calculate wholesale markup percentage
-    $wholesale_markup_percent = 0;
-    if ($stock_price > 0 && $wholesale_price > $stock_price) {
-        $wholesale_markup_percent = (($wholesale_price - $stock_price) / $stock_price) * 100;
-    }
-    
+
     $jsProducts[$pid] = [
         'id' => $pid,
-        'name' => $name,
-        'mrp' => $mrp,
+        'name' => h($p['product_name']),
+        'mrp' => (float)$p['mrp'],
         'stock_price' => $stock_price,
         'retail_price' => $retail_price,
         'wholesale_price' => $wholesale_price,
-        'retail_price_type' => $retail_price_type,
-        'retail_price_value' => $retail_price_value,
+        'retail_price_type' => $p['retail_price_type'],
+        'retail_price_value' => (float)$p['retail_price_value'],
         'retail_markup_percent' => $retail_markup_percent,
-        'wholesale_price_type' => $wholesale_price_type,
-        'wholesale_price_value' => $wholesale_price_value,
+        'wholesale_price_type' => $p['wholesale_price_type'],
+        'wholesale_price_value' => (float)$p['wholesale_price_value'],
         'wholesale_markup_percent' => $wholesale_markup_percent,
         'suggested_discount' => $suggested_discount,
-        'last_batch_price' => $last_batch_price,
-        'last_batch_retail_price' => $last_batch_retail_price,
-        'last_batch_wholesale_price' => $last_batch_wholesale_price,
-        'last_batch_old_mrp' => $last_batch_old_mrp,
-        'last_batch_new_mrp' => $last_batch_new_mrp,
-        'use_batch_tracking' => $use_batch_tracking,
-        'shop_old_qty' => $shop_old_qty,
+        'last_batch_price' => (float)$p['last_batch_price'],
+        'last_batch_retail_price' => (float)$p['last_batch_retail_price'],
+        'last_batch_wholesale_price' => (float)$p['last_batch_wholesale_price'],
+        'last_batch_old_mrp' => (float)$p['last_batch_old_mrp'],
+        'last_batch_new_mrp' => (float)$p['last_batch_new_mrp'],
+        'use_batch_tracking' => (int)$p['use_batch_tracking'],
+        'shop_old_qty' => (int)$p['shop_old_qty'],
         'code' => $code,
         'barcode' => $barcode,
-        'shop_stock' => $shop_stock,
-        'warehouse_stock' => $warehouse_stock,
-        'total_stock' => $total_stock,
-        'shop_secondary' => $shop_secondary,
-        'warehouse_secondary' => $warehouse_secondary,
-        'secondary_unit' => $secondary_unit,
-        'sec_unit_conversion' => $sec_unit_conversion,
-        'hsn' => $hsn,
+        'shop_stock' => (int)$p['shop_stock'],
+        'warehouse_stock' => (int)$p['warehouse_stock'],
+        'total_stock' => (int)$p['shop_stock'] + (int)$p['warehouse_stock'],
+        'shop_secondary' => (float)$p['shop_secondary_units'],
+        'warehouse_secondary' => (float)$p['warehouse_secondary_units'],
+        'secondary_unit' => h($p['secondary_unit'] ?? ''),
+        'sec_unit_conversion' => (float)$p['sec_unit_conversion'],
+        'hsn' => h($p['hsn_code'] ?? ''),
+        'gst_type' => in_array(($p['gst_type'] ?? 'inclusive'), ['inclusive', 'exclusive'], true) ? $p['gst_type'] : 'inclusive',
         'cgst' => $cgst,
         'sgst' => $sgst,
         'igst' => $igst,
         'total_gst' => $total_gst,
-        'category' => $category
+        'category' => h($p['category_name'] ?? 'Uncategorized')
     ];
-    
-    if ($p['barcode']) $barcodeMap[$p['barcode']] = $pid;
+
+    if (!empty($p['barcode'])) $barcodeMap[$p['barcode']] = $pid;
     $barcodeMap[$code] = $pid;
 }
 ?>
 <!doctype html>
 <html lang="en">
-<?php $page_title = "Edit Purchase Order #" . htmlspecialchars($purchase['purchase_number']); include 'includes/head.php'; ?>
-<!-- Add Select2 CSS -->
+<?php $page_title = 'Edit Purchase Order #' . h($purchase['purchase_number']); include 'includes/head.php'; ?>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<!-- Add flatpickr for date picker -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
-/* Scrollable purchase items section */
-.purchase-items-container {
-    max-height: 70vh;
-    overflow-y: auto;
-    padding-right: 10px;
-}
-
-/* Product Search Section */
-.product-search-section {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 20px;
-}
-.product-search-section h5 {
-    color: #495057;
-    font-size: 1rem;
-    margin-bottom: 15px;
-    font-weight: 600;
-}
-
-/* Stock badges */
-.stock-badge {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 3px;
-    margin-right: 3px;
-}
-.shop-stock-badge {
-    background: #17a2b8;
-    color: white;
-}
-.warehouse-stock-badge {
-    background: #6c757d;
-    color: white;
-}
-.low-stock-badge {
-    background: #dc3545;
-    color: white;
-}
-.out-of-stock-badge {
-    background: #343a40;
-    color: white;
-}
-.gst-badge {
-    background: #6f42c1;
-    color: white;
-}
-.secondary-unit-badge {
-    background: #20c997;
-    color: white;
-}
-.price-increase-badge {
-    background: #28a745;
-    color: white;
-}
-.price-decrease-badge {
-    background: #dc3545;
-    color: white;
-}
-
-/* Batch info section */
-.batch-info-section {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 6px;
-    padding: 10px;
-    margin-top: 10px;
-    display: none;
-}
-.batch-info-section.show {
-    display: block;
-}
-
-/* Product details card */
-.product-details-card {
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 12px;
-    margin-top: 10px;
-    display: none;
-}
-.product-details-card.show {
-    display: block;
-}
-
-/* Selected products table */
-.selected-products-table {
-    font-size: 0.875rem;
-}
-.selected-products-table th {
-    background: #f8f9fa;
-    font-weight: 600;
-    white-space: nowrap;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-.selected-products-table td {
-    vertical-align: middle;
-}
-
-/* Price calculation section */
-.price-calculation-section {
-    background: #e7f4ff;
-    border: 1px solid #b6e0fe;
-    border-radius: 6px;
-    padding: 10px;
-    margin-top: 10px;
-}
-.price-calculation-section input[readonly] {
-    background-color: #f8f9fa;
-    cursor: not-allowed;
-}
-
-/* Select2 custom styling */
-.select2-container--default .select2-selection--single {
-    height: 38px;
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-}
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-    line-height: 36px;
-    font-size: 0.875rem;
-}
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 36px;
-}
-.select2-results__option {
-    padding: 8px 12px;
-    font-size: 0.875rem;
-}
-.select2-container--default .select2-results__option--highlighted[aria-selected] {
-    background-color: #0d6efd;
-    color: white;
-}
-.select2-container--open .select2-dropdown--below {
-    border-radius: 0.375rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-/* Product option in dropdown */
-.product-option {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
-}
-.product-name {
-    font-weight: 500;
-    color: #333;
-    font-size: 0.9rem;
-}
-.product-code {
-    font-size: 0.8rem;
-    color: #666;
-}
-.product-price {
-    font-weight: 600;
-    color: #dc3545;
-    font-size: 0.85rem;
-}
-.product-stock-display {
-    display: flex;
-    gap: 5px;
-    margin-top: 3px;
-}
-
-/* General styles */
-.item-row {
-    transition: all 0.3s ease;
-}
-.item-row:hover {
-    background-color: #f8f9fa;
-}
-
-/* Price change warning */
-.price-change-warning {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 4px;
-    padding: 8px;
-    margin-top: 5px;
-    font-size: 0.8rem;
-}
-.price-increase-warning {
-    background: #d4edda;
-    border-color: #28a745;
-    color: #155724;
-}
-.price-decrease-warning {
-    background: #f8d7da;
-    border-color: #dc3545;
-    color: #721c24;
-}
-
-/* Bill upload section */
-.bill-upload-section {
-    background: #f0f9ff;
-    border: 2px dashed #0dcaf0;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-.bill-upload-section:hover {
-    background: #e7f4ff;
-    border-color: #0d6efd;
-}
-.bill-preview {
-    max-width: 200px;
-    max-height: 200px;
-    margin: 10px auto;
-    display: none;
-}
-.bill-preview img, .bill-preview embed {
-    max-width: 100%;
-    max-height: 200px;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-}
-
-/* Current bill display */
-.current-bill {
-    margin-top: 10px;
-    padding: 10px;
-    background: #f8f9fa;
-    border-radius: 6px;
-    border: 1px solid #dee2e6;
-}
-.current-bill a {
-    color: #0d6efd;
-    text-decoration: none;
-}
-.current-bill a:hover {
-    text-decoration: underline;
-}
-
-/* Scrollbar styling */
-.purchase-items-container::-webkit-scrollbar {
-    width: 8px;
-}
-.purchase-items-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-.purchase-items-container::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
-}
-.purchase-items-container::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-/* Price details styling */
-.price-details {
-    font-size: 0.8rem;
-    margin-top: 5px;
-}
-.price-details-item {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 2px;
-}
-.price-details-label {
-    color: #666;
-}
-.price-details-value {
-    font-weight: 500;
-}
-.markup-badge {
-    font-size: 0.7rem;
-    padding: 1px 4px;
-    border-radius: 2px;
-    background: #20c997;
-    color: white;
-    margin-left: 3px;
-}
-
-/* Manual purchase price input */
-.manual-price-input {
-    border-left: 3px solid #007bff !important;
-}
-.manual-price-input:focus {
-    border-left-width: 4px !important;
-    border-left-color: #0056b3 !important;
-}
-
-/* Payment status styling */
-.payment-status-badge {
-    padding: 5px 10px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 500;
-}
-.status-unpaid {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-}
-.status-partial {
-    background: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeeba;
-}
-.status-paid {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-}
-
-/* Warning for stock changes */
-.stock-change-warning {
-    background: #fff3cd;
-    border-left: 4px solid #ffc107;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-}
+.purchase-items-container{overflow-y:visible;padding-right:0}.product-search-section{background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:.75rem;margin-bottom:.75rem}.stock-badge{font-size:.7rem;padding:2px 6px;border-radius:3px;margin-right:3px}.shop-stock-badge{background:#17a2b8;color:#fff}.warehouse-stock-badge{background:#6c757d;color:#fff}.gst-badge{background:#6f42c1;color:#fff}.batch-info-section{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:.6rem;margin-top:.5rem;display:none}.batch-info-section.show{display:block}.product-details-card{background:#fff;border:1px solid #dee2e6;border-radius:6px;padding:.6rem;margin-top:.5rem;display:none}.product-details-card.show{display:block}.selected-products-table{font-size:.78rem}.selected-products-table th{background:#f8f9fa;font-weight:600;white-space:nowrap}.selected-products-table td{vertical-align:middle;padding:.38rem .45rem}.price-calculation-section{background:#e7f4ff;border:1px solid #b6e0fe;border-radius:6px;padding:.6rem;margin-top:.5rem}.price-calculation-section input[readonly]{background-color:#f8f9fa}.select2-container--default .select2-selection--single{height:32px;border:1px solid #ced4da;border-radius:.375rem}.select2-container--default .select2-selection--single .select2-selection__rendered{line-height:30px;font-size:.82rem}.select2-container--default .select2-selection--single .select2-selection__arrow{height:30px}.price-change-warning{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:8px;margin-top:5px;font-size:.8rem}.bill-upload-section{background:#f0f9ff;border:2px dashed #0dcaf0;border-radius:8px;padding:.75rem;text-align:center;cursor:pointer}.bill-preview{max-width:140px;max-height:110px;margin:5px auto 0;display:none}.bill-preview img,.bill-preview embed{max-width:100%;max-height:110px;border:1px solid #dee2e6;border-radius:4px}.current-bill{margin-top:10px;padding:8px;background:#f8f9fa;border-radius:6px;border:1px solid #dee2e6}.markup-badge{font-size:.7rem;padding:1px 4px;border-radius:2px;background:#20c997;color:white;margin-left:3px}.manual-price-input{border-left:3px solid #007bff!important}.stock-change-warning{background:#fff3cd;border-left:4px solid #ffc107;padding:10px;margin-bottom:12px;border-radius:4px}.gst-value-hint{margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;font-size:.68rem;line-height:1.2}.gst-value-hint span{display:inline-flex;align-items:center;padding:2px 5px;border-radius:999px;border:1px solid #d8e2ef;white-space:nowrap}.base-chip{background:#fff8e1;border-color:#ffe08a!important;color:#7a5700}.final-chip{background:#e7f4ff;border-color:#b6e0fe!important;color:#074f7a;font-weight:600}.gst-chip{background:#eef9f1;border-color:#b9e6c5!important;color:#176b2c}.gst-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.gst-summary-cell{background:#fff;border:1px solid #d8e2ef;border-radius:6px;padding:5px 7px}.gst-summary-cell small{display:block;color:#6c757d;font-size:.66rem}.gst-summary-cell strong{display:block;font-size:.78rem}.card{margin-bottom:.75rem}.card-header{padding:.55rem .85rem}.card-header h5{font-size:.96rem}.card-body{padding:.85rem}.form-label{font-size:.78rem;margin-bottom:.22rem}.form-control,.form-select{min-height:32px;height:32px;padding:.28rem .48rem;font-size:.82rem}textarea.form-control{height:auto;min-height:32px}.btn{padding:.32rem .65rem;font-size:.82rem}.alert{padding:.55rem .75rem;margin-bottom:.75rem}@media(max-width:767.98px){.gst-summary-grid{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body data-sidebar="dark">
 <div id="layout-wrapper">
-    <?php include 'includes/topbar.php'; ?>
-    <div class="vertical-menu">
-        <div data-simplebar class="h-100">
-            <?php include('includes/sidebar.php')?>
-        </div>
-    </div>
-
-    <div class="main-content">
-        <div class="page-content mb-4">
-            <div class="container-fluid">
-
-                <!-- Page Header -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="page-title-box d-flex align-items-center justify-content-between">
-                            <div>
-                                <h4 class="mb-0">
-                                    <i class="bx bx-edit me-2"></i> Edit Purchase Order
-                                    <small class="text-muted ms-2">#<?= htmlspecialchars($purchase['purchase_number']) ?></small>
-                                </h4>
-                                <p class="text-muted mb-0">
-                                    <i class="bx bx-store me-1"></i>
-                                    <?= htmlspecialchars($_SESSION['current_shop_name'] ?? 'All Shops') ?> | 
-                                    Business: <?= htmlspecialchars($_SESSION['current_business_name'] ?? 'N/A') ?>
-                                </p>
-                            </div>
-                            <div>
-                                <a href="purchase_view.php?id=<?= $purchase_id ?>" class="btn btn-info me-2">
-                                    <i class="bx bx-show me-1"></i> View
-                                </a>
-                                <a href="purchases.php" class="btn btn-outline-secondary">
-                                    <i class="bx bx-arrow-back me-1"></i> Back to List
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <?php if (isset($_GET['success'])): ?>
-                <div class="alert alert-success alert-dismissible fade show">
-                    <i class="bx bx-check-circle me-2"></i>
-                    Purchase order <strong>#<?= htmlspecialchars($purchase['purchase_number']) ?></strong> updated successfully!
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($error): ?>
-                <div class="alert alert-danger alert-dismissible fade show">
-                    <i class="bx bx-error me-2"></i> <?= htmlspecialchars($error) ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-                <?php endif; ?>
-
-                <!-- Stock Change Warning -->
-                <div class="stock-change-warning">
-                    <i class="bx bx-info-circle me-2"></i>
-                    <strong>Important:</strong> Editing this purchase will adjust stock quantities. 
-                    Previous stock levels will be restored before applying the new changes.
-                </div>
-
-                <form method="POST" id="purchaseForm" enctype="multipart/form-data">
-                    <div class="row g-4">
-                        <!-- Purchase Details Card -->
-                        <div class="col-lg-4">
-                            <div class="card card-hover border-start border-primary border-4 shadow-sm h-100">
-                                <div class="card-header bg-primary text-white">
-                                    <h5 class="mb-0">
-                                        <i class="bx bx-detail me-2"></i> Purchase Details
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Number</label>
-                                        <input type="text" class="form-control bg-light" value="<?= htmlspecialchars($purchase['purchase_number']) ?>" readonly>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Date <span class="text-danger">*</span></label>
-                                        <input type="date" name="purchase_date" class="form-control" value="<?= $purchase['purchase_date'] ?>" required>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Supplier <span class="text-danger">*</span></label>
-                                        <select name="manufacturer_id" class="form-select select2-supplier" required>
-                                            <option value="">-- Select Supplier --</option>
-                                            <?php foreach ($manufacturers as $m): ?>
-                                            <option value="<?= $m['id'] ?>" <?= $m['id'] == $purchase['manufacturer_id'] ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($m['name']) ?>
-                                            </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Receive Stock At <span class="text-danger">*</span></label>
-                                        <select name="shop_id" class="form-select select2-shop" required>
-                                            <option value="">-- Select Location --</option>
-                                            <?php foreach ($shops as $shop): ?>
-                                            <option value="<?= $shop['id'] ?>" <?= $shop['id'] == $purchase['shop_id'] ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($shop['shop_name']) ?>
-                                                <?= $shop['is_warehouse'] ? ' (Warehouse)' : '' ?>
-                                            </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Purchase Invoice No.</label>
-                                        <input type="text" name="purchase_invoice_no" class="form-control" 
-                                               value="<?= htmlspecialchars($purchase['purchase_invoice_no'] ?? '') ?>" 
-                                               placeholder="Supplier's invoice number">
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Bill/Reference No.</label>
-                                        <input type="text" name="reference" class="form-control" 
-                                               value="<?= htmlspecialchars($purchase['reference'] ?? '') ?>" 
-                                               placeholder="Optional">
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label">Bill Image</label>
-                                        <?php if ($purchase['bill_image'] && file_exists($purchase['bill_image'])): ?>
-                                        <div class="current-bill mb-2">
-                                            <i class="bx bx-file me-1"></i>
-                                            <a href="<?= htmlspecialchars($purchase['bill_image']) ?>" target="_blank">
-                                                View Current Bill
-                                            </a>
-                                        </div>
-                                        <?php endif; ?>
-                                        
-                                        <div class="bill-upload-section" onclick="document.getElementById('billImage').click()">
-                                            <i class="bx bx-cloud-upload fs-1 text-primary mb-3"></i>
-                                            <p class="mb-1">Click to upload new bill image</p>
-                                            <p class="text-muted small mb-0">Supports: JPG, PNG, GIF, WEBP, PDF (Max 10MB)</p>
-                                            <input type="file" name="bill_image" id="billImage" class="d-none" accept="image/*,.pdf">
-                                            <div id="billPreview" class="bill-preview"></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label">Notes (Optional)</label>
-                                        <textarea name="notes" class="form-control" rows="3" placeholder="Any special instructions..."><?= htmlspecialchars($purchase['notes'] ?? '') ?></textarea>
-                                    </div>
-
-                                    <!-- Payment Status Section -->
-                                    <div class="mt-4 pt-3 border-top">
-                                        <h6 class="fw-bold mb-3">Payment Information</h6>
-                                        <div class="mb-3">
-                                            <label class="form-label">Payment Status</label>
-                                            <select name="payment_status" class="form-select">
-                                                <option value="unpaid" <?= $purchase['payment_status'] == 'unpaid' ? 'selected' : '' ?>>Unpaid</option>
-                                                <option value="partial" <?= $purchase['payment_status'] == 'partial' ? 'selected' : '' ?>>Partial</option>
-                                                <option value="paid" <?= $purchase['payment_status'] == 'paid' ? 'selected' : '' ?>>Paid</option>
-                                            </select>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Paid Amount (₹)</label>
-                                            <input type="number" name="paid_amount" step="0.01" min="0" 
-                                                   class="form-control" value="<?= $purchase['paid_amount'] ?>">
-                                        </div>
-                                        <div class="alert alert-info mb-0">
-                                            <small>
-                                                <i class="bx bx-info-circle me-1"></i>
-                                                Total Amount: ₹<?= number_format($purchase['total_amount'], 2) ?><br>
-                                                Balance: ₹<?= number_format($purchase['total_amount'] - $purchase['paid_amount'], 2) ?>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Products Section -->
-                        <div class="col-lg-8">
-                            <div class="card shadow-sm h-100">
-                                <div class="card-header bg-light">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h5 class="mb-0">
-                                            <i class="bx bx-package me-2"></i> Purchase Items
-                                        </h5>
-                                        <span class="badge bg-primary" id="itemCount"><?= count($purchase_items) ?> Items</span>
-                                    </div>
-                                </div>
-                                <div class="card-body purchase-items-container">
-                                    <!-- Product Search Section -->
-                                    <div class="product-search-section">
-                                        <h5><i class="bx bx-search me-2"></i> Add More Products</h5>
-                                        
-                                        <div class="row g-3">
-                                            <div class="col-md-12">
-                                                <label class="form-label">Search Product</label>
-                                                <select id="productSelect" class="form-control select2-products">
-                                                   <option value=""></option>
-                                                </select>
-                                            </div>
-                                            
-                                            <div class="col-md-3">
-                                                <label class="form-label">Total Stock</label>
-                                                <input type="text" id="stockDisplay" class="form-control bg-white" readonly value="0">
-                                            </div>
-                                            
-                                            <div class="col-md-3">
-                                                <label class="form-label">MRP <span class="text-danger">*</span></label>
-                                                <input type="number" step="0.01" min="0" id="mrp" class="form-control" value="0" required>
-                                            </div>
-                                            
-                                            <div class="col-md-3">
-                                                <label class="form-label">Discount</label>
-                                                <input type="text" id="discount" class="form-control" placeholder="e.g., 30% or 100">
-                                            </div>
-                                            
-                                            <div class="col-md-3">
-                                                <label class="form-label">Purchase Price <span class="text-danger">*</span></label>
-                                                <input type="number" step="0.01" min="0" id="purchasePrice" class="form-control manual-price-input" value="0" required>
-                                                <small class="text-muted">Manual entry - discount will auto-calculate</small>
-                                            </div>
-                                            
-                                            <div class="col-md-3">
-                                                <label class="form-label">Quantity <span class="text-danger">*</span></label>
-                                                <input type="number" id="quantity" class="form-control" min="1" value="1" required>
-                                            </div>
-                                            
-                                            <!-- Price Calculation Section -->
-                                            <div class="col-md-12">
-                                                <div id="priceCalculation" class="price-calculation-section" style="display:none;">
-                                                    <div class="row g-3">
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Calculated Purchase Price</label>
-                                                            <input type="number" step="0.01" id="calculatedPurchasePrice" class="form-control bg-light" readonly>
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Retail Price <span id="retailMarkupBadge"></span></label>
-                                                            <input type="number" step="0.01" id="retailPrice" class="form-control bg-light" readonly>
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Wholesale Price <span id="wholesaleMarkupBadge"></span></label>
-                                                            <input type="number" step="0.01" id="wholesalePrice" class="form-control bg-light" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="price-details mt-2" id="priceDetails" style="display:none;">
-                                                        <div class="price-details-item">
-                                                            <span class="price-details-label">Retail Markup:</span>
-                                                            <span class="price-details-value" id="retailMarkupDisplay">0%</span>
-                                                        </div>
-                                                        <div class="price-details-item">
-                                                            <span class="price-details-label">Wholesale Markup:</span>
-                                                            <span class="price-details-value" id="wholesaleMarkupDisplay">0%</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Tax Rates -->
-                                            <div class="col-md-12">
-                                                <div class="row g-2">
-                                                    <div class="col-4">
-                                                        <label class="form-label small">CGST %</label>
-                                                        <input type="number" step="0.01" id="cgstRate" class="form-control" value="0">
-                                                    </div>
-                                                    <div class="col-4">
-                                                        <label class="form-label small">SGST %</label>
-                                                        <input type="number" step="0.01" id="sgstRate" class="form-control" value="0">
-                                                    </div>
-                                                    <div class="col-4">
-                                                        <label class="form-label small">IGST %</label>
-                                                        <input type="number" step="0.01" id="igstRate" class="form-control" value="0">
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Batch Information Section -->
-                                            <div class="col-md-12">
-                                                <div id="batchInfoSection" class="batch-info-section">
-                                                    <div class="row g-3">
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Batch Number</label>
-                                                            <input type="text" id="batchNumber" class="form-control" placeholder="Auto-generated">
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Manufacture Date</label>
-                                                            <input type="date" id="manufactureDate" class="form-control">
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label small">Expiry Date</label>
-                                                            <input type="date" id="expiryDate" class="form-control">
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="col-md-12">
-                                                <button type="button" id="addProductBtn" class="btn btn-primary w-100">
-                                                    <i class="bx bx-plus me-1"></i> Add Product to List
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        <!-- Product Details Card -->
-                                        <div id="productDetails" class="product-details-card">
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <strong id="productName" class="product-name"></strong><br>
-                                                    <small class="text-muted">Code: <span id="productCode"></span></small><br>
-                                                    <small class="text-muted" id="productHSN"></small>
-                                                    <div class="product-stock-display mt-1" id="productStockInfo"></div>
-                                                </div>
-                                                <div class="col-md-6 text-end">
-                                                    <small class="text-danger fw-bold">MRP: ₹<span id="mrpDisplay"></span></small><br>
-                                                    <small class="text-success fw-bold">Current Cost: ₹<span id="currentCost"></span></small><br>
-                                                    <small class="text-muted" id="productGST"></small>
-                                                    <div class="price-details mt-1" id="currentPriceDetails">
-                                                        <div class="price-details-item">
-                                                            <span class="price-details-label">Retail:</span>
-                                                            <span class="price-details-value">₹<span id="currentRetailPrice"></span></span>
-                                                        </div>
-                                                        <div class="price-details-item">
-                                                            <span class="price-details-label">Wholesale:</span>
-                                                            <span class="price-details-value">₹<span id="currentWholesalePrice"></span></span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="row mt-2">
-                                                <div class="col-12">
-                                                    <div class="border-top pt-2">
-                                                        <small class="text-muted">Last Batch:</small>
-                                                        <div class="row">
-                                                            <div class="col-4">
-                                                                <small>Price: ₹<span id="lastBatchPrice">0.00</span></small>
-                                                            </div>
-                                                            <div class="col-4">
-                                                                <small>Retail: ₹<span id="lastBatchRetail">0.00</span></small>
-                                                            </div>
-                                                            <div class="col-4">
-                                                                <small>Wholesale: ₹<span id="lastBatchWholesale">0.00</span></small>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <!-- Price Change Warning -->
-                                        <div id="priceChangeWarning" class="price-change-warning" style="display:none;">
-                                            <i class="bx bx-info-circle me-1"></i>
-                                            <span id="warningText"></span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Selected Products Table -->
-                                    <div class="table-responsive mt-4">
-                                        <table class="table table-hover selected-products-table" id="selectedProductsTable">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th width="5%">#</th>
-                                                    <th width="25%">Product</th>
-                                                    <th width="8%" class="text-end">Qty</th>
-                                                    <th width="12%" class="text-end">Purchase Price</th>
-                                                    <th width="8%" class="text-end">Tax Rate</th>
-                                                    <th width="12%" class="text-end">Total</th>
-                                                    <th width="8%" class="text-center">Batch</th>
-                                                    <th width="10%" class="text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="selectedProductsBody">
-                                                <!-- Will be populated by JavaScript -->
-                                            </tbody>
-                                            <tfoot>
-                                                <tr class="table-light">
-                                                    <td colspan="5" class="text-end fw-bold">Grand Total:</td>
-                                                    <td class="text-end fw-bold" id="grandTotal">₹0.00</td>
-                                                    <td colspan="2"></td>
-                                                </tr>
-                                                <tr class="table-light">
-                                                    <td colspan="5" class="text-end fw-bold">Total GST:</td>
-                                                    <td class="text-end fw-bold" id="totalGST">₹0.00</td>
-                                                    <td colspan="2"></td>
-                                                </tr>
-                                                <tr class="table-light">
-                                                    <td colspan="5" class="text-end fw-bold">GST Credit:</td>
-                                                    <td class="text-end fw-bold text-success" id="gstCredit">₹0.00</td>
-                                                    <td colspan="2"></td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-
-                                    <div class="alert alert-info mt-3">
-                                        <i class="bx bx-info-circle me-2"></i>
-                                        <strong>Purchase Summary:</strong>
-                                        <span id="stockSummary">
-                                            <?= count($purchase_items) ?> products loaded
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <div class="card-footer">
-                                    <div class="text-end">
-                                        <button type="submit" class="btn btn-success btn-lg px-5" id="submitBtn">
-                                            <i class="bx bx-save me-2"></i> Update Purchase Order
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </form>
-
-            </div>
-        </div>
-        <?php include 'includes/footer.php'; ?>
-    </div>
-</div>
-
+<?php include 'includes/topbar.php'; ?>
+<div class="vertical-menu"><div data-simplebar class="h-100"><?php include('includes/sidebar.php')?></div></div>
+<div class="main-content"><div class="page-content mb-4"><div class="container-fluid">
+<div class="row mb-3"><div class="col-12"><div class="page-title-box d-flex align-items-center justify-content-between"><div><h4 class="mb-0"><i class="bx bx-edit me-2"></i> Edit Purchase Order <small class="text-muted ms-2">#<?= h($purchase['purchase_number']) ?></small></h4><p class="text-muted mb-0"><?= h($_SESSION['current_shop_name'] ?? 'All Shops') ?> | Business: <?= h($_SESSION['current_business_name'] ?? 'N/A') ?></p></div><div><a href="purchase_view.php?id=<?= $purchase_id ?>" class="btn btn-info me-2"><i class="bx bx-show me-1"></i> View</a><a href="purchases.php" class="btn btn-outline-secondary"><i class="bx bx-arrow-back me-1"></i> Back</a></div></div></div></div>
+<?php if (isset($_GET['success'])): ?><div class="alert alert-success alert-dismissible fade show"><i class="bx bx-check-circle me-2"></i>Purchase order updated successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
+<?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><i class="bx bx-error me-2"></i><?= h($error) ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
+<div class="stock-change-warning"><i class="bx bx-info-circle me-2"></i><strong>Important:</strong> Editing this purchase will adjust stock quantities. Previous purchase stock is restored first, then edited stock is applied.</div>
+<form method="POST" id="purchaseForm" enctype="multipart/form-data">
+<div class="row g-3">
+<div class="col-12"><div class="card border-start border-primary border-4 shadow-sm"><div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bx bx-detail me-2"></i> Purchase Details</h5></div><div class="card-body"><div class="row g-2">
+<div class="col-md-3"><label class="form-label fw-bold">Purchase Number</label><input type="text" class="form-control bg-light" value="<?= h($purchase['purchase_number']) ?>" readonly></div>
+<div class="col-md-3"><label class="form-label fw-bold">Purchase Date <span class="text-danger">*</span></label><input type="date" name="purchase_date" class="form-control" value="<?= h($purchase['purchase_date']) ?>" required></div>
+<div class="col-md-3"><label class="form-label fw-bold">Supplier <span class="text-danger">*</span></label><select name="manufacturer_id" class="form-select select2-supplier" required><option value="">-- Select Supplier --</option><?php foreach ($manufacturers as $m): ?><option value="<?= (int)$m['id'] ?>" <?= (int)$m['id'] === (int)$purchase['manufacturer_id'] ? 'selected' : '' ?>><?= h($m['name']) ?></option><?php endforeach; ?></select></div>
+<div class="col-md-3"><label class="form-label fw-bold">Receive Stock At <span class="text-danger">*</span></label><select name="shop_id" class="form-select select2-shop" required><option value="">-- Select Location --</option><?php foreach ($shops as $shop): ?><option value="<?= (int)$shop['id'] ?>" <?= (int)$shop['id'] === (int)$purchase['shop_id'] ? 'selected' : '' ?>><?= h($shop['shop_name']) ?><?= $shop['is_warehouse'] ? ' (Warehouse)' : '' ?></option><?php endforeach; ?></select></div>
+<div class="col-md-3"><label class="form-label fw-bold">Purchase Invoice No.</label><input type="text" name="purchase_invoice_no" class="form-control" value="<?= h($purchase['purchase_invoice_no'] ?? '') ?>"></div>
+<div class="col-md-3"><label class="form-label fw-bold">Bill/Reference No.</label><input type="text" name="reference" class="form-control" value="<?= h($purchase['reference'] ?? '') ?>"></div>
+<div class="col-md-2"><label class="form-label">Payment Status</label><select name="payment_status" class="form-select"><option value="unpaid" <?= $purchase['payment_status'] === 'unpaid' ? 'selected' : '' ?>>Unpaid</option><option value="partial" <?= $purchase['payment_status'] === 'partial' ? 'selected' : '' ?>>Partial</option><option value="paid" <?= $purchase['payment_status'] === 'paid' ? 'selected' : '' ?>>Paid</option></select></div>
+<div class="col-md-2"><label class="form-label">Paid Amount</label><input type="number" name="paid_amount" step="0.01" min="0" class="form-control" value="<?= h($purchase['paid_amount'] ?? 0) ?>"></div>
+<div class="col-md-2"><label class="form-label">Notes</label><textarea name="notes" class="form-control" rows="1"><?= h($purchase['notes'] ?? '') ?></textarea></div>
+<div class="col-12"><label class="form-label fw-bold">Bill Image</label><?php if (!empty($purchase['bill_image']) && file_exists($purchase['bill_image'])): ?><div class="current-bill mb-2"><a href="<?= h($purchase['bill_image']) ?>" target="_blank"><i class="bx bx-file me-1"></i> View Current Bill</a></div><?php endif; ?><div class="bill-upload-section w-100" onclick="document.getElementById('billImage').click()"><i class="bx bx-cloud-upload fs-3 text-primary"></i><p class="mb-0">Click to upload new bill image</p><small class="text-muted">JPG, PNG, GIF, WEBP, PDF (Max 10MB)</small><input type="file" name="bill_image" id="billImage" class="d-none" accept="image/*,.pdf"><div id="billPreview" class="bill-preview"></div></div></div>
+</div></div></div></div>
+<div class="col-12"><div class="card shadow-sm"><div class="card-header bg-light"><div class="d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="bx bx-package me-2"></i> Purchase Items</h5><span class="badge bg-primary" id="itemCount">0 Items</span></div></div><div class="card-body purchase-items-container">
+<div class="product-search-section"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="mb-0"><i class="bx bx-search me-2"></i> Add Products</h5></div><div class="row g-2">
+<div class="col-md-12"><label class="form-label">Search Product</label><select id="productSelect" class="form-control select2-products"><option value=""></option></select></div>
+<div class="col-md-3"><label class="form-label">Total Stock</label><input type="text" id="stockDisplay" class="form-control bg-white" readonly value="0"></div>
+<div class="col-md-3"><label class="form-label">MRP <span class="text-danger">*</span></label><input type="number" step="0.01" min="0" id="mrp" class="form-control" value="0"><div id="mrpGstHint" class="gst-value-hint"><span class="base-chip">Without GST: ₹0.00</span><span class="final-chip">After GST: ₹0.00</span></div></div>
+<div class="col-md-3"><label class="form-label">Discount</label><input type="text" id="discount" class="form-control" placeholder="e.g., 30% or 100"></div>
+<div class="col-md-3"><label class="form-label">Purchase Price <span class="text-danger">*</span></label><input type="number" step="0.01" min="0" id="purchasePrice" class="form-control manual-price-input" value="0"><small class="text-muted">Manual entry</small><div id="purchasePriceGstHint" class="gst-value-hint"><span class="base-chip">Without GST: ₹0.00</span><span class="gst-chip">GST: ₹0.00</span><span class="final-chip">After GST: ₹0.00</span></div></div>
+<div class="col-md-3"><label class="form-label">Quantity <span class="text-danger">*</span></label><input type="number" id="quantity" class="form-control" min="1" value="1"></div>
+<div class="col-md-12"><div id="priceCalculation" class="price-calculation-section" style="display:none;"><div class="row g-2"><div class="col-md-4"><label class="form-label small">Calculated Purchase Price</label><input type="number" step="0.01" id="calculatedPurchasePrice" class="form-control bg-light" readonly><div id="calculatedPurchasePriceGstHint" class="gst-value-hint"></div></div><div class="col-md-4"><label class="form-label small">Retail Price <span id="retailMarkupBadge"></span></label><input type="number" step="0.01" id="retailPrice" class="form-control bg-light" readonly><div id="retailPriceGstHint" class="gst-value-hint"></div></div><div class="col-md-4"><label class="form-label small">Wholesale Price <span id="wholesaleMarkupBadge"></span></label><input type="number" step="0.01" id="wholesalePrice" class="form-control bg-light" readonly><div id="wholesalePriceGstHint" class="gst-value-hint"></div></div></div></div></div>
+<div class="col-md-12"><div class="row g-2 align-items-end"><div class="col-md-2 col-6"><label class="form-label small">GST Type</label><select id="gstType" class="form-select"><option value="inclusive">Inclusive</option><option value="exclusive">Exclusive</option></select></div><div class="col-md-2 col-6"><label class="form-label small">CGST %</label><input type="number" step="0.01" id="cgstRate" class="form-control" value="0"></div><div class="col-md-2 col-6"><label class="form-label small">SGST %</label><input type="number" step="0.01" id="sgstRate" class="form-control" value="0"></div><div class="col-md-2 col-6"><label class="form-label small">IGST %</label><input type="number" step="0.01" id="igstRate" class="form-control" value="0"></div><div class="col-md-4 col-12"><label class="form-label small">GST Calculation</label><div id="gstBreakupBox" class="alert alert-light border mb-0 small"><div class="gst-summary-grid"><div class="gst-summary-cell"><small>Without GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>GST</small><strong>₹0.00</strong></div><div class="gst-summary-cell"><small>Final Value</small><strong>₹0.00</strong></div></div></div></div></div></div>
+<div class="col-md-12"><div id="batchInfoSection" class="batch-info-section"><div class="row g-2"><div class="col-md-4"><label class="form-label small">Batch Number</label><input type="text" id="batchNumber" class="form-control" placeholder="Auto-generated"></div><div class="col-md-4"><label class="form-label small">Manufacture Date</label><input type="date" id="manufactureDate" class="form-control"></div><div class="col-md-4"><label class="form-label small">Expiry Date</label><input type="date" id="expiryDate" class="form-control"></div></div></div></div>
+<div class="col-md-12"><button type="button" id="addProductBtn" class="btn btn-primary w-100"><i class="bx bx-plus me-1"></i> Add Product to List</button></div>
+</div><div id="productDetails" class="product-details-card"><div class="row"><div class="col-md-6"><strong id="productName"></strong><br><small class="text-muted">Code: <span id="productCode"></span></small><br><small class="text-muted" id="productHSN"></small><div id="productStockInfo" class="mt-1"></div></div><div class="col-md-6 text-end"><small class="text-danger fw-bold">MRP: ₹<span id="mrpDisplay"></span></small><br><small class="text-success fw-bold">Current Cost: ₹<span id="currentCost"></span></small><br><small class="text-muted" id="productGST"></small><div class="mt-1"><small>Retail: ₹<span id="currentRetailPrice"></span></small><br><small>Wholesale: ₹<span id="currentWholesalePrice"></span></small></div></div></div></div><div id="priceChangeWarning" class="price-change-warning" style="display:none;"><i class="bx bx-info-circle me-1"></i><span id="warningText"></span></div></div>
+<div class="table-responsive mt-3"><table class="table table-hover selected-products-table" id="selectedProductsTable"><thead><tr><th>#</th><th>Product</th><th class="text-end">Qty</th><th class="text-end">Purchase Price</th><th class="text-end">Tax</th><th class="text-end">Total</th><th class="text-center">Batch</th><th class="text-center">Action</th></tr></thead><tbody id="selectedProductsBody"></tbody><tfoot><tr><td colspan="5" class="text-end fw-bold">Grand Total:</td><td class="text-end fw-bold" id="grandTotal">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">Total GST:</td><td class="text-end fw-bold" id="totalGST">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">GST Credit:</td><td class="text-end fw-bold text-success" id="gstCredit">₹0.00</td><td colspan="2"></td></tr></tfoot></table></div>
+<div class="alert alert-info mt-3"><strong>Purchase Summary:</strong> <span id="stockSummary">No products selected</span></div></div><div class="card-footer"><div class="text-end"><button type="submit" class="btn btn-success btn-lg px-5" id="submitBtn"><i class="bx bx-save me-2"></i> Update Purchase Order</button></div></div></div></div>
+</div></form></div></div><?php include 'includes/footer.php'; ?></div></div>
 <?php include 'includes/scripts.php'; ?>
-<!-- Add Select2 JS -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<!-- Add flatpickr for date picker -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-
 <script>
-// Global state
 const PRODUCTS = <?php echo json_encode($jsProducts, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
 const BARCODE_MAP = <?php echo json_encode($barcodeMap, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
 const PURCHASE_ITEMS = <?php echo json_encode($purchase_items, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
-
-let selectedProducts = new Map();
-let itemCounter = 0;
-let currentProductId = null;
-let manualPriceUpdate = false; // Flag to track manual price entry mode
-
-// Helper functions
-function findProductById(id) {
-    return PRODUCTS[id];
-}
-
-function formatMoney(n) { 
-    return '₹' + parseFloat(n).toFixed(2);
-}
-
-// Calculate purchase price from MRP and discount
-function calculatePurchasePriceFromDiscount(mrp, discountInput) {
-    let purchasePrice = mrp;
-    
-    if (discountInput && discountInput.trim()) {
-        const discount = discountInput.trim();
-        
-        if (discount.includes('%')) {
-            const discountPercent = parseFloat(discount.replace('%', '')) || 0;
-            if (discountPercent > 100) {
-                alert('Discount percentage cannot exceed 100%');
-                return mrp;
-            }
-            purchasePrice = mrp - (mrp * discountPercent / 100);
-        } else {
-            const discountAmount = parseFloat(discount) || 0;
-            if (discountAmount > mrp) {
-                alert('Discount amount cannot exceed MRP');
-                return mrp;
-            }
-            purchasePrice = mrp - discountAmount;
-        }
-    }
-    
-    return purchasePrice < 0 ? 0 : purchasePrice;
-}
-
-// Calculate discount from MRP and purchase price
-function calculateDiscountFromPrice(mrp, purchasePrice) {
-    if (mrp <= 0 || purchasePrice <= 0) return '';
-    if (purchasePrice >= mrp) return '';
-    
-    const discountPercent = ((mrp - purchasePrice) / mrp) * 100;
-    return discountPercent.toFixed(1) + '%';
-}
-
-// Calculate retail and wholesale prices based on markup percentages
-function calculateSellingPrices(purchasePrice, product) {
-    let retailPrice = purchasePrice;
-    let wholesalePrice = purchasePrice;
-    
-    if (product.retail_markup_percent > 0) {
-        retailPrice = purchasePrice + (purchasePrice * product.retail_markup_percent / 100);
-    } else if (product.retail_price_value > 0) {
-        if (product.retail_price_type === 'percentage') {
-            retailPrice = purchasePrice + (purchasePrice * product.retail_price_value / 100);
-        } else {
-            retailPrice = purchasePrice + product.retail_price_value;
-        }
-    }
-    
-    if (product.wholesale_markup_percent > 0) {
-        wholesalePrice = purchasePrice + (purchasePrice * product.wholesale_markup_percent / 100);
-    } else if (product.wholesale_price_value > 0) {
-        if (product.wholesale_price_type === 'percentage') {
-            wholesalePrice = purchasePrice + (purchasePrice * product.wholesale_price_value / 100);
-        } else {
-            wholesalePrice = purchasePrice + product.wholesale_price_value;
-        }
-    }
-    
-    const retailMarkupPercent = purchasePrice > 0 ? ((retailPrice - purchasePrice) / purchasePrice) * 100 : 0;
-    const wholesaleMarkupPercent = purchasePrice > 0 ? ((wholesalePrice - purchasePrice) / purchasePrice) * 100 : 0;
-    
-    return {
-        retailPrice: retailPrice,
-        wholesalePrice: wholesalePrice,
-        retailMarkupPercent: retailMarkupPercent,
-        wholesaleMarkupPercent: wholesaleMarkupPercent
-    };
-}
-
-// Calculate total for an item with GST
-function calculateItemTotal(price, quantity, cgst, sgst, igst) {
-    // Parse all inputs to ensure they're numbers
-    price = parseFloat(price) || 0;
-    quantity = parseInt(quantity) || 0;
-    cgst = parseFloat(cgst) || 0;
-    sgst = parseFloat(sgst) || 0;
-    igst = parseFloat(igst) || 0;
-    
-    const total = price * quantity;
-    const totalGstRate = cgst + sgst + igst;
-    
-    // Calculate taxable amount (GST exclusive)
-    const taxable = totalGstRate > 0 ? total / (1 + totalGstRate/100) : total;
-    
-    // Calculate GST amounts
-    const cgstAmt = taxable * cgst / 100;
-    const sgstAmt = taxable * sgst / 100;
-    const igstAmt = taxable * igst / 100;
-    const gstTotal = cgstAmt + sgstAmt + igstAmt;
-    
-    return {
-        taxable: taxable,
-        cgst: cgstAmt,
-        sgst: sgstAmt,
-        igst: igstAmt,
-        total: total, // This is GST inclusive total
-        gstCredit: gstTotal // Input tax credit available (total GST paid)
-    };
-}
-
-// Load existing purchase items
-function loadPurchaseItems() {
-    selectedProducts.clear();
-    itemCounter = 0;
-    
-    PURCHASE_ITEMS.forEach(item => {
-        const product = findProductById(item.product_id);
-        if (!product) return;
-        
-        // Parse GST rates properly
-        const cgst = parseFloat(item.cgst_rate) || 0;
-        const sgst = parseFloat(item.sgst_rate) || 0;
-        const igst = parseFloat(item.igst_rate) || 0;
-        const total_gst = cgst + sgst + igst;
-        
-        const itemId = ++itemCounter;
-        const totals = calculateItemTotal(
-            item.purchase_price, 
-            item.quantity, 
-            cgst, 
-            sgst, 
-            igst
-        );
-        
-        // Determine if price increased or decreased
-        const isIncrease = item.purchase_price > product.stock_price;
-        const isDecrease = item.purchase_price < product.stock_price;
-        
-        // Calculate selling prices
-        const sellingPrices = calculateSellingPrices(item.purchase_price, product);
-        
-        selectedProducts.set(itemId, {
-            id: item.product_id,
-            itemId: itemId,
-            name: product.name,
-            code: product.code,
-            shop_stock: product.shop_stock,
-            warehouse_stock: product.warehouse_stock,
-            total_stock: product.total_stock,
-            secondary_unit: product.secondary_unit,
-            sec_unit_conversion: product.sec_unit_conversion,
-            mrp: parseFloat(item.mrp) || 0,
-            old_mrp: product.mrp,
-            discount: item.discount || '',
-            purchase_price: parseFloat(item.purchase_price) || 0,
-            old_purchase_price: product.stock_price,
-            retail_price: parseFloat(item.retail_price) || sellingPrices.retailPrice,
-            old_retail_price: product.retail_price,
-            wholesale_price: parseFloat(item.wholesale_price) || sellingPrices.wholesalePrice,
-            old_wholesale_price: product.wholesale_price,
-            retail_markup_percent: sellingPrices.retailMarkupPercent,
-            wholesale_markup_percent: sellingPrices.wholesaleMarkupPercent,
-            quantity: parseInt(item.quantity) || 0,
-            cgst: cgst,
-            sgst: sgst,
-            igst: igst,
-            total_gst: total_gst,
-            hsn: item.hsn_code || product.hsn,
-            batch_number: item.batch_number || '',
-            manufacture_date: item.manufacture_date || '',
-            expiry_date: item.expiry_date || '',
-            is_increase: isIncrease ? 1 : 0,
-            is_decrease: isDecrease ? 1 : 0,
-            taxable: totals.taxable,
-            cgst_amount: totals.cgst,
-            sgst_amount: totals.sgst,
-            igst_amount: totals.igst,
-            total: totals.total,
-            gst_credit: totals.gstCredit
-        });
-    });
-    
-    updateProductsTable();
-    updateSummary();
-}
-
-// Update product details when selected
-function updateProductDetails(productId) {
-    const product = findProductById(productId);
-    if (product) {
-        currentProductId = productId;
-        manualPriceUpdate = false; // Start in auto mode
-        
-        $('#stockDisplay').val(product.total_stock);
-        $('#mrp').val(product.mrp || 0);
-        
-        // Calculate suggested discount based on current stock_price
-        if (product.mrp > 0 && product.stock_price > 0 && product.mrp > product.stock_price) {
-            const discountPercent = ((product.mrp - product.stock_price) / product.mrp) * 100;
-            $('#discount').val(discountPercent.toFixed(1) + '%');
-            // Calculate purchase price from discount
-            const purchasePrice = calculatePurchasePriceFromDiscount(product.mrp, discountPercent.toFixed(1) + '%');
-            $('#purchasePrice').val(purchasePrice.toFixed(2));
-        } else {
-            $('#discount').val('');
-            $('#purchasePrice').val(product.stock_price.toFixed(2));
-        }
-        
-        $('#quantity').val(1);
-        $('#cgstRate').val(product.cgst);
-        $('#sgstRate').val(product.sgst);
-        $('#igstRate').val(product.igst);
-        
-        // Auto-generate batch number
-        const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        $('#batchNumber').val('BATCH-' + date + '-' + Math.floor(Math.random() * 1000));
-        
-        // Show product details
-        $('#productDetails').addClass('show').show();
-        $('#productName').text(product.name);
-        $('#productCode').text(product.code);
-        $('#productHSN').text(product.hsn ? 'HSN: ' + product.hsn : '');
-        $('#mrpDisplay').text(product.mrp.toFixed(2));
-        $('#currentCost').text(product.stock_price.toFixed(2));
-        $('#currentRetailPrice').text(product.retail_price.toFixed(2));
-        $('#currentWholesalePrice').text(product.wholesale_price.toFixed(2));
-        
-        // Show last batch info
-        $('#lastBatchPrice').text(product.last_batch_price ? product.last_batch_price.toFixed(2) : '0.00');
-        $('#lastBatchRetail').text(product.last_batch_retail_price ? product.last_batch_retail_price.toFixed(2) : '0.00');
-        $('#lastBatchWholesale').text(product.last_batch_wholesale_price ? product.last_batch_wholesale_price.toFixed(2) : '0.00');
-        
-        // Show stock info
-        let stockHtml = '';
-        
-        if (product.shop_stock > 0) {
-            if (product.shop_stock < 10) {
-                stockHtml += `<span class="stock-badge low-stock-badge">S:${product.shop_stock}</span>`;
-            } else {
-                stockHtml += `<span class="stock-badge shop-stock-badge">S:${product.shop_stock}</span>`;
-            }
-        } else {
-            stockHtml += `<span class="stock-badge out-of-stock-badge">S:0</span>`;
-        }
-        
-        stockHtml += ' ';
-        
-        if (product.warehouse_stock > 0) {
-            stockHtml += `<span class="stock-badge warehouse-stock-badge">W:${product.warehouse_stock}</span>`;
-        } else {
-            stockHtml += `<span class="stock-badge out-of-stock-badge">W:0</span>`;
-        }
-        
-        if (product.secondary_unit && product.sec_unit_conversion > 0) {
-            stockHtml += `<span class="stock-badge secondary-unit-badge">${product.sec_unit_conversion} ${product.secondary_unit}</span>`;
-        }
-        
-        $('#productStockInfo').html(stockHtml);
-        
-        // Show GST info
-        let gstText = '';
-        if (product.total_gst > 0) {
-            gstText = `GST: ${product.total_gst}% (Inclusive)`;
-            if (product.cgst > 0) gstText += ` C:${product.cgst}%`;
-            if (product.sgst > 0) gstText += ` S:${product.sgst}%`;
-            if (product.igst > 0) gstText += ` I:${product.igst}%`;
-        } else {
-            gstText = 'No GST';
-        }
-        $('#productGST').text(gstText);
-        
-        // Calculate and show prices
-        updatePriceCalculations();
-        
-        // Show batch info section
-        $('#batchInfoSection').addClass('show').show();
-        
-        // Focus on MRP field
-        $('#mrp').focus().select();
-    }
-}
-
-// Update price calculations
-function updatePriceCalculations() {
-    if (!currentProductId) return;
-    
-    const product = findProductById(currentProductId);
-    if (!product) return;
-    
-    const mrp = parseFloat($('#mrp').val()) || 0;
-    const discount = $('#discount').val().trim();
-    const manualPurchasePrice = parseFloat($('#purchasePrice').val()) || 0;
-    const quantity = parseInt($('#quantity').val()) || 1;
-    const cgst = parseFloat($('#cgstRate').val()) || 0;
-    const sgst = parseFloat($('#sgstRate').val()) || 0;
-    const igst = parseFloat($('#igstRate').val()) || 0;
-    
-    let purchasePrice;
-    
-    if (manualPriceUpdate) {
-        // Use manually entered purchase price directly
-        purchasePrice = manualPurchasePrice;
-        
-        // Calculate discount based on manual purchase price (for display only)
-        if (mrp > 0 && purchasePrice < mrp) {
-            const discountPercent = ((mrp - purchasePrice) / mrp) * 100;
-            $('#discount').val(discountPercent.toFixed(1) + '%');
-        } else if (purchasePrice >= mrp) {
-            $('#discount').val('');
-        }
-    } else {
-        // Calculate purchase price from discount
-        if (discount) {
-            purchasePrice = calculatePurchasePriceFromDiscount(mrp, discount);
-        } else {
-            purchasePrice = mrp;
-        }
-        $('#purchasePrice').val(purchasePrice.toFixed(2));
-    }
-    
-    const sellingPrices = calculateSellingPrices(purchasePrice, product);
-    const totals = calculateItemTotal(purchasePrice, quantity, cgst, sgst, igst);
-    
-    $('#calculatedPurchasePrice').val(purchasePrice.toFixed(2));
-    $('#retailPrice').val(sellingPrices.retailPrice.toFixed(2));
-    $('#wholesalePrice').val(sellingPrices.wholesalePrice.toFixed(2));
-    
-    $('#retailMarkupBadge').html(`<span class="markup-badge">+${sellingPrices.retailMarkupPercent.toFixed(1)}%</span>`);
-    $('#wholesaleMarkupBadge').html(`<span class="markup-badge">+${sellingPrices.wholesaleMarkupPercent.toFixed(1)}%</span>`);
-    
-    $('#retailMarkupDisplay').text(sellingPrices.retailMarkupPercent.toFixed(1) + '%');
-    $('#wholesaleMarkupDisplay').text(sellingPrices.wholesaleMarkupPercent.toFixed(1) + '%');
-    
-    $('#priceCalculation').show();
-    $('#priceDetails').show();
-    
-    checkPriceChange(purchasePrice, product);
-}
-
-// Check if price has changed from current stock price
-function checkPriceChange(newPurchasePrice, product) {
-    const warningDiv = $('#priceChangeWarning');
-    const warningText = $('#warningText');
-    
-    warningDiv.removeClass('price-increase-warning price-decrease-warning');
-    
-    if (product.stock_price > 0 && Math.abs(newPurchasePrice - product.stock_price) > 0.01) {
-        const priceDiff = newPurchasePrice - product.stock_price;
-        const percentDiff = (Math.abs(priceDiff) / product.stock_price) * 100;
-        const direction = priceDiff > 0 ? 'increased' : 'decreased';
-        
-        let warningClass = priceDiff > 0 ? 'price-increase-warning' : 'price-decrease-warning';
-        warningDiv.addClass(warningClass);
-        
-        warningText.html(`Purchase price ${direction} by ${percentDiff.toFixed(1)}% (from ₹${product.stock_price.toFixed(2)} to ₹${newPurchasePrice.toFixed(2)}).<br>
-                        This will create a new batch with separate pricing.`);
-        
-        if (product.last_batch_price > 0) {
-            const lastBatchDiff = newPurchasePrice - product.last_batch_price;
-            const lastBatchPercentDiff = (Math.abs(lastBatchDiff) / product.last_batch_price) * 100;
-            const lastBatchDirection = lastBatchDiff > 0 ? 'higher' : 'lower';
-            
-            warningText.html(warningText.html() + `<br>Compared to last batch (₹${product.last_batch_price.toFixed(2)}): ${lastBatchPercentDiff.toFixed(1)}% ${lastBatchDirection}.`);
-        }
-        
-        warningDiv.show();
-    } else {
-        warningDiv.hide();
-    }
-}
-
-// Add product to cart
-function addProductToCart() {
-    const select = $('#productSelect');
-    const productId = select.val();
-    
-    if (!productId) {
-        alert('Please select a product first');
-        select.focus();
-        return;
-    }
-
-    const product = findProductById(productId);
-    if (!product) {
-        alert('Product not found');
-        return;
-    }
-
-    const productName = product.name;
-    const productCode = product.code;
-    const shop_stock = product.shop_stock || 0;
-    const warehouse_stock = product.warehouse_stock || 0;
-    const total_stock = product.total_stock || 0;
-    const secondary_unit = product.secondary_unit || '';
-    const sec_unit_conversion = product.sec_unit_conversion || 0;
-    const mrp = parseFloat($('#mrp').val()) || 0;
-    const discount = $('#discount').val().trim();
-    const purchasePrice = parseFloat($('#purchasePrice').val()) || 0;
-    const quantity = parseInt($('#quantity').val()) || 1;
-    
-    // Parse GST rates properly
-    const cgst = parseFloat($('#cgstRate').val()) || 0;
-    const sgst = parseFloat($('#sgstRate').val()) || 0;
-    const igst = parseFloat($('#igstRate').val()) || 0;
-    const total_gst = cgst + sgst + igst;
-    
-    const hsn = product.hsn || '';
-    const batch_number = $('#batchNumber').val() || '';
-    const manufacture_date = $('#manufactureDate').val() || '';
-    const expiry_date = $('#expiryDate').val() || '';
-
-    if (mrp <= 0) {
-        alert('MRP must be greater than 0');
-        $('#mrp').focus();
-        return;
-    }
-
-    if (purchasePrice <= 0) {
-        alert('Purchase price must be greater than 0');
-        $('#purchasePrice').focus();
-        return;
-    }
-
-    if (quantity <= 0) {
-        alert('Quantity must be greater than 0');
-        $('#quantity').focus();
-        return;
-    }
-
-    if (purchasePrice > mrp) {
-        if (!confirm('Purchase price (₹' + purchasePrice.toFixed(2) + ') is greater than MRP (₹' + mrp.toFixed(2) + '). Continue anyway?')) {
-            return;
-        }
-    }
-
-    const sellingPrices = calculateSellingPrices(purchasePrice, product);
-    const totals = calculateItemTotal(purchasePrice, quantity, cgst, sgst, igst);
-    
-    const isIncrease = purchasePrice > product.stock_price;
-    const isDecrease = purchasePrice < product.stock_price;
-    
-    const itemId = ++itemCounter;
-
-    selectedProducts.set(itemId, {
-        id: productId,
-        itemId: itemId,
-        name: productName,
-        code: productCode,
-        shop_stock: shop_stock,
-        warehouse_stock: warehouse_stock,
-        total_stock: total_stock,
-        secondary_unit: secondary_unit,
-        sec_unit_conversion: sec_unit_conversion,
-        mrp: mrp,
-        old_mrp: product.mrp,
-        discount: discount,
-        purchase_price: purchasePrice,
-        old_purchase_price: product.stock_price,
-        retail_price: sellingPrices.retailPrice,
-        old_retail_price: product.retail_price,
-        wholesale_price: sellingPrices.wholesalePrice,
-        old_wholesale_price: product.wholesale_price,
-        retail_markup_percent: sellingPrices.retailMarkupPercent,
-        wholesale_markup_percent: sellingPrices.wholesaleMarkupPercent,
-        quantity: quantity,
-        cgst: cgst,
-        sgst: sgst,
-        igst: igst,
-        total_gst: total_gst,
-        hsn: hsn,
-        batch_number: batch_number,
-        manufacture_date: manufacture_date,
-        expiry_date: expiry_date,
-        is_increase: isIncrease ? 1 : 0,
-        is_decrease: isDecrease ? 1 : 0,
-        taxable: totals.taxable,
-        cgst_amount: totals.cgst,
-        sgst_amount: totals.sgst,
-        igst_amount: totals.igst,
-        total: totals.total,
-        gst_credit: totals.gstCredit
-    });
-
-    updateProductsTable();
-    updateSummary();
-
-    // Reset fields
-    resetProductFields();
-}
-
-// Reset product fields
-function resetProductFields() {
-    const select = $('#productSelect');
-    select.val(null).trigger('change');
-    currentProductId = null;
-    manualPriceUpdate = false; // Reset manual mode flag
-    $('#stockDisplay').val('0');
-    $('#mrp').val('0');
-    $('#discount').val('');
-    $('#purchasePrice').val('0');
-    $('#quantity').val(1);
-    $('#cgstRate').val('0');
-    $('#sgstRate').val('0');
-    $('#igstRate').val('0');
-    $('#batchNumber').val('');
-    $('#manufactureDate').val('');
-    $('#expiryDate').val('');
-    $('#productDetails').removeClass('show');
-    $('#batchInfoSection').removeClass('show');
-    $('#priceCalculation').hide();
-    $('#priceDetails').hide();
-    $('#priceChangeWarning').hide();
-    
-    select.focus();
-}
-
-// Update products table
-function updateProductsTable() {
-    const tbody = $('#selectedProductsBody');
-    tbody.empty();
-    let totalAmount = 0;
-    let totalGST = 0;
-    let totalGSTCredit = 0;
-    let rowIndex = 0;
-
-    if (selectedProducts.size === 0) {
-        tbody.append('<tr id="emptyRow" class="text-center"><td colspan="8" class="py-4"><i class="bx bx-package fs-1 text-muted mb-3 d-block"></i><p class="text-muted">No products added yet</p></td></tr>');
-        $('#itemCount').text('0 Items');
-        $('#grandTotal').text(formatMoney(0));
-        $('#totalGST').text(formatMoney(0));
-        $('#gstCredit').text(formatMoney(0));
-        return;
-    }
-
-    selectedProducts.forEach((product, itemId) => {
-        // Ensure all numeric values are properly parsed
-        const cgst = parseFloat(product.cgst) || 0;
-        const sgst = parseFloat(product.sgst) || 0;
-        const igst = parseFloat(product.igst) || 0;
-        const total_gst = cgst + sgst + igst;
-        
-        // Calculate GST amounts if not already calculated
-        const purchasePrice = parseFloat(product.purchase_price) || 0;
-        const quantity = parseInt(product.quantity) || 0;
-        const total = purchasePrice * quantity;
-        
-        // Calculate taxable amount and GST components
-        const taxableAmount = total_gst > 0 ? total / (1 + total_gst/100) : total;
-        const cgstAmount = taxableAmount * cgst / 100;
-        const sgstAmount = taxableAmount * sgst / 100;
-        const igstAmount = taxableAmount * igst / 100;
-        const gstTotal = cgstAmount + sgstAmount + igstAmount;
-        
-        totalAmount += total;
-        totalGST += gstTotal;
-        totalGSTCredit += gstTotal; // GST credit is the total GST paid
-        
-        rowIndex++;
-        
-        let batchInfo = '';
-        if (product.batch_number) {
-            batchInfo = '<br><small class="text-info">';
-            batchInfo += `Batch: ${product.batch_number}`;
-            if (product.expiry_date) batchInfo += ` | Exp: ${product.expiry_date}`;
-            batchInfo += '</small>';
-        }
-        
-        let secondaryInfo = '';
-        if (product.secondary_unit && product.sec_unit_conversion > 0) {
-            const secondary_qty = product.quantity * product.sec_unit_conversion;
-            secondaryInfo = `<br><small class="text-success">${secondary_qty.toFixed(2)} ${product.secondary_unit}</small>`;
-        }
-        
-        let priceChangeBadge = '';
-        if (product.is_increase) {
-            priceChangeBadge = ' <span class="badge bg-success">↑</span>';
-        } else if (product.is_decrease) {
-            priceChangeBadge = ' <span class="badge bg-danger">↓</span>';
-        }
-        
-        let markupInfo = '';
-        if (product.retail_markup_percent > 0 || product.wholesale_markup_percent > 0) {
-            markupInfo = '<br><small class="text-muted">';
-            if (product.retail_markup_percent > 0) {
-                markupInfo += `R: +${product.retail_markup_percent.toFixed(1)}%`;
-            }
-            if (product.wholesale_markup_percent > 0) {
-                if (product.retail_markup_percent > 0) markupInfo += ' | ';
-                markupInfo += `W: +${product.wholesale_markup_percent.toFixed(1)}%`;
-            }
-            markupInfo += '</small>';
-        }
-        
-        // Fix GST display - show combined rate properly
-        let gstDisplay = '0%';
-        if (total_gst > 0) {
-            gstDisplay = total_gst.toFixed(2) + '%';
-            if (cgst > 0 && sgst > 0) {
-                gstDisplay = cgst.toFixed(2) + '+' + sgst.toFixed(2) + '%';
-            } else if (igst > 0) {
-                gstDisplay = igst.toFixed(2) + '% (IGST)';
-            }
-        }
-        
-        const row = $(`
-            <tr class="item-row" data-item-id="${itemId}">
-                <td>${rowIndex}</td>
-                <td>
-                    <strong>${product.name}${priceChangeBadge}</strong><br>
-                    <small class="text-muted">${product.code}</small>
-                    ${batchInfo}
-                    ${secondaryInfo}
-                    <br><small class="text-muted">MRP: ${formatMoney(product.mrp)} - ${product.discount || '0%'}</small>
-                    ${markupInfo}
-                </td>
-                <td class="text-end">${product.quantity}</td>
-                <td class="text-end">${formatMoney(product.purchase_price)}</td>
-                <td class="text-end">${gstDisplay}</td>
-                <td class="text-end fw-bold">${formatMoney(total)}</td>
-                <td class="text-center">
-                    ${product.batch_number ? '<i class="bx bx-package text-info" title="Batch: ' + product.batch_number + '"></i>' : '-'}
-                </td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-outline-danger btn-sm delete-btn" 
-                            data-item-id="${itemId}" title="Remove">
-                        <i class="bx bx-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        `);
-        tbody.append(row);
-    });
-
-    $('#grandTotal').text(formatMoney(totalAmount));
-    $('#totalGST').text(formatMoney(totalGST));
-    $('#gstCredit').text(formatMoney(totalGSTCredit));
-    $('#itemCount').text(`${selectedProducts.size} ${selectedProducts.size === 1 ? 'Item' : 'Items'}`);
-
-    $('.delete-btn').on('click', function(e) {
-        e.preventDefault();
-        const itemId = $(this).data('item-id');
-        deleteProduct(itemId);
-    });
-}
-
-// Delete product from cart
-function deleteProduct(itemId) {
-    if (confirm('Are you sure you want to remove this item from the purchase?')) {
-        selectedProducts.delete(itemId);
-        updateProductsTable();
-        updateSummary();
-    }
-}
-
-// Update purchase summary
-function updateSummary() {
-    if (selectedProducts.size === 0) {
-        $('#stockSummary').html('No products selected');
-        return;
-    }
-
-    let totalQty = 0;
-    let totalValue = 0;
-    let itemCount = selectedProducts.size;
-    let batchCount = 0;
-    let increaseCount = 0;
-    let decreaseCount = 0;
-
-    selectedProducts.forEach(product => {
-        totalQty += product.quantity;
-        totalValue += product.total;
-        if (product.batch_number) batchCount++;
-        if (product.is_increase) increaseCount++;
-        if (product.is_decrease) decreaseCount++;
-    });
-
-    let summary = `<strong>${itemCount} products</strong> | 
-                  <strong>${totalQty} units</strong> | 
-                  <strong>${formatMoney(totalValue)} total value</strong>`;
-    
-    if (batchCount > 0) {
-        summary += ` | <strong>${batchCount} batch${batchCount > 1 ? 'es' : ''}</strong>`;
-    }
-    
-    if (increaseCount > 0) {
-        summary += ` | <span class="text-success">${increaseCount} price increase${increaseCount > 1 ? 's' : ''}</span>`;
-    }
-    
-    if (decreaseCount > 0) {
-        summary += ` | <span class="text-danger">${decreaseCount} price decrease${decreaseCount > 1 ? 's' : ''}</span>`;
-    }
-    
-    $('#stockSummary').html(summary);
-}
-
-// Prepare form for submit
-function prepareFormForSubmit() {
-    $('input[name^="items["]').remove();
-    
-    let index = 0;
-    selectedProducts.forEach(product => {
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][product_id]`,
-            value: product.id
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][quantity]`,
-            value: product.quantity
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][mrp]`,
-            value: product.mrp
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][discount]`,
-            value: product.discount
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][purchase_price]`,
-            value: product.purchase_price
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][cgst_rate]`,
-            value: product.cgst
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][sgst_rate]`,
-            value: product.sgst
-        }).appendTo('#purchaseForm');
-        
-        $('<input>').attr({
-            type: 'hidden',
-            name: `items[${index}][igst_rate]`,
-            value: product.igst
-        }).appendTo('#purchaseForm');
-        
-        if (product.batch_number) {
-            $('<input>').attr({
-                type: 'hidden',
-                name: `items[${index}][batch_number]`,
-                value: product.batch_number
-            }).appendTo('#purchaseForm');
-            
-            if (product.manufacture_date) {
-                $('<input>').attr({
-                    type: 'hidden',
-                    name: `items[${index}][manufacture_date]`,
-                    value: product.manufacture_date
-                }).appendTo('#purchaseForm');
-            }
-            
-            if (product.expiry_date) {
-                $('<input>').attr({
-                    type: 'hidden',
-                    name: `items[${index}][expiry_date]`,
-                    value: product.expiry_date
-                }).appendTo('#purchaseForm');
-            }
-        }
-        
-        index++;
-    });
-}
-
-// Handle barcode scan
-function handleBarcodeScan(barcode) {
-    if (BARCODE_MAP[barcode]) {
-        const productId = BARCODE_MAP[barcode];
-        $('#productSelect').val(productId).trigger('change');
-        updateProductDetails(productId);
-        setTimeout(() => $('#mrp').focus(), 100);
-    }
-}
-
-// Bill image preview
-function setupBillImagePreview() {
-    $('#billImage').on('change', function() {
-        const file = this.files[0];
-        const preview = $('#billPreview');
-        
-        if (file) {
-            const reader = new FileReader();
-            
-            reader.onload = function(e) {
-                if (file.type === 'application/pdf') {
-                    preview.html(`<embed src="${e.target.result}" type="application/pdf" />`).show();
-                } else {
-                    preview.html(`<img src="${e.target.result}" alt="Bill Preview" />`).show();
-                }
-            };
-            
-            reader.readAsDataURL(file);
-        } else {
-            preview.hide().html('');
-        }
-    });
-}
-
-// Initialize Select2
-function initializeSelect2() {
-    $('.select2-supplier').select2({
-        placeholder: '-- Select Supplier --',
-        allowClear: false,
-        width: '100%'
-    });
-
-    $('.select2-shop').select2({
-        placeholder: '-- Select Location --',
-        allowClear: false,
-        width: '100%'
-    });
-
-    const productOptions = [];
-    Object.keys(PRODUCTS).forEach(productId => {
-        const product = PRODUCTS[productId];
-        productOptions.push({
-            id: productId,
-            text: `${product.name} (${product.code})`,
-            name: product.name,
-            code: product.code,
-            mrp: product.mrp,
-            shop_stock: product.shop_stock,
-            warehouse_stock: product.warehouse_stock,
-            hsn: product.hsn,
-            total_gst: product.total_gst,
-            secondary_unit: product.secondary_unit,
-            sec_unit_conversion: product.sec_unit_conversion
-        });
-    });
-
-    $('.select2-products').select2({
-        placeholder: '-- Type to search product --',
-        allowClear: true,
-        width: '100%',
-        data: productOptions,
-        templateResult: function(product) {
-            if (!product.id) return product.text;
-            
-            const prodData = PRODUCTS[product.id];
-            if (!prodData) return product.text;
-
-            const shopBadgeClass = prodData.shop_stock > 0 ? 
-                (prodData.shop_stock < 10 ? 'low-stock-badge' : 'shop-stock-badge') : 
-                'out-of-stock-badge';
-                
-            const warehouseBadgeClass = prodData.warehouse_stock > 0 ? 
-                'warehouse-stock-badge' : 
-                'out-of-stock-badge';
-            
-            return $(`
-                <div class="product-option">
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="product-name">${prodData.name}</div>
-                        <div class="product-code">
-                            ${prodData.code} | 
-                            <small class="text-muted">MRP: ₹${prodData.mrp.toFixed(2)}</small> |
-                            <small class="text-muted">HSN: ${prodData.hsn || 'N/A'}</small>
-                        </div>
-                        <div class="product-stock-display">
-                            <span class="stock-badge ${shopBadgeClass}">
-                                S:${prodData.shop_stock}
-                            </span>
-                            <span class="stock-badge ${warehouseBadgeClass}">
-                                W:${prodData.warehouse_stock}
-                            </span>
-                            <span class="stock-badge gst-badge">
-                                GST:${prodData.total_gst}% (Inc)
-                            </span>
-                            ${prodData.secondary_unit && prodData.sec_unit_conversion > 0 ? 
-                                `<span class="stock-badge secondary-unit-badge">
-                                    ${prodData.sec_unit_conversion} ${prodData.secondary_unit}
-                                </span>` : ''}
-                        </div>
-                    </div>
-                    <div class="product-price" style="white-space: nowrap;">
-                        Cost: ₹${prodData.stock_price.toFixed(2)}
-                    </div>
-                </div>
-            `);
-        },
-        templateSelection: function(product) {
-            if (!product.id) return product.text;
-            const prodData = PRODUCTS[product.id];
-            return prodData ? `${prodData.name} (${prodData.code})` : product.text;
-        },
-        escapeMarkup: function(markup) {
-            return markup;
-        }
-    });
-
-    $('#productSelect').on('change', function() {
-        const productId = $(this).val();
-        if (productId) {
-            updateProductDetails(productId);
-        } else {
-            currentProductId = null;
-            manualPriceUpdate = false;
-            $('#productDetails').removeClass('show');
-            $('#batchInfoSection').removeClass('show');
-            $('#priceCalculation').hide();
-            $('#priceDetails').hide();
-            $('#priceChangeWarning').hide();
-            $('#stockDisplay').val('0');
-            $('#mrp').val('0');
-            $('#discount').val('');
-            $('#purchasePrice').val('0');
-            $('#quantity').val(1);
-            $('#cgstRate').val('0');
-            $('#sgstRate').val('0');
-            $('#igstRate').val('0');
-            $('#batchNumber').val('');
-            $('#manufactureDate').val('');
-            $('#expiryDate').val('');
-        }
-    });
-
-    $('#productSelect').on('select2:select', function(e) {
-        const productId = e.params.data.id;
-        updateProductDetails(productId);
-    });
-
-    $('#productSelect').on('select2:clear', function() {
-        currentProductId = null;
-        manualPriceUpdate = false;
-        $('#productDetails').removeClass('show');
-        $('#batchInfoSection').removeClass('show');
-        $('#priceCalculation').hide();
-        $('#priceDetails').hide();
-        $('#priceChangeWarning').hide();
-        $('#stockDisplay').val('0');
-        $('#mrp').val('0');
-        $('#discount').val('');
-        $('#purchasePrice').val('0');
-        $('#quantity').val(1);
-        $('#cgstRate').val('0');
-        $('#sgstRate').val('0');
-        $('#igstRate').val('0');
-        $('#batchNumber').val('');
-        $('#manufactureDate').val('');
-        $('#expiryDate').val('');
-    });
-}
-
-// Form validation
-function setupFormValidation() {
-    $('#purchaseForm').on('submit', function(e) {
-        if (selectedProducts.size === 0) {
-            e.preventDefault();
-            alert('Please add at least one product to the purchase.');
-            return false;
-        }
-        
-        if (!$('select[name="manufacturer_id"]').val()) {
-            e.preventDefault();
-            alert('Please select a supplier.');
-            $('select[name="manufacturer_id"]').focus();
-            return false;
-        }
-        
-        if (!$('select[name="shop_id"]').val()) {
-            e.preventDefault();
-            alert('Please select a location to receive stock.');
-            $('select[name="shop_id"]').focus();
-            return false;
-        }
-        
-        const paidAmount = parseFloat($('input[name="paid_amount"]').val()) || 0;
-        const totalAmount = parseFloat($('#grandTotal').text().replace('₹', '')) || 0;
-        
-        if (paidAmount > totalAmount) {
-            if (!confirm('Paid amount (₹' + paidAmount.toFixed(2) + ') exceeds total amount (₹' + totalAmount.toFixed(2) + '). Continue anyway?')) {
-                return false;
-            }
-        }
-        
-        prepareFormForSubmit();
-        return true;
-    });
-}
-
-// Initialize everything
-$(document).ready(function() {
-    initializeSelect2();
-    setupBillImagePreview();
-    setupFormValidation();
-    
-    flatpickr("#manufactureDate", {
-        dateFormat: "Y-m-d"
-    });
-    
-    flatpickr("#expiryDate", {
-        dateFormat: "Y-m-d",
-        minDate: "today"
-    });
-    
-    $('#addProductBtn').on('click', addProductToCart);
-    
-    loadPurchaseItems();
-    
-    // Discount input handling
-    $('#discount').on('input', function() {
-        if (currentProductId) {
-            // When discount is changed manually, switch to auto mode
-            manualPriceUpdate = false;
-            updatePriceCalculations();
-        }
-    });
-    
-    // MRP and other fields input handling
-    $('#mrp, #quantity, #cgstRate, #sgstRate, #igstRate').on('input', function() {
-        if (currentProductId && !manualPriceUpdate) {
-            updatePriceCalculations();
-        }
-    });
-    
-    // Manual purchase price input
-    $('#purchasePrice').on('input', function() {
-        if (currentProductId) {
-            // When purchase price is changed manually, switch to manual mode
-            manualPriceUpdate = true;
-            updatePriceCalculations();
-        }
-    });
-    
-    // Auto-calculate discount when MRP changes (if not manual)
-    $('#mrp').on('blur', function() {
-        if (currentProductId && !manualPriceUpdate) {
-            const product = findProductById(currentProductId);
-            if (product && product.stock_price > 0) {
-                const mrp = parseFloat($(this).val()) || 0;
-                const currentPurchasePrice = parseFloat($('#purchasePrice').val()) || product.stock_price;
-                
-                if (mrp > 0 && currentPurchasePrice > 0 && mrp > currentPurchasePrice) {
-                    const discountPercent = ((mrp - currentPurchasePrice) / mrp) * 100;
-                    $('#discount').val(discountPercent.toFixed(1) + '%');
-                } else if (mrp <= currentPurchasePrice) {
-                    $('#discount').val('');
-                }
-                
-                // Recalculate prices
-                updatePriceCalculations();
-            }
-        }
-    });
-    
-    $(document).on('keydown', function(e) {
-        if (e.key === 'Enter' && ($('#quantity').is(':focus') || $('#purchasePrice').is(':focus'))) {
-            e.preventDefault();
-            addProductToCart();
-        }
-        
-        if (e.altKey && e.key === 'p') {
-            e.preventDefault();
-            $('.select2-products').select2('open');
-        }
-        
-        if (e.altKey && e.key === 'a') {
-            e.preventDefault();
-            addProductToCart();
-        }
-    });
-    
-    let barcodeBuffer = '';
-    let lastKeyTime = 0;
-    
-    $(document).on('keypress', function(e) {
-        const currentTime = new Date().getTime();
-        
-        if (currentTime - lastKeyTime > 100) {
-            barcodeBuffer = '';
-        }
-        
-        barcodeBuffer += e.key;
-        lastKeyTime = currentTime;
-        
-        if (e.key === 'Enter' && barcodeBuffer.length > 3) {
-            const barcode = barcodeBuffer.slice(0, -1);
-            handleBarcodeScan(barcode);
-            barcodeBuffer = '';
-            e.preventDefault();
-        }
-    });
-    
-    $(document).on('paste', function(e) {
-        const pastedData = e.originalEvent.clipboardData.getData('text');
-        if (pastedData && pastedData.trim().length > 3) {
-            setTimeout(() => {
-                handleBarcodeScan(pastedData.trim());
-            }, 100);
-        }
-    });
-});
+let selectedProducts = new Map(); let itemCounter = 0; let currentProductId = null; let manualPriceUpdate = false;
+const Toast = Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:2500,timerProgressBar:true});
+function findProductById(id){return PRODUCTS[id];}
+function num(v){return parseFloat(v)||0;}
+function formatMoney(n){return '₹'+num(n).toFixed(2);}
+function gstRate(c,s,i){return num(c)+num(s)+num(i);}
+function finalFromEntered(value,cgst,sgst,igst,gstType){let rate=gstRate(cgst,sgst,igst); value=num(value); return gstType==='exclusive'?value+(value*rate/100):value;}
+function enteredFromFinal(value,cgst,sgst,igst,gstType){let rate=gstRate(cgst,sgst,igst); value=num(value); return gstType==='exclusive'&&rate>0?value/(1+rate/100):value;}
+function splitValue(value,cgst,sgst,igst,gstType){value=num(value); let rate=gstRate(cgst,sgst,igst); if(gstType==='exclusive'){let gst=value*rate/100;return{entered:value,withoutGst:value,gstAmount:gst,finalValue:value+gst};} let without=rate>0?value/(1+rate/100):value; return{entered:value,withoutGst:without,gstAmount:value-without,finalValue:value};}
+function calculateItemTotal(price,quantity,cgst,sgst,igst,gstType='inclusive'){let q=num(quantity); let split=splitValue(price,cgst,sgst,igst,gstType); let taxable=split.withoutGst*q; let ca=taxable*num(cgst)/100, sa=taxable*num(sgst)/100, ia=taxable*num(igst)/100; let gst=ca+sa+ia; let total=gstType==='exclusive'?taxable+gst:split.finalValue*q; return{enteredValue:split.entered*q,withoutGst:taxable,taxable:taxable,cgst:ca,sgst:sa,igst:ia,gstAmount:gst,total:total,gstCredit:gst};}
+function calculatePurchasePriceFromDiscount(mrp,discountInput){let price=num(mrp); if(discountInput&&discountInput.trim()){let d=discountInput.trim(); if(d.includes('%')) price-=price*(num(d.replace('%',''))/100); else price-=num(d);} return price<0?0:price;}
+function calculateDiscountFromPrice(mrp,purchasePrice){mrp=num(mrp);purchasePrice=num(purchasePrice); if(mrp<=0||purchasePrice<=0||purchasePrice>=mrp)return''; return(((mrp-purchasePrice)/mrp)*100).toFixed(1)+'%';}
+function calculateSellingPrices(basePurchasePrice,product,cgst,sgst,igst,gstType){let retailBase=num(basePurchasePrice), wholesaleBase=num(basePurchasePrice); if(num(product.retail_markup_percent)>0) retailBase+=retailBase*num(product.retail_markup_percent)/100; else if(num(product.retail_price_value)>0) retailBase+=product.retail_price_type==='percentage'?retailBase*num(product.retail_price_value)/100:num(product.retail_price_value); if(num(product.wholesale_markup_percent)>0) wholesaleBase+=wholesaleBase*num(product.wholesale_markup_percent)/100; else if(num(product.wholesale_price_value)>0) wholesaleBase+=product.wholesale_price_type==='percentage'?wholesaleBase*num(product.wholesale_price_value)/100:num(product.wholesale_price_value); return{retailPrice:finalFromEntered(retailBase,cgst,sgst,igst,gstType),wholesalePrice:finalFromEntered(wholesaleBase,cgst,sgst,igst,gstType),retailBase:retailBase,wholesaleBase:wholesaleBase,retailMarkupPercent:basePurchasePrice>0?((retailBase-basePurchasePrice)/basePurchasePrice)*100:0,wholesaleMarkupPercent:basePurchasePrice>0?((wholesaleBase-basePurchasePrice)/basePurchasePrice)*100:0};}
+function chipHtml(s){return`<span class="base-chip">Without GST: ${formatMoney(s.withoutGst)}</span><span class="gst-chip">GST: ${formatMoney(s.gstAmount)}</span><span class="final-chip">After GST: ${formatMoney(s.finalValue)}</span>`;}
+function setHint(id,value,cgst,sgst,igst,gstType){$('#'+id).html(chipHtml(splitValue(value,cgst,sgst,igst,gstType)));}
+function updatePriceCalculations(){if(!currentProductId)return; let product=findProductById(currentProductId); if(!product)return; let mrp=num($('#mrp').val()), discount=$('#discount').val().trim(), manual=num($('#purchasePrice').val()), qty=num($('#quantity').val())||1, cgst=num($('#cgstRate').val()), sgst=num($('#sgstRate').val()), igst=num($('#igstRate').val()), gstType=$('#gstType').val()||'inclusive'; let purchasePrice=manual; if(manualPriceUpdate){$('#discount').val(calculateDiscountFromPrice(mrp,purchasePrice));}else{purchasePrice=discount?calculatePurchasePriceFromDiscount(mrp,discount):enteredFromFinal(product.stock_price,cgst,sgst,igst,gstType); if(purchasePrice<=0)purchasePrice=mrp; $('#purchasePrice').val(purchasePrice.toFixed(2));} let selling=calculateSellingPrices(purchasePrice,product,cgst,sgst,igst,gstType); let totals=calculateItemTotal(purchasePrice,qty,cgst,sgst,igst,gstType); $('#calculatedPurchasePrice').val(finalFromEntered(purchasePrice,cgst,sgst,igst,gstType).toFixed(2)); $('#retailPrice').val(selling.retailPrice.toFixed(2)); $('#wholesalePrice').val(selling.wholesalePrice.toFixed(2)); $('#retailMarkupBadge').html(`<span class="markup-badge">+${selling.retailMarkupPercent.toFixed(1)}%</span>`); $('#wholesaleMarkupBadge').html(`<span class="markup-badge">+${selling.wholesaleMarkupPercent.toFixed(1)}%</span>`); setHint('mrpGstHint',mrp,cgst,sgst,igst,gstType); setHint('purchasePriceGstHint',purchasePrice,cgst,sgst,igst,gstType); setHint('calculatedPurchasePriceGstHint',purchasePrice,cgst,sgst,igst,gstType); $('#retailPriceGstHint').html(chipHtml(splitValue(selling.retailBase,cgst,sgst,igst,gstType))); $('#wholesalePriceGstHint').html(chipHtml(splitValue(selling.wholesaleBase,cgst,sgst,igst,gstType))); $('#gstBreakupBox').html(`<div class="gst-summary-grid"><div class="gst-summary-cell"><small>Entered / Line</small><strong>${formatMoney(totals.enteredValue)}</strong></div><div class="gst-summary-cell"><small>Without GST</small><strong>${formatMoney(totals.withoutGst)}</strong></div><div class="gst-summary-cell"><small>GST Added</small><strong>${formatMoney(totals.gstAmount)}</strong></div><div class="gst-summary-cell"><small>Final Value</small><strong>${formatMoney(totals.total)}</strong></div><div class="gst-summary-cell"><small>MRP Final</small><strong>${formatMoney(finalFromEntered(mrp,cgst,sgst,igst,gstType))}</strong></div><div class="gst-summary-cell"><small>Purchase Final</small><strong>${formatMoney(finalFromEntered(purchasePrice,cgst,sgst,igst,gstType))}</strong></div></div>`); $('#priceCalculation,#priceDetails').show(); checkPriceChange(finalFromEntered(purchasePrice,cgst,sgst,igst,gstType),product);}
+function updateProductDetails(productId){let product=findProductById(productId); if(!product)return; currentProductId=productId; manualPriceUpdate=false; let gstType=product.gst_type||'inclusive'; let cgst=num(product.cgst),sgst=num(product.sgst),igst=num(product.igst); $('#stockDisplay').val(product.total_stock||0); $('#gstType').val(gstType); $('#mrp').val(enteredFromFinal(product.mrp,cgst,sgst,igst,gstType).toFixed(2)); $('#purchasePrice').val(enteredFromFinal(product.stock_price,cgst,sgst,igst,gstType).toFixed(2)); $('#discount').val(calculateDiscountFromPrice($('#mrp').val(),$('#purchasePrice').val())); $('#quantity').val(1); $('#cgstRate').val(cgst); $('#sgstRate').val(sgst); $('#igstRate').val(igst); $('#batchNumber').val('BATCH-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+Math.floor(Math.random()*1000)); $('#productName').text(product.name); $('#productCode').text(product.code); $('#productHSN').text(product.hsn?'HSN: '+product.hsn:''); $('#mrpDisplay').text(num(product.mrp).toFixed(2)); $('#currentCost').text(num(product.stock_price).toFixed(2)); $('#currentRetailPrice').text(num(product.retail_price).toFixed(2)); $('#currentWholesalePrice').text(num(product.wholesale_price).toFixed(2)); $('#productGST').text((product.total_gst||0)>0?`GST: ${product.total_gst}% (${gstType})`:'No GST'); $('#productStockInfo').html(`<span class="stock-badge shop-stock-badge">Shop: ${product.shop_stock||0}</span><span class="stock-badge warehouse-stock-badge">Warehouse: ${product.warehouse_stock||0}</span><span class="stock-badge gst-badge">GST ${product.total_gst||0}% ${gstType}</span>`); $('#productDetails,#batchInfoSection').addClass('show').show(); updatePriceCalculations();}
+function checkPriceChange(finalPurchasePrice,product){let w=$('#priceChangeWarning'),t=$('#warningText'); if(product.stock_price>0&&Math.abs(finalPurchasePrice-product.stock_price)>0.01){let diff=finalPurchasePrice-product.stock_price; t.html(`Purchase final price ${diff>0?'increased':'decreased'} from ${formatMoney(product.stock_price)} to ${formatMoney(finalPurchasePrice)}.`); w.show();}else w.hide();}
+function addProductToCart(){let productId=$('#productSelect').val(); if(!productId){Toast.fire({icon:'warning',title:'Select product'});return;} let product=findProductById(productId); let data={productId,productName:product.name,productCode:product.code,mrp:num($('#mrp').val()),discount:$('#discount').val().trim(),purchasePrice:num($('#purchasePrice').val()),quantity:num($('#quantity').val())||1,cgst:num($('#cgstRate').val()),sgst:num($('#sgstRate').val()),igst:num($('#igstRate').val()),gst_type:$('#gstType').val()||'inclusive',hsn:product.hsn||'',batch_number:$('#batchNumber').val()||'',manufacture_date:$('#manufactureDate').val()||'',expiry_date:$('#expiryDate').val()||''}; if(data.mrp<=0||data.purchasePrice<=0){Toast.fire({icon:'warning',title:'Enter valid MRP and purchase price'});return;} proceedWithAddProduct(product,data);}
+function proceedWithAddProduct(product,data){let selling=calculateSellingPrices(data.purchasePrice,product,data.cgst,data.sgst,data.igst,data.gst_type); let totals=calculateItemTotal(data.purchasePrice,data.quantity,data.cgst,data.sgst,data.igst,data.gst_type); let itemId=++itemCounter; selectedProducts.set(itemId,{id:data.productId,itemId,name:data.productName,code:data.productCode,mrp:data.mrp,discount:data.discount,purchase_price:data.purchasePrice,final_purchase_price:finalFromEntered(data.purchasePrice,data.cgst,data.sgst,data.igst,data.gst_type),retail_price:selling.retailPrice,wholesale_price:selling.wholesalePrice,retail_base:selling.retailBase,wholesale_base:selling.wholesaleBase,quantity:data.quantity,cgst:data.cgst,sgst:data.sgst,igst:data.igst,total_gst:gstRate(data.cgst,data.sgst,data.igst),gst_type:data.gst_type,hsn:data.hsn,batch_number:data.batch_number,manufacture_date:data.manufacture_date,expiry_date:data.expiry_date,without_gst:totals.withoutGst,gst_amount:totals.gstAmount,cgst_amount:totals.cgst,sgst_amount:totals.sgst,igst_amount:totals.igst,total:totals.total,gst_credit:totals.gstCredit}); updateProductsTable(); updateSummary(); resetProductFields(); Toast.fire({icon:'success',title:'Product added'});}
+function loadPurchaseItems(){selectedProducts.clear(); itemCounter=0; PURCHASE_ITEMS.forEach(item=>{let product=findProductById(item.product_id); if(!product)return; let cgst=num(item.cgst_rate),sgst=num(item.sgst_rate),igst=num(item.igst_rate); let gstType=item.item_gst_type||item.gst_type||product.gst_type||'inclusive'; let enteredPurchase=enteredFromFinal(item.purchase_price,cgst,sgst,igst,gstType); let enteredMrp=enteredFromFinal(item.mrp,cgst,sgst,igst,gstType); let totals=calculateItemTotal(enteredPurchase,item.quantity,cgst,sgst,igst,gstType); let itemId=++itemCounter; selectedProducts.set(itemId,{id:item.product_id,itemId,name:product.name,code:product.code,mrp:enteredMrp,discount:item.discount||'',purchase_price:enteredPurchase,final_purchase_price:num(item.purchase_price),retail_price:num(item.retail_price),wholesale_price:num(item.wholesale_price),quantity:num(item.quantity),cgst,sgst,igst,total_gst:gstRate(cgst,sgst,igst),gst_type:gstType,hsn:item.hsn_code||product.hsn,batch_number:item.batch_number||'',manufacture_date:item.manufacture_date||'',expiry_date:item.expiry_date||'',without_gst:totals.withoutGst,gst_amount:totals.gstAmount,cgst_amount:totals.cgst,sgst_amount:totals.sgst,igst_amount:totals.igst,total:totals.total,gst_credit:totals.gstCredit});}); updateProductsTable(); updateSummary();}
+function updateProductsTable(){let tbody=$('#selectedProductsBody'); tbody.empty(); let totalAmount=0,totalGST=0,totalCredit=0,row=0; if(selectedProducts.size===0){tbody.html('<tr class="text-center"><td colspan="8" class="py-4">No products added yet</td></tr>'); $('#itemCount').text('0 Items'); $('#submitBtn').prop('disabled',true); $('#grandTotal,#totalGST,#gstCredit').text(formatMoney(0)); return;} selectedProducts.forEach((p,itemId)=>{row++; totalAmount+=p.total; totalGST+=p.gst_amount; totalCredit+=p.gst_credit; tbody.append(`<tr><td>${row}</td><td><strong>${p.name}</strong><br><small>${p.code}</small>${p.hsn?`<br><small>HSN: ${p.hsn}</small>`:''}<input type="hidden" name="items[${itemId}][product_id]" value="${p.id}"><input type="hidden" name="items[${itemId}][mrp]" value="${p.mrp}"><input type="hidden" name="items[${itemId}][discount]" value="${p.discount}"><input type="hidden" name="items[${itemId}][purchase_price]" value="${p.purchase_price}"><input type="hidden" name="items[${itemId}][retail_price]" value="${p.retail_price}"><input type="hidden" name="items[${itemId}][wholesale_price]" value="${p.wholesale_price}"><input type="hidden" name="items[${itemId}][quantity]" value="${p.quantity}"><input type="hidden" name="items[${itemId}][cgst_rate]" value="${p.cgst}"><input type="hidden" name="items[${itemId}][sgst_rate]" value="${p.sgst}"><input type="hidden" name="items[${itemId}][igst_rate]" value="${p.igst}"><input type="hidden" name="items[${itemId}][gst_type]" value="${p.gst_type}"><input type="hidden" name="items[${itemId}][batch_number]" value="${p.batch_number}"><input type="hidden" name="items[${itemId}][manufacture_date]" value="${p.manufacture_date}"><input type="hidden" name="items[${itemId}][expiry_date]" value="${p.expiry_date}"></td><td class="text-end">${p.quantity}</td><td class="text-end"><strong>${formatMoney(p.final_purchase_price)}</strong><br><small>${p.gst_type}</small><br><small>Base: ${formatMoney(p.purchase_price)}</small></td><td class="text-end">${p.total_gst}%<br><small>${formatMoney(p.gst_amount)}</small></td><td class="text-end fw-bold">${formatMoney(p.total)}<br><small>Without GST: ${formatMoney(p.without_gst)}</small></td><td class="text-center">${p.batch_number||'-'}</td><td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm delete-btn" data-item-id="${itemId}"><i class="bx bx-trash"></i></button></td></tr>`);}); $('#grandTotal').text(formatMoney(totalAmount)); $('#totalGST').text(formatMoney(totalGST)); $('#gstCredit').text(formatMoney(totalCredit)); $('#itemCount').text(`${selectedProducts.size} ${selectedProducts.size===1?'Item':'Items'}`); $('#submitBtn').prop('disabled',false); $('.delete-btn').on('click',function(){selectedProducts.delete($(this).data('item-id')); updateProductsTable(); updateSummary();});}
+function updateSummary(){if(selectedProducts.size===0){$('#stockSummary').html('No products selected');return;} let q=0,v=0,w=0,g=0; selectedProducts.forEach(p=>{q+=p.quantity;v+=p.total;w+=p.without_gst;g+=p.gst_amount;}); $('#stockSummary').html(`${selectedProducts.size} items | Qty: <strong>${q}</strong> | Without GST: <strong>${formatMoney(w)}</strong> | GST: <strong>${formatMoney(g)}</strong> | Final: <strong>${formatMoney(v)}</strong>`);}
+function resetProductFields(){$('#productSelect').val(null).trigger('change');currentProductId=null;manualPriceUpdate=false;$('#stockDisplay,#mrp,#purchasePrice').val('0');$('#discount').val('');$('#quantity').val(1);$('#calculatedPurchasePrice,#retailPrice,#wholesalePrice').val('');$('#cgstRate,#sgstRate,#igstRate').val('0');$('#gstType').val('inclusive');$('#batchNumber,#manufactureDate,#expiryDate').val('');$('#productDetails,#batchInfoSection').removeClass('show').hide();$('#priceCalculation,#priceDetails,#priceChangeWarning').hide();}
+function setupBillImagePreview(){$('#billImage').on('change',function(){let file=this.files[0],preview=$('#billPreview'); if(!file){preview.hide().html('');return;} let reader=new FileReader(); reader.onload=e=>{preview.html(file.type==='application/pdf'?`<embed src="${e.target.result}" type="application/pdf" />`:`<img src="${e.target.result}" />`).show();}; reader.readAsDataURL(file);});}
+function initializeSelect2(){$('.select2-supplier,.select2-shop').select2({width:'100%'}); let productOptions=[]; Object.keys(PRODUCTS).forEach(id=>{let p=PRODUCTS[id]; productOptions.push({id,text:`${p.name} (${p.code})`});}); $('#productSelect').select2({placeholder:'-- Type to search product --',allowClear:true,width:'100%',data:productOptions}); $('#productSelect').on('change',function(){let id=$(this).val(); if(id)updateProductDetails(id);});}
+$(document).ready(function(){initializeSelect2();setupBillImagePreview(); if(typeof flatpickr!=='undefined'){flatpickr('#manufactureDate',{dateFormat:'Y-m-d'});flatpickr('#expiryDate',{dateFormat:'Y-m-d'});} loadPurchaseItems(); $('#addProductBtn').on('click',addProductToCart); $('#discount').on('input',function(){manualPriceUpdate=false;updatePriceCalculations();}); $('#purchasePrice').on('input',function(){manualPriceUpdate=true;updatePriceCalculations();}); $('#mrp,#quantity,#cgstRate,#sgstRate,#igstRate,#gstType').on('input change',updatePriceCalculations); $('#purchaseForm').on('submit',function(e){if(selectedProducts.size===0){e.preventDefault();Toast.fire({icon:'warning',title:'Please add at least one product'});}});});
 </script>
 </body>
 </html>
