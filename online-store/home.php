@@ -608,7 +608,7 @@ if (file_exists($mobileNavFile)) {
         <?php foreach ($categories as $category): ?>
           <div class="col-md-6 col-lg-4">
             <a href="<?php echo sf_h($categoryOpenBase . '&id=' . (int)$category['id']); ?>" class="category-landing-card">
-              <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80" alt="<?php echo sf_h($category['category_name']); ?>">
+              <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80" alt="<?php echo sf_h($category['category_name']); ?>" style="object-fit:contain;">
               <div class="category-landing-overlay">
                 <h4><?php echo sf_h($category['category_name']); ?></h4>
                 <p><?php echo sf_h(sf_trim_text($category['description'] ?? '', 90) ?: 'Explore products under this category.'); ?></p>
@@ -678,7 +678,7 @@ if (file_exists($mobileNavFile)) {
           ?>
           <div class="col-6 col-md-4 col-lg-3">
             <a href="<?php echo sf_h($productOpenBase . '&id=' . (int)$product['id']); ?>" class="product-showcase">
-              <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($product['product_name'] ?? 'Product'); ?>">
+              <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($product['product_name'] ?? 'Product'); ?>" style="object-fit:contain;">
               <div class="product-showcase-body">
                 <h5><?php echo sf_h($product['product_name'] ?? 'Product'); ?></h5>
                 <p><?php echo sf_h(sf_trim_text($product['description'] ?? '', 85) ?: ($product['category_name'] ?? 'View product details')); ?></p>

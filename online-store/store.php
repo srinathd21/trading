@@ -429,7 +429,7 @@ if (file_exists($heroFile)) include $heroFile;
           <div class="col-6 col-md-4 col-lg-2">
             <a href="<?php echo sf_h(store_category_open_url($categoryId)); ?>" class="category-item d-block">
               <div class="category-image">
-                <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=600&q=80" alt="<?php echo sf_h($category['category_name'] ?? 'Category'); ?>">
+                <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=600&q=80" alt="<?php echo sf_h($category['category_name'] ?? 'Category'); ?>" style="object-fit:contain;">
               </div>
               <div class="category-name"><?php echo sf_h($category['category_name'] ?? 'Category'); ?></div>
             </a>
@@ -489,6 +489,7 @@ if (file_exists($heroFile)) include $heroFile;
                     src="<?php echo sf_h($productImage); ?>"
                     alt="<?php echo sf_h($productName); ?>"
                     onerror="this.onerror=null;this.src='<?php echo sf_h($fallbackImage); ?>';"
+                    style="object-fit:contain;"
                   >
                 </div>
 

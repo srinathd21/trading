@@ -499,7 +499,7 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
     <div class="row g-4 align-items-start">
       <div class="col-lg-6">
         <div class="product-gallery-card">
-          <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($productName); ?>">
+          <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($productName); ?>" style="object-fit:contain;">
         </div>
       </div>
 
@@ -584,37 +584,10 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
               <i class="bi bi-cart3"></i> Add to Cart
             </button>
 
-            <a href="storefront.php?slug=<?php echo urlencode($slug); ?>&page=checkout" class="btn-buy-now">
-              <i class="bi bi-lightning-charge-fill"></i> Buy Now
-            </a>
-
-            <button class="btn-wishlist" type="button">
-              <i class="bi bi-heart"></i> Wishlist
-            </button>
+           
           </div>
 
-          <div class="product-support-strip">
-            <div class="support-mini-box">
-              <i class="bi bi-truck"></i>
-              <h6>Fast Delivery</h6>
-              <p>Quick shipping support for your orders.</p>
-            </div>
-            <div class="support-mini-box">
-              <i class="bi bi-shield-check"></i>
-              <h6>Secure Checkout</h6>
-              <p>Safe payment and reliable purchase flow.</p>
-            </div>
-            <div class="support-mini-box">
-              <i class="bi bi-arrow-repeat"></i>
-              <h6>Easy Support</h6>
-              <p>Help for eligible product issues and queries.</p>
-            </div>
-            <div class="support-mini-box">
-              <i class="bi bi-headset"></i>
-              <h6>Expert Assistance</h6>
-              <p>Contact support for product clarification.</p>
-            </div>
-          </div>
+          
         </div>
       </div>
     </div>
@@ -650,7 +623,7 @@ if (file_exists($mobileNavFile)) include $mobileNavFile;
                 <?php if ($relMrp > 0 && $relMrp > $relPrice): ?>
                   <span class="product-badge">Sale</span>
                 <?php endif; ?>
-                <img src="<?php echo sf_h($relImage); ?>" alt="<?php echo sf_h($relName); ?>">
+                <img src="<?php echo sf_h($relImage); ?>" alt="<?php echo sf_h($relName); ?>" style="object-fit:contain;">
               </div>
               <div class="product-info">
                 <h5 class="product-title"><?php echo sf_h($relName); ?></h5>
