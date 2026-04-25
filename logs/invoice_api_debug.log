@@ -75277,3 +75277,18 @@
     "attempts": 0,
     "final_seq": 2
 }
+[2026-04-25 06:23:45] Generating next invoice number | {
+    "business_id": 25,
+    "shop_id": 32,
+    "gst_type": "gst",
+    "is_non_gst": false,
+    "gst_prefix": "INV",
+    "non_gst_prefix": "NGST",
+    "selected_prefix": "INV",
+    "full_prefix": "INV202604-"
+}
+[2026-04-25 06:23:46] Generated invoice number | {
+    "invoice_number": "INV202604-0018",
+    "attempts": 0,
+    "final_seq": 18
+}

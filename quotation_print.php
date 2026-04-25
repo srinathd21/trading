@@ -408,94 +408,99 @@ class QuotationPDF extends FPDF {
     }
     
     function AddItemRow($x, $y, $sn, $item, $cellH) {
-        // Calculate item details
-        $unit_price = $item['unit_price'] ?? 0;
-        $quantity = $item['quantity'] ?? 0;
-        $discount_amount = $item['discount_amount'] ?? 0;
-        $discount_rate = $item['discount_rate'] ?? 0;
-        
-        $cgst_rate = $item['cgst_rate'] ?? 0;
-        $sgst_rate = $item['sgst_rate'] ?? 0;
-        $igst_rate = $item['igst_rate'] ?? 0;
-        
-        $total_gst_rate = $cgst_rate + $sgst_rate + $igst_rate;
-        $line_total_before_discount = $unit_price * $quantity;
-        $line_total_after_discount = $line_total_before_discount - $discount_amount;
-        
-        // For quotation, calculate tax
-        $taxable_value = $line_total_after_discount;
-        $cgst_amount = $taxable_value * ($cgst_rate / 100);
-        $sgst_amount = $taxable_value * ($sgst_rate / 100);
-        $igst_amount = $taxable_value * ($igst_rate / 100);
-        $total_gst_amount = $cgst_amount + $sgst_amount + $igst_amount;
-        $total_with_gst = $taxable_value + $total_gst_amount;
-        $unit = !empty($item['product_unit']) ? $item['product_unit'] : (empty($item['unit']) ? 'PCS' : $item['unit']);
-        
-        // Set positions
-        $x0 = $x;
-        $x1 = $x0 + $this->col_w[0];
-        $x2 = $x1 + $this->col_w[1];
-        $x3 = $x2 + $this->col_w[2];
-        $x4 = $x3 + $this->col_w[3];
-        $x5 = $x4 + $this->col_w[4];
-        $x6 = $x5 + $this->col_w[5];
-        $x7 = $x6 + $this->col_w[6];
-        $x8 = $x7 + $this->col_w[7];
-        
-        // SN
-        $this->Rect($x0, $y, $this->col_w[0], $cellH);
-        $this->SetXY($x0, $y);
-        $this->Cell($this->col_w[0], $cellH, (string)$sn, 0, 0, 'C');
-        
-        // Item Description
-        $item_text = (!empty($item['product_code']) ? $item['product_code'] . " - " : "") . $item['product_name'];
-        $this->BoxText($x1, $y, $this->col_w[1], $cellH, $item_text, 'L', 'M', 1.2, 1.0, 5.4);
-        
-        // HSN
-        $this->Rect($x2, $y, $this->col_w[2], $cellH);
-        $this->SetXY($x2, $y);
-        $this->Cell($this->col_w[2], $cellH, pdf_text_simple($item['hsn_code'] ?? ''), 0, 0, 'C');
-        
-        // GST(%)
-        $gst_text = $total_gst_rate > 0 ? number_format($total_gst_rate, 1) . '%' : '0%';
-        $this->BoxText($x3, $y, $this->col_w[3], $cellH, $gst_text, 'C', 'M', 1.0, 1.0, 5.4);
-        
-        // Rate
-        $rate_text = 'Rs. ' . money($unit_price);
-        $this->Rect($x4, $y, $this->col_w[4], $cellH);
-        $this->SetXY($x4, $y);
-        $this->Cell($this->col_w[4], $cellH, pdf_text_simple($rate_text), 0, 0, 'R');
-        
-        // Qty
-        $qty_text = format_quantity($quantity) . ' ' . $unit;
-        $this->Rect($x5, $y, $this->col_w[5], $cellH);
-        $this->SetXY($x5, $y);
-        $this->Cell($this->col_w[5], $cellH, pdf_text_simple($qty_text), 0, 0, 'C');
-        
-        // Discount
-        if ($discount_amount > 0) {
-            $disc_text = 'Rs. ' . money($discount_amount) . "\n(" . $discount_rate . "%)";
-        } else {
-            $disc_text = '-';
-        }
-        $this->BoxText($x6, $y, $this->col_w[6], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 5.4);
-        
-        // GST Amt
-        if ($total_gst_amount > 0) {
-            $gst_amt_text = 'Rs. ' . money($total_gst_amount);
-        } else {
-            $gst_amt_text = '-';
-        }
-        $this->Rect($x7, $y, $this->col_w[7], $cellH);
-        $this->SetXY($x7, $y);
-        $this->Cell($this->col_w[7], $cellH, pdf_text_simple($gst_amt_text), 0, 0, 'R');
-        
-        // Total
-        $total_text = 'Rs. ' . money($total_with_gst);
-        $this->Rect($x8, $y, $this->col_w[8], $cellH);
-        $this->SetXY($x8, $y);
-        $this->Cell($this->col_w[8], $cellH, pdf_text_simple($total_text), 0, 0, 'R');
+    // Calculate item details
+    $unit_price_inclusive = $item['unit_price'] ?? 0; // This currently includes GST
+    $quantity = $item['quantity'] ?? 0;
+    $discount_amount = $item['discount_amount'] ?? 0;
+    $discount_rate = $item['discount_rate'] ?? 0;
+    
+    $cgst_rate = $item['cgst_rate'] ?? 0;
+    $sgst_rate = $item['sgst_rate'] ?? 0;
+    $igst_rate = $item['igst_rate'] ?? 0;
+    
+    $total_gst_rate = $cgst_rate + $sgst_rate + $igst_rate;
+    
+    // Calculate unit price WITHOUT GST
+    $gst_multiplier = 1 + ($total_gst_rate / 100);
+    $unit_price_exclusive = $unit_price_inclusive / $gst_multiplier;
+    
+    $line_total_before_discount = $unit_price_exclusive * $quantity;
+    $line_total_after_discount = $line_total_before_discount - $discount_amount;
+    
+    // Calculate tax on the exclusive amount
+    $taxable_value = $line_total_after_discount;
+    $cgst_amount = $taxable_value * ($cgst_rate / 100);
+    $sgst_amount = $taxable_value * ($sgst_rate / 100);
+    $igst_amount = $taxable_value * ($igst_rate / 100);
+    $total_gst_amount = $cgst_amount + $sgst_amount + $igst_amount;
+    $total_with_gst = $taxable_value + $total_gst_amount; // This is the total including GST
+    $unit = !empty($item['product_unit']) ? $item['product_unit'] : (empty($item['unit']) ? 'PCS' : $item['unit']);
+    
+    // Set positions
+    $x0 = $x;
+    $x1 = $x0 + $this->col_w[0];
+    $x2 = $x1 + $this->col_w[1];
+    $x3 = $x2 + $this->col_w[2];
+    $x4 = $x3 + $this->col_w[3];
+    $x5 = $x4 + $this->col_w[4];
+    $x6 = $x5 + $this->col_w[5];
+    $x7 = $x6 + $this->col_w[6];
+    $x8 = $x7 + $this->col_w[7];
+    
+    // SN
+    $this->Rect($x0, $y, $this->col_w[0], $cellH);
+    $this->SetXY($x0, $y);
+    $this->Cell($this->col_w[0], $cellH, (string)$sn, 0, 0, 'C');
+    
+    // Item Description
+    $item_text = (!empty($item['product_code']) ? $item['product_code'] . " - " : "") . $item['product_name'];
+    $this->BoxText($x1, $y, $this->col_w[1], $cellH, $item_text, 'L', 'M', 1.2, 1.0, 5.4);
+    
+    // HSN
+    $this->Rect($x2, $y, $this->col_w[2], $cellH);
+    $this->SetXY($x2, $y);
+    $this->Cell($this->col_w[2], $cellH, pdf_text_simple($item['hsn_code'] ?? ''), 0, 0, 'C');
+    
+    // GST(%)
+    $gst_text = $total_gst_rate > 0 ? number_format($total_gst_rate, 1) . '%' : '0%';
+    $this->BoxText($x3, $y, $this->col_w[3], $cellH, $gst_text, 'C', 'M', 1.0, 1.0, 5.4);
+    
+    // Rate (NOW SHOWING WITHOUT GST)
+    $rate_text = 'Rs. ' . money($unit_price_exclusive);
+    $this->Rect($x4, $y, $this->col_w[4], $cellH);
+    $this->SetXY($x4, $y);
+    $this->Cell($this->col_w[4], $cellH, pdf_text_simple($rate_text), 0, 0, 'R');
+    
+    // Qty
+    $qty_text = format_quantity($quantity) . ' ' . $unit;
+    $this->Rect($x5, $y, $this->col_w[5], $cellH);
+    $this->SetXY($x5, $y);
+    $this->Cell($this->col_w[5], $cellH, pdf_text_simple($qty_text), 0, 0, 'C');
+    
+    // Discount
+    if ($discount_amount > 0) {
+        $disc_text = 'Rs. ' . money($discount_amount) . "\n(" . $discount_rate . "%)";
+    } else {
+        $disc_text = '-';
     }
+    $this->BoxText($x6, $y, $this->col_w[6], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 5.4);
+    
+    // GST Amt
+    if ($total_gst_amount > 0) {
+        $gst_amt_text = 'Rs. ' . money($total_gst_amount);
+    } else {
+        $gst_amt_text = '-';
+    }
+    $this->Rect($x7, $y, $this->col_w[7], $cellH);
+    $this->SetXY($x7, $y);
+    $this->Cell($this->col_w[7], $cellH, pdf_text_simple($gst_amt_text), 0, 0, 'R');
+    
+    // Total (NOW SHOWING INCLUDING GST)
+    $total_text = 'Rs. ' . money($total_with_gst);
+    $this->Rect($x8, $y, $this->col_w[8], $cellH);
+    $this->SetXY($x8, $y);
+    $this->Cell($this->col_w[8], $cellH, pdf_text_simple($total_text), 0, 0, 'R');
+}
     
     function DrawAmountSummary() {
         $t = $this->totals;
