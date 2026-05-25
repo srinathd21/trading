@@ -370,9 +370,9 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                 <button onclick="window.print()" class="btn btn-outline-primary">
                                     <i class="bx bx-printer me-1"></i> Print
                                 </button>
-                                <a href="customer_statement_export.php?id=<?= $customer_id ?>&from_date=<?= $from_date ?>&to_date=<?= $to_date ?>" 
-                                   class="btn btn-outline-success">
-                                    <i class="bx bx-download me-1"></i> Export PDF
+                                <a href="customer_statement_export.php?id=<?= (int)$customer_id ?>&from_date=<?= urlencode($from_date) ?>&to_date=<?= urlencode($to_date) ?>" 
+                                   class="btn btn-success">
+                                    <i class="bx bx-download me-1"></i> Download Statement
                                 </a>
                                 <a href="customers.php" class="btn btn-outline-secondary">
                                     <i class="bx bx-arrow-back me-1"></i> Back
@@ -412,10 +412,14 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                             <label class="form-label">To Date</label>
                             <input type="date" name="to_date" class="form-control" value="<?= $to_date ?>" required>
                         </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary w-100">
-                                <i class="bx bx-filter-alt me-1"></i> Generate Statement
+                        <div class="col-md-4 d-flex align-items-end gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill">
+                                <i class="bx bx-filter-alt me-1"></i> Generate
                             </button>
+                            <a href="customer_statement_export.php?id=<?= (int)$customer_id ?>&from_date=<?= urlencode($from_date) ?>&to_date=<?= urlencode($to_date) ?>"
+                               class="btn btn-success flex-fill">
+                                <i class="bx bx-download me-1"></i> Download
+                            </a>
                         </div>
                     </form>
                 </div>
