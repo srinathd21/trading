@@ -2,6 +2,39 @@
 if (!defined('STORE_FRONT')) {
     die('Direct access not allowed.');
 }
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+/* =========================
+   CUSTOMER LOGIN CHECK
+========================= */
+$customerLoggedIn = false;
+
+$possibleCustomerSessionKeys = [
+    'customer_id',
+    'online_customer_id',
+    'storefront_customer_id',
+    'store_customer_id',
+    'web_customer_id'
+];
+
+foreach ($possibleCustomerSessionKeys as $sessionKey) {
+    if (!empty($_SESSION[$sessionKey])) {
+        $customerLoggedIn = true;
+        break;
+    }
+}
+
+if (!$customerLoggedIn) {
+    $redirectUrl = 'storefront.php?slug=' . urlencode((string)$slug) . '&page=store';
+
+    if (!empty($_SERVER['QUERY_STRING'])) {
+        $redirectUrl = 'storefront.php?' . $_SERVER['QUERY_STRING'];
+    }
+
+    header('Location: storefront.php?slug=' . urlencode((string)$slug) . '&page=login&redirect=' . urlencode($redirectUrl));
+    exit();
+}
 
 /* =========================
    SAFE FALLBACKS

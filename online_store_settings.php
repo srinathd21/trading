@@ -29,6 +29,7 @@ try {
 
     if (!$settings) {
         $settings = [
+            'id' => null,
             'display_name' => '',
             'store_slug' => '',
             'tagline' => '',
@@ -54,8 +55,18 @@ try {
             'maintenance_mode' => 0
         ];
     }
+    
+    // Load Telegram IDs for this store
+    $telegram_ids = [];
+    if (!empty($settings['id'])) {
+        $stmt = $pdo->prepare("SELECT id, telegram_id FROM business_telegram_ids WHERE store_id = ? ORDER BY id ASC");
+        $stmt->execute([$settings['id']]);
+        $telegram_ids = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
 } catch (Exception $e) {
     $settings = [];
+    $telegram_ids = [];
     $error = 'Failed to load online store settings: ' . $e->getMessage();
 }
 
@@ -85,11 +96,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $about_us = trim($_POST['about_us'] ?? '');
         $footer_text = trim($_POST['footer_text'] ?? '');
         $maintenance_mode = isset($_POST['maintenance_mode']) ? 1 : 0;
+        
+        // Telegram IDs from form
+        $submitted_telegram_ids = $_POST['telegram_id'] ?? [];
+        $telegram_ids_to_delete = $_POST['delete_telegram_id'] ?? [];
 
         if ($display_name === '') {
             throw new Exception('Display Name is required.');
         }
 
+        // Only validate slug if it's being set for the first time OR if it's empty (allow empty)
+        // But if slug already exists in DB, we should not allow changes
+        $existing_slug = $settings['store_slug'] ?? '';
+        if ($existing_slug !== '' && $store_slug !== $existing_slug) {
+            throw new Exception('Store slug cannot be changed once it has been set.');
+        }
+        
         if ($store_slug !== '' && !preg_match('/^[a-z0-9\-]+$/', $store_slug)) {
             throw new Exception('Store slug must contain only lowercase letters, numbers, and hyphens.');
         }
@@ -101,16 +123,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($theme_color !== '' && !preg_match('/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/', $theme_color)) {
             throw new Exception('Theme color must be a valid hex color like #0d6efd.');
         }
+        
+        // Validate Telegram IDs
+        foreach ($submitted_telegram_ids as $tid) {
+            $tid = trim($tid);
+            if ($tid !== '' && !preg_match('/^\d+$/', $tid)) {
+                throw new Exception('Telegram ID must contain only numbers.');
+            }
+        }
 
-        $check = $pdo->prepare("SELECT id FROM online_store_settings WHERE business_id = ? LIMIT 1");
+        $check = $pdo->prepare("SELECT id, store_slug FROM online_store_settings WHERE business_id = ? LIMIT 1");
         $check->execute([$business_id]);
         $existing = $check->fetch(PDO::FETCH_ASSOC);
+        
+        $store_settings_id = null;
 
         if ($existing) {
+            $store_settings_id = $existing['id'];
             $stmt = $pdo->prepare("
                 UPDATE online_store_settings SET
                     display_name = ?,
-                    store_slug = ?,
                     tagline = ?,
                     support_phone = ?,
                     whatsapp_number = ?,
@@ -138,7 +170,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt->execute([
                 $display_name,
-                $store_slug,
                 $tagline,
                 $support_phone,
                 $whatsapp_number,
@@ -222,6 +253,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $footer_text,
                 $maintenance_mode
             ]);
+            
+            // Get the newly inserted ID
+            $store_settings_id = $pdo->lastInsertId();
+        }
+        
+        // Handle Telegram IDs if we have a store settings ID
+        if ($store_settings_id) {
+            // Delete marked telegram IDs
+            if (!empty($telegram_ids_to_delete)) {
+                $placeholders = implode(',', array_fill(0, count($telegram_ids_to_delete), '?'));
+                $deleteStmt = $pdo->prepare("DELETE FROM business_telegram_ids WHERE id IN ($placeholders) AND store_id = ?");
+                $params = array_merge($telegram_ids_to_delete, [$store_settings_id]);
+                $deleteStmt->execute($params);
+            }
+            
+            // Insert or update telegram IDs
+            foreach ($submitted_telegram_ids as $index => $tid) {
+                $tid = trim($tid);
+                if ($tid === '') continue;
+                
+                // Check if this entry has an ID (existing record)
+                $record_id = $_POST['telegram_record_id'][$index] ?? null;
+                
+                if ($record_id && is_numeric($record_id)) {
+                    // Update existing
+                    $updateStmt = $pdo->prepare("UPDATE business_telegram_ids SET telegram_id = ? WHERE id = ? AND store_id = ?");
+                    $updateStmt->execute([$tid, $record_id, $store_settings_id]);
+                } else {
+                    // Insert new
+                    $insertStmt = $pdo->prepare("INSERT INTO business_telegram_ids (store_id, telegram_id) VALUES (?, ?)");
+                    $insertStmt->execute([$store_settings_id, $tid]);
+                }
+            }
         }
 
         $_SESSION['flash_success'] = 'Online store settings saved successfully.';
@@ -257,6 +321,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'footer_text' => $_POST['footer_text'] ?? '',
             'maintenance_mode' => isset($_POST['maintenance_mode']) ? 1 : 0
         ];
+        
+        // Re-populate telegram IDs from POST
+        $telegram_ids = [];
+        if (!empty($_POST['telegram_record_id'])) {
+            foreach ($_POST['telegram_record_id'] as $idx => $rec_id) {
+                $telegram_ids[] = [
+                    'id' => $rec_id,
+                    'telegram_id' => $_POST['telegram_id'][$idx] ?? ''
+                ];
+            }
+        }
     }
 }
 
@@ -264,6 +339,9 @@ if (!empty($_SESSION['flash_success'])) {
     $success = $_SESSION['flash_success'];
     unset($_SESSION['flash_success']);
 }
+
+// Determine if slug is locked (already has a value in DB)
+$is_slug_locked = !empty($settings['store_slug']);
 ?>
 
 <!doctype html>
@@ -298,7 +376,7 @@ if (!empty($_SESSION['flash_success'])) {
                 </div>
                 <?php endif; ?>
 
-                <form method="POST">
+                <form method="POST" id="settingsForm">
                     <div class="row">
                         <div class="col-xl-8">
                             <div class="card shadow-sm mb-4">
@@ -319,8 +397,14 @@ if (!empty($_SESSION['flash_success'])) {
                                             <label class="form-label">Store Slug</label>
                                             <input type="text" name="store_slug" class="form-control"
                                                    placeholder="my-online-store"
-                                                   value="<?= h(old($settings, 'store_slug')) ?>">
-                                            <small class="text-muted">Only lowercase letters, numbers, hyphens.</small>
+                                                   value="<?= h(old($settings, 'store_slug')) ?>"
+                                                   <?= $is_slug_locked ? 'readonly disabled style="background-color:#e9ecef;"' : '' ?>>
+                                            <?php if ($is_slug_locked): ?>
+                                                <input type="hidden" name="store_slug" value="<?= h(old($settings, 'store_slug')) ?>">
+                                                <small class="text-muted">Store slug cannot be changed after it has been set.</small>
+                                            <?php else: ?>
+                                                <small class="text-muted">Only lowercase letters, numbers, hyphens. This cannot be changed later.</small>
+                                            <?php endif; ?>
                                         </div>
 
                                         <div class="col-12">
@@ -392,6 +476,49 @@ if (!empty($_SESSION['flash_success'])) {
                                                    value="<?= h(old($settings, 'free_delivery_above', '0.00')) ?>">
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Telegram IDs Section -->
+                            <div class="card shadow-sm mb-4">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bx bxl-telegram me-2"></i> Telegram IDs
+                                    </h5>
+                                    <button type="button" class="btn btn-sm btn-primary" id="addTelegramBtn">
+                                        <i class="bx bx-plus me-1"></i> Add More
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div id="telegramIdsContainer">
+                                        <?php if (empty($telegram_ids)): ?>
+                                            <div class="telegram-row mb-2">
+                                                <div class="input-group">
+                                                    <span class="input-group-text"><i class="bx bxl-telegram"></i></span>
+                                                    <input type="text" name="telegram_id[]" class="form-control" placeholder="Enter Telegram ID (e.g., 123456789)">
+                                                    <input type="hidden" name="telegram_record_id[]" value="">
+                                                    <button type="button" class="btn btn-outline-danger remove-telegram-btn" style="display:none;">
+                                                        <i class="bx bx-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        <?php else: ?>
+                                            <?php foreach ($telegram_ids as $index => $tele): ?>
+                                                <div class="telegram-row mb-2" data-id="<?= h($tele['id']) ?>">
+                                                    <div class="input-group">
+                                                        <span class="input-group-text"><i class="bx bxl-telegram"></i></span>
+                                                        <input type="text" name="telegram_id[]" class="form-control" placeholder="Enter Telegram ID (e.g., 123456789)" value="<?= h($tele['telegram_id']) ?>">
+                                                        <input type="hidden" name="telegram_record_id[]" value="<?= h($tele['id']) ?>">
+                                                        <button type="button" class="btn btn-outline-danger remove-telegram-btn" data-id="<?= h($tele['id']) ?>">
+                                                            <i class="bx bx-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div id="telegramIdsToDelete"></div>
+                                    <small class="text-muted">Add Telegram IDs to receive order notifications. Only numbers allowed.</small>
                                 </div>
                             </div>
 
@@ -546,6 +673,7 @@ if (!empty($_SESSION['flash_success'])) {
                                         <li>Slug should be stable. Changing it later can break links.</li>
                                         <li>Maintenance mode should block customer access on frontend.</li>
                                         <li>Logo and banner fields expect public image URLs.</li>
+                                        <li>Telegram IDs: Add multiple IDs to receive order notifications.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -572,25 +700,99 @@ document.addEventListener('DOMContentLoaded', function () {
             } catch (e) {}
         });
     }, 5000);
+    
+    // Handle "Add More" button for Telegram IDs
+    const addButton = document.getElementById('addTelegramBtn');
+    const container = document.getElementById('telegramIdsContainer');
+    
+    function createTelegramRow(telegramId = '', recordId = '') {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'telegram-row mb-2';
+        
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'input-group';
+        
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'input-group-text';
+        iconSpan.innerHTML = '<i class="bx bxl-telegram"></i>';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = 'telegram_id[]';
+        input.className = 'form-control';
+        input.placeholder = 'Enter Telegram ID (e.g., 123456789';
+        input.value = telegramId;
+        
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'telegram_record_id[]';
+        hiddenInput.value = recordId;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn-outline-danger remove-telegram-btn';
+        removeBtn.innerHTML = '<i class="bx bx-trash"></i>';
+        
+        removeBtn.addEventListener('click', function() {
+            rowDiv.remove();
+        });
+        
+        inputGroup.appendChild(iconSpan);
+        inputGroup.appendChild(input);
+        inputGroup.appendChild(hiddenInput);
+        inputGroup.appendChild(removeBtn);
+        rowDiv.appendChild(inputGroup);
+        
+        return rowDiv;
+    }
+    
+    if (addButton) {
+        addButton.addEventListener('click', function() {
+            const newRow = createTelegramRow('', '');
+            container.appendChild(newRow);
+        });
+    }
+    
+    // Handle removal of existing Telegram IDs (with actual DB records)
+    const deleteContainer = document.getElementById('telegramIdsToDelete');
+    
+    document.querySelectorAll('.remove-telegram-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = this.closest('.telegram-row');
+            const recordId = row.getAttribute('data-id');
+            
+            if (recordId) {
+                // This is an existing record from DB, mark it for deletion
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'delete_telegram_id[]';
+                hiddenInput.value = recordId;
+                deleteContainer.appendChild(hiddenInput);
+            }
+            
+            row.remove();
+        });
+    });
 });
 </script>
 
 <style>
 .card {
     border: 0;
-
 }
 .card-header {
     border-bottom: 1px solid #f1f3f5;
-
 }
 .form-label {
     font-weight: 600;
 }
 .form-control,
-
 .btn {
     border-radius: 10px;
+}
+.telegram-row .input-group .btn-outline-danger {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
 }
 </style>
 </body>

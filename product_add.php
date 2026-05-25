@@ -175,19 +175,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Combined discount field handling
-        $discount_input = trim($_POST['discount'] ?? '');
-        $discount_type = 'percentage';
-        $discount_value = 0;
-        
-        if (!empty($discount_input)) {
-            if (strpos($discount_input, '%') !== false) {
-                $discount_type = 'percentage';
-                $discount_value = (float)str_replace('%', '', $discount_input);
-            } else {
-                $discount_type = 'fixed';
-                $discount_value = (float)$discount_input;
-            }
-        }
+        // Combined discount field handling
+$discount_input = trim($_POST['discount'] ?? '');
+$discount_type = $_POST['discount_type'] ?? 'percentage';
+$discount_type = ($discount_type === 'fixed') ? 'fixed' : 'percentage';
+$discount_value = 0;
+
+if ($discount_input !== '') {
+    $discount_value = (float)str_replace(['%', '₹', ','], '', $discount_input);
+}
         
         $stock_price = (float)($_POST['stock_price'] ?? 0);
         $retail_price_type = $_POST['retail_price_type'] ?? 'percentage';
@@ -1066,6 +1062,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <div class="col-md-3">
                                             <label class="form-label"><strong>Discount</strong></label>
                                             <div class="input-group">
+                                                <input type="hidden" name="discount_type" id="discountTypeHidden" value="<?= htmlspecialchars($_POST['discount_type'] ?? 'percentage') ?>">
                                                 <input type="text" name="discount" 
                                                        class="form-control text-end" 
                                                        value="<?= htmlspecialchars($_POST['discount'] ?? '') ?>"
@@ -1628,6 +1625,12 @@ document.addEventListener('DOMContentLoaded', function() {
 function setDiscountSymbol(symbol) {
     discountSymbol = symbol;
     document.getElementById('discountSymbol').textContent = symbol;
+
+    const hidden = document.getElementById('discountTypeHidden');
+    if (hidden) {
+        hidden.value = (symbol === '%') ? 'percentage' : 'fixed';
+    }
+
     calculateStockPrice();
 }
 
@@ -1635,9 +1638,14 @@ function clearDiscount() {
     document.getElementById('discount').value = '';
     discountSymbol = '%';
     document.getElementById('discountSymbol').textContent = '%';
+
+    const hidden = document.getElementById('discountTypeHidden');
+    if (hidden) {
+        hidden.value = 'percentage';
+    }
+
     calculateStockPrice();
 }
-
 // Update GST Type based on toggle
 function updateGSTType() {
     const gstToggle = document.getElementById('gstTypeToggle');

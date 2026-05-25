@@ -150,6 +150,23 @@ $recent_payments = $stmt->fetchAll();
                         </td>
                     </tr>
                     <?php endif; ?>
+                    <?php
+                    $location_parts = array_filter([
+                        $manufacturer['district'] ?? '',
+                        $manufacturer['state'] ?? '',
+                        $manufacturer['pincode'] ?? ''
+                    ]);
+                    $location_text = implode(', ', $location_parts);
+                    ?>
+                    <?php if ($location_text): ?>
+                    <tr>
+                        <th>District / State / Pincode:</th>
+                        <td>
+                            <i class="bx bx-map-pin me-1 text-muted"></i>
+                            <?= htmlspecialchars($location_text) ?>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                 </table>
                 
                 <?php if (!empty($contacts)): ?>

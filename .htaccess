@@ -1,0 +1,33 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /billing/trading/
+
+    DirectoryIndex storefront.php index.php
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    
+
+
+    # Home page by slug
+    RewriteRule ^([^/]+)/?$ storefront.php?slug=$1&page=home [L,QSA,NC]
+
+    # Store pages
+    RewriteRule ^([^/]+)/shop/?$ storefront.php?slug=$1&page=store [L,QSA,NC]
+    RewriteRule ^([^/]+)/categories/?$ storefront.php?slug=$1&page=categories [L,QSA,NC]
+    RewriteRule ^([^/]+)/cart/?$ storefront.php?slug=$1&page=cart [L,QSA,NC]
+    RewriteRule ^([^/]+)/wishlist/?$ storefront.php?slug=$1&page=wishlist [L,QSA,NC]
+    RewriteRule ^([^/]+)/checkout/?$ storefront.php?slug=$1&page=checkout [L,QSA,NC]
+    RewriteRule ^([^/]+)/confirmation/?$ storefront.php?slug=$1&page=confirmation [L,QSA,NC]
+    RewriteRule ^([^/]+)/track/?$ storefront.php?slug=$1&page=track [L,QSA,NC]
+    RewriteRule ^([^/]+)/search/?$ storefront.php?slug=$1&page=search [L,QSA,NC]
+    RewriteRule ^([^/]+)/login/?$ storefront.php?slug=$1&page=login [L,QSA,NC]
+    RewriteRule ^([^/]+)/logout/?$ storefront.php?slug=$1&page=logout [L,QSA,NC]
+
+    # Open category and product pages
+    RewriteRule ^([^/]+)/category/([0-9]+)/?$ storefront.php?slug=$1&page=category-open&id=$2 [L,QSA,NC]
+    RewriteRule ^([^/]+)/product/([0-9]+)/?$ storefront.php?slug=$1&page=product-open&id=$2 [L,QSA,NC]
+</IfModule>
+
+Options -Indexes

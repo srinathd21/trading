@@ -7,6 +7,87 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Database connection check
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    die('Database connection not available.');
+}
+
+$telegramBotToken = "8701427608:AAGoYVL7jl4cAiF7329x5UOd_eIygfsQSLE"; // ⚠️ regenerate using BotFather
+$telegramChatIds = [];
+
+// Get slug from the variable (already defined earlier in the script)
+$currentSlug = $slug ?? $_GET['slug'] ?? '';
+
+if (!empty($currentSlug)) {
+    try {
+        // Fetch Telegram IDs from database using JOIN
+        $stmt = $pdo->prepare("
+            SELECT bt.telegram_id 
+            FROM business_telegram_ids bt
+            INNER JOIN online_store_settings oss ON bt.store_id = oss.id
+            WHERE oss.store_slug = ?
+            ORDER BY bt.id ASC
+        ");
+        $stmt->execute([$currentSlug]);
+        $telegramChatIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+    } catch (Exception $e) {
+        error_log("Telegram ID fetch error: " . $e->getMessage());
+        $telegramChatIds = [];
+    }
+}
+
+// Optional fallback for development (remove in production)
+if (empty($telegramChatIds)) {
+    // You can keep this for testing, but remove in production
+    if ($currentSlug == "kalaielectrical") {
+        $telegramChatIds = ["8292661506", "1137437725"];
+    } elseif ($currentSlug == "kesavan-traders") {
+        $telegramChatIds = ["1137437725"];
+    }
+}
+
+// owner/admin chat IDs
+function sendTelegramMessage($botToken, $chatIds, $message) {
+    if (empty($chatIds) || empty($message)) {
+        return false;
+    }
+    
+    $url = "https://api.telegram.org/bot$botToken/sendMessage";
+    $success = false;
+
+    foreach ($chatIds as $chatId) {
+        $data = [
+            'chat_id' => $chatId,
+            'text' => $message,
+            'parse_mode' => 'HTML'
+        ];
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Add timeout
+
+        // Uncomment only if SSL issue in WAMP
+        // curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        // curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($httpCode === 200) {
+            $success = true;
+        } else {
+            error_log("Telegram message failed for chat_id $chatId: HTTP $httpCode");
+        }
+    }
+    
+    return $success;
+}
+
 /* =========================
    SAFE FALLBACKS
 ========================= */
@@ -30,13 +111,6 @@ $whatsappNumber  = $whatsappNumber ?? '';
 $storeAddress    = $storeAddress ?? '';
 $enableCOD       = 1;
 $businessId      = (int)($businessId ?? ($store['business_id'] ?? ($storeRow['business_id'] ?? 0)));
-
-/* =========================
-   DB CHECK
-========================= */
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    die('Database connection not available.');
-}
 
 /* =========================
    HELPERS
@@ -437,13 +511,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            header('Location: ' . $confirmationPageBaseUrl . '&order_id=' . $orderId);
-            exit;
+/* =========================
+   TELEGRAM NOTIFICATION (UPDATED - NOW USING DB VALUES)
+========================= */
+$orderSummary = "";
+
+foreach ($normalizedItems as $item) {
+    $orderSummary .= "• " . $item['product_name'] . 
+                     " x" . $item['quantity'] . 
+                     " = ₹" . number_format($item['line_total'], 2) . "\n";
+}
+
+$message = "<b>🛒 New Order Received</b>\n\n" .
+           "<b>Order No:</b> $orderNumber\n" .
+           "<b>Name:</b> " . htmlspecialchars($formData['full_name']) . "\n" .
+           "<b>Phone:</b> " . htmlspecialchars($formData['phone']) . "\n" .
+           "<b>Address:</b> " . htmlspecialchars(
+                $formData['address_line'] . ', ' .
+                $formData['city'] . ', ' .
+                $formData['state'] . ' - ' .
+                $formData['pincode']
+           ) . "\n\n" .
+           "<b>Items:</b>\n" . $orderSummary . "\n" .
+           "<b>Total:</b> ₹" . number_format($grandTotal, 2) . "\n" .
+           "<b>Payment:</b> COD";
+
+// Send notification to all Telegram IDs fetched from database
+if (!empty($telegramChatIds)) {
+    sendTelegramMessage($telegramBotToken, $telegramChatIds, $message);
+} else {
+    // Log if no Telegram IDs found
+    error_log("No Telegram IDs found for store slug: " . $currentSlug);
+}
+
+/* =========================
+   REDIRECT
+========================= */
+header('Location: ' . $confirmationPageBaseUrl . '&order_id=' . $orderId);
+exit;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             $formError = 'Failed to place order. ' . $e->getMessage();
+            error_log("Order placement error: " . $e->getMessage());
         }
     }
 }

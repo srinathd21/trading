@@ -44,20 +44,7 @@ $footerAbout = !empty($aboutUs)
           <?php echo htmlspecialchars($footerAbout, ENT_QUOTES, 'UTF-8'); ?>
         </p>
 
-        <div class="footer-social mt-3">
-          <a href="<?php echo htmlspecialchars($facebookUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener">
-            <i class="bi bi-facebook"></i>
-          </a>
-          <a href="<?php echo htmlspecialchars($instagramUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener">
-            <i class="bi bi-instagram"></i>
-          </a>
-          <a href="<?php echo htmlspecialchars($twitterUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener">
-            <i class="bi bi-twitter-x"></i>
-          </a>
-          <a href="<?php echo htmlspecialchars($youtubeUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener">
-            <i class="bi bi-youtube"></i>
-          </a>
-        </div>
+       
       </div>
 
       <div class="col-6 col-lg-2">
@@ -66,22 +53,11 @@ $footerAbout = !empty($aboutUs)
           <li><a href="<?php echo htmlspecialchars($storeBaseUrl, ENT_QUOTES, 'UTF-8'); ?>">Home</a></li>
           <li><a href="<?php echo htmlspecialchars($storeShopUrl, ENT_QUOTES, 'UTF-8'); ?>">Shop</a></li>
           <li><a href="<?php echo htmlspecialchars($categoryUrl, ENT_QUOTES, 'UTF-8'); ?>">Categories</a></li>
-          <li><a href="<?php echo htmlspecialchars($offersUrl, ENT_QUOTES, 'UTF-8'); ?>">Offers</a></li>
+          <!--<li><a href="<?php echo htmlspecialchars($offersUrl, ENT_QUOTES, 'UTF-8'); ?>">Offers</a></li>-->
         </ul>
       </div>
 
-      <div class="col-6 col-lg-3">
-        <h5>Customer Service</h5>
-        <ul>
-          <li><a href="<?php echo htmlspecialchars($storeContactUrl, ENT_QUOTES, 'UTF-8'); ?>">Contact Us</a></li>
-          <li><a href="<?php echo htmlspecialchars($shippingUrl, ENT_QUOTES, 'UTF-8'); ?>">Shipping Policy</a></li>
-          <li><a href="<?php echo htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8'); ?>">Return Policy</a></li>
-          <li><a href="<?php echo htmlspecialchars($trackUrl, ENT_QUOTES, 'UTF-8'); ?>">Track Order</a></li>
-          <li><a href="<?php echo htmlspecialchars($cartUrl, ENT_QUOTES, 'UTF-8'); ?>">Cart</a></li>
-          <li><a href="<?php echo htmlspecialchars($wishlistUrl, ENT_QUOTES, 'UTF-8'); ?>">Wishlist</a></li>
-          <li><a href="<?php echo htmlspecialchars($checkoutUrl, ENT_QUOTES, 'UTF-8'); ?>">Checkout</a></li>
-        </ul>
-      </div>
+     
 
       <div class="col-lg-3">
         <h5>Contact</h5>

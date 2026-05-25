@@ -52,6 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = trim($_POST['phone'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $address = trim($_POST['address'] ?? '');
+    $district = trim($_POST['district'] ?? '');
+    $state = trim($_POST['state'] ?? '');
+    $pincode = trim($_POST['pincode'] ?? '');
     $gstin = trim($_POST['gstin'] ?? '');
     $account_holder_name = trim($_POST['account_holder_name'] ?? '');
     $bank_name = trim($_POST['bank_name'] ?? '');
@@ -132,14 +135,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (empty($_POST['id'])) {
             // Insert new manufacturer
-            $sql = "INSERT INTO manufacturers (business_id, shop_id, name, phone, email, address, gstin, 
+            $sql = "INSERT INTO manufacturers (business_id, shop_id, name, phone, email, address, district, state, pincode, gstin, 
                     account_holder_name, bank_name, account_number, ifsc_code, branch_name, upi_id, upi_qr_code,
                     initial_outstanding_type, initial_outstanding_amount, is_active) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
-                $business_id, $shop_id, $name, $phone, $email, $address, $gstin,
+                $business_id, $shop_id, $name, $phone, $email, $address, $district, $state, $pincode, $gstin,
                 $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name, $upi_id, $upi_qr_code,
                 $outstanding_type, $outstanding_amount, $is_active
             ]);
@@ -185,14 +188,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $sql = "UPDATE manufacturers SET 
-                    shop_id = ?, name = ?, phone = ?, email = ?, address = ?, gstin = ?,
+                    shop_id = ?, name = ?, phone = ?, email = ?, address = ?, district = ?, state = ?, pincode = ?, gstin = ?,
                     account_holder_name = ?, bank_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, upi_id = ?, upi_qr_code = ?,
                     initial_outstanding_type = ?, initial_outstanding_amount = ?, is_active = ? 
                     WHERE id = ? AND business_id = ?";
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
-                $shop_id, $name, $phone, $email, $address, $gstin,
+                $shop_id, $name, $phone, $email, $address, $district, $state, $pincode, $gstin,
                 $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name, $upi_id, $upi_qr_code,
                 $outstanding_type, $outstanding_amount, $is_active,
                 $id, $business_id

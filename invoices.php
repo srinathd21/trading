@@ -199,11 +199,11 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex flex-wrap gap-2">
-                                <?php if ($can_process_returns): ?>
-                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#quickReturnModal">
-                                    <i class="bx bx-undo me-1"></i> Quick Return
-                                </button>
-                                <?php endif; ?>
+                                <!--<?php if ($can_process_returns): ?>-->
+                                <!--<button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#quickReturnModal">-->
+                                <!--    <i class="bx bx-undo me-1"></i> Quick Return-->
+                                <!--</button>-->
+                                <!--<?php endif; ?>-->
                                 <a href="pos.php" class="btn btn-primary">
                                     <i class="bx bx-plus-circle me-1"></i> New Invoice
                                 </a>
@@ -591,7 +591,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                         <td class="text-center">
                                             <?php if ($credit_due_date): ?>
                                             <div class="d-flex flex-column align-items-center">
-                                                <span class="badge bg-<?= $due_date_class ?> bg-opacity-10 text-<?= $due_date_class ?> px-3 py-2 mb-1">
+                                                <span class="badge bg-<?= $due_date_class ?> px-3 py-2 mb-1">
                                                     <i class="bx bx-calendar me-1"></i> <?= date('d M Y', strtotime($credit_due_date)) ?>
                                                 </span>
                                                 <span class="badge bg-<?= $due_date_class ?>">
@@ -609,7 +609,7 @@ $business_name = $_SESSION['current_business_name'] ?? 'Our Store';
                                                 <?php endif; ?>
                                             </div>
                                             <?php else: ?>
-                                            <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                                            <span class="badge text-secondary">
                                                 <i class="bx bx-calendar-x me-1"></i> No due date
                                             </span>
                                             <?php endif; ?>
@@ -1688,119 +1688,131 @@ $(document).ready(function() {
     });
     
     function initializeQuickReturnQuantities() {
-        $('.return-qty-input').on('input', function() {
+        $('#quickReturnForm').off('input change keyup', '.return-qty-input');
+        $('#quickReturnForm').off('change', 'select[name="return_reason"]');
+
+        $('#quickReturnForm').on('input change keyup', '.return-qty-input', function() {
             validateQuickReturnForm();
         });
-        
-        $('select[name="return_reason"]').change(function() {
+
+        $('#quickReturnForm').on('change', 'select[name="return_reason"]', function() {
             validateQuickReturnForm();
         });
+
+        validateQuickReturnForm();
     }
 
     function validateQuickReturnForm() {
         let hasReturnItems = false;
-        $('.return-qty-input').each(function() {
-            if (parseInt($(this).val()) > 0) {
+        let totalQty = 0;
+
+        $('#quickReturnForm .return-qty-input:not(:disabled)').each(function() {
+            let qty = parseInt($(this).val(), 10);
+            let maxQty = parseInt($(this).attr('max'), 10);
+
+            if (isNaN(qty)) qty = 0;
+            if (isNaN(maxQty)) maxQty = parseInt($(this).data('max'), 10) || 0;
+
+            if (qty < 0) qty = 0;
+            if (maxQty > 0 && qty > maxQty) qty = maxQty;
+
+            $(this).val(qty);
+            totalQty += qty;
+
+            if (qty > 0) {
                 hasReturnItems = true;
-                return false;
             }
         });
-        
-        const hasReason = $('select[name="return_reason"]').val() !== '';
+
+        const hasReason = $('#quickReturnForm select[name="return_reason"]').val() !== '';
         $('#quickReturnSubmitBtn').prop('disabled', !(hasReturnItems && hasReason));
     }
-    
-   // Quick return form submission - REMOVE AJAX, USE NORMAL SUBMIT
-$('#quickReturnForm').submit(function(e) {
-    e.preventDefault();
-    
-    // Validate
-    let totalQty = 0;
-    $('.return-qty-input').each(function() {
-        totalQty += parseInt($(this).val()) || 0;
-    });
-    
-    if (totalQty === 0) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'No Items Selected',
-            text: 'Please select at least one item to return.'
+
+    // Quick return form submission - normal submit
+    $('#quickReturnForm').off('submit').on('submit', function(e) {
+        e.preventDefault();
+
+        validateQuickReturnForm();
+
+        let totalQty = 0;
+        $('#quickReturnForm .return-qty-input:not(:disabled)').each(function() {
+            totalQty += parseInt($(this).val(), 10) || 0;
         });
-        return false;
-    }
-    
-    if (!$('select[name="return_reason"]').val()) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Return Reason Required',
-            text: 'Please select a return reason.'
-        });
-        return false;
-    }
-    
-    // Confirm return with SweetAlert
-    Swal.fire({
-        title: 'Process Return?',
-        html: `<p>You are about to return <strong>${totalQty}</strong> item(s).</p>
-               <p class="text-danger">This action cannot be undone!</p>`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, process return',
-        cancelButtonText: 'Cancel'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Show loading
+
+        if (totalQty <= 0) {
             Swal.fire({
-                title: 'Processing...',
-                html: 'Please wait while we process the return.',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
+                icon: 'warning',
+                title: 'No Items Selected',
+                text: 'Please select at least one item to return.'
             });
-            
-            // Submit the form normally - it will redirect
-            $('#quickReturnForm')[0].submit();
+            return false;
         }
+
+        if (!$('#quickReturnForm select[name="return_reason"]').val()) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Return Reason Required',
+                text: 'Please select a return reason.'
+            });
+            return false;
+        }
+
+        Swal.fire({
+            title: 'Process Return?',
+            html: `<p>You are about to return <strong>${totalQty}</strong> item(s).</p>
+                   <p class="text-warning mb-0">Returned products will move to Return Management, not directly restocked.</p>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, process return',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({
+                    title: 'Processing...',
+                    html: 'Please wait while we process the return.',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                document.getElementById('quickReturnForm').submit();
+            }
+        });
+
+        return false;
     });
-    
-    return false;
-});
     <?php endif; ?>
     
     // ==================== INVOICE ROW RETURN MODAL ====================
-    $('#invoicesTable tbody').on('click', '.return-btn', function(e) {
+    $('#invoicesTable tbody').off('click', '.return-btn').on('click', '.return-btn', function(e) {
         e.preventDefault();
-        
-        // Get data from the button
+
         const invoiceId = $(this).data('invoice-id');
         const customerId = $(this).data('customer-id');
         const invoiceNumber = $(this).data('invoice-number');
-        
-        console.log('Return button clicked:', invoiceId, customerId, invoiceNumber);
-        
+
         if (!invoiceId) {
             alert('Invalid invoice ID');
             return;
         }
-        
+
         $('#returnInvoiceId').val(invoiceId);
         $('#returnCustomerId').val(customerId);
-        $('#returnModalTitle').text(`Return Items - Invoice #${invoiceNumber}`);
-        
-        // Show modal with loading state
+        $('#returnModalTitle').text('Return Items - Invoice #' + invoiceNumber);
+
         const returnModal = new bootstrap.Modal(document.getElementById('returnModal'));
         returnModal.show();
-        
-        // Load return items via AJAX
+
         $.ajax({
             url: 'get_invoice_items.php',
             method: 'GET',
-            data: { 
+            data: {
                 invoice_id: invoiceId,
-                for_return: 1
+                for_return: 1,
+                quick: 0
             },
             beforeSend: function() {
                 $('#returnModalBody').html(`
@@ -1809,17 +1821,22 @@ $('#quickReturnForm').submit(function(e) {
                         <p class="mt-3">Loading items for return...</p>
                     </div>
                 `);
-                $('#processReturnBtn').prop('disabled', true);
+
+                $('#processReturnBtn')
+                    .prop('disabled', true)
+                    .html('<i class="bx bx-check me-2"></i> Process Return');
             },
             success: function(response) {
                 $('#returnModalBody').html(response);
-                $('#processReturnBtn').prop('disabled', false);
-                
-                // Initialize validation for the loaded content
                 initializeReturnFormValidation();
+
+                $('#processReturnBtn')
+                    .prop('disabled', true)
+                    .html('<i class="bx bx-check me-2"></i> Process Return');
             },
             error: function(xhr, status, error) {
                 console.error('Error loading items:', error);
+
                 $('#returnModalBody').html(`
                     <div class="alert alert-danger m-4">
                         <i class="bx bx-error-circle me-2"></i>
@@ -1827,116 +1844,142 @@ $('#quickReturnForm').submit(function(e) {
                         <small>Error: ${error}</small>
                     </div>
                 `);
+
+                $('#processReturnBtn').prop('disabled', true);
             }
         });
     });
-    
+
     function initializeReturnFormValidation() {
-        // Clear previous event handlers
-        $('.return-qty-input').off('input');
-        $('select[name="return_reason"]').off('change');
-        
-        // Update total when return quantities change
-        $(document).on('input', '.return-qty-input', function() {
+        $('#returnForm').off('input change keyup', '.return-qty-input');
+        $('#returnForm').off('change', 'select[name="return_reason"]');
+
+        $('#returnForm').on('input change keyup', '.return-qty-input', function() {
             validateReturnForm();
         });
-        
-        // Return reason validation
-        $(document).on('change', 'select[name="return_reason"]', function() {
+
+        $('#returnForm').on('change', 'select[name="return_reason"]', function() {
             validateReturnForm();
         });
-        
-        // Initial validation
+
         validateReturnForm();
     }
-    
+
     function validateReturnForm() {
         let hasReturnItems = false;
-        $('.return-qty-input:not(:disabled)').each(function() {
-            const qty = parseInt($(this).val()) || 0;
-            const maxQty = parseInt($(this).data('max')) || 0;
-            
-            // Validate quantity doesn't exceed max
-            if (qty > maxQty) {
-                $(this).val(maxQty);
+        let totalQty = 0;
+        let totalValue = 0;
+
+        $('#returnForm .return-qty-input:not(:disabled)').each(function() {
+            let qty = parseInt($(this).val(), 10);
+            let maxQty = parseInt($(this).attr('max'), 10);
+
+            if (isNaN(qty)) qty = 0;
+            if (isNaN(maxQty)) {
+                maxQty = parseInt($(this).data('max'), 10) || 0;
             }
-            
+
+            if (qty < 0) qty = 0;
+            if (maxQty > 0 && qty > maxQty) qty = maxQty;
+
+            $(this).val(qty);
+
+            totalQty += qty;
+
             if (qty > 0) {
                 hasReturnItems = true;
             }
+
+            const price = parseFloat($(this).data('price') || $(this).data('unit-price') || 0);
+            const itemId = $(this).data('item-id');
+            const rowTotal = qty * price;
+            totalValue += rowTotal;
+
+            $('#returnForm #return-value-' + itemId).text(
+                '₹' + rowTotal.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })
+            );
         });
-        
-        const hasReason = $('select[name="return_reason"]').val() !== '';
+
+        $('#returnForm #total-return-value').text(
+            '₹' + totalValue.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })
+        );
+
+        const hasReason = $('#returnForm select[name="return_reason"]').val() !== '';
         $('#processReturnBtn').prop('disabled', !(hasReturnItems && hasReason));
+
+        return {
+            hasReturnItems: hasReturnItems,
+            totalQty: totalQty,
+            hasReason: hasReason
+        };
     }
-    
-// Handle return form submission - REMOVE AJAX, USE NORMAL SUBMIT
-$('#returnForm').submit(function(e) {
-    e.preventDefault();
-    
-    // Validate at least one item has return quantity > 0
-    let hasReturnItems = false;
-    let totalQty = 0;
-    
-    $('.return-qty-input:not(:disabled)').each(function() {
-        const qty = parseInt($(this).val()) || 0;
-        totalQty += qty;
-        if (qty > 0) {
-            hasReturnItems = true;
-        }
-    });
-    
-    if (!hasReturnItems) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'No Items Selected',
-            text: 'Please enter return quantity for at least one item.'
-        });
-        return false;
-    }
-    
-    // Validate return reason
-    const returnReason = $('select[name="return_reason"]').val();
-    if (!returnReason) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Return Reason Required',
-            text: 'Please select a return reason.'
-        });
-        return false;
-    }
-    
-    // Confirm return with SweetAlert
-    Swal.fire({
-        title: 'Process Return?',
-        html: `<p>You are about to return <strong>${totalQty}</strong> item(s).</p>
-               <p class="text-danger">This action cannot be undone!</p>`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, process return',
-        cancelButtonText: 'Cancel'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Show loading
+
+    // Handle invoice row return form submission - normal POST submit
+    $('#returnForm').off('submit').on('submit', function(e) {
+        e.preventDefault();
+
+        const state = validateReturnForm();
+
+        if (!state.hasReturnItems) {
             Swal.fire({
-                title: 'Processing...',
-                html: 'Please wait while we process the return.',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
+                icon: 'warning',
+                title: 'No Items Selected',
+                text: 'Please enter return quantity for at least one item.'
             });
-            
-            // Submit the form normally - it will redirect
-            $('#returnForm')[0].submit();
+            return false;
         }
+
+        if (!state.hasReason) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Return Reason Required',
+                text: 'Please select a return reason.'
+            });
+            return false;
+        }
+
+        const submitReturn = () => {
+            $('#processReturnBtn')
+                .prop('disabled', true)
+                .html('<i class="bx bx-loader bx-spin me-2"></i> Processing...');
+
+            document.getElementById('returnForm').submit();
+        };
+
+        Swal.fire({
+            title: 'Process Return?',
+            html: `<p>You are about to return <strong>${state.totalQty}</strong> item(s).</p>
+                   <p class="text-warning mb-0">Returned products will move to Return Management, not directly restocked.</p>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, process return',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({
+                    title: 'Processing...',
+                    html: 'Please wait while we process the return.',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                submitReturn();
+            }
+        });
+
+        return false;
     });
-    
-    return false;
-});
-    
+
     // Reset form when modal is closed
     $('#returnModal').on('hidden.bs.modal', function() {
         $('#returnForm')[0].reset();

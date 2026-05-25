@@ -51,6 +51,9 @@ try {
         <?php if ($is_seller): ?>
         <li>
             <a href="pos.php"><i class="bx bx-cart-add"></i> <span class="badge bg-success float-end">LIVE</span> <span>POS Billing</span></a>
+            <?php if(in_array((int)($_SESSION['current_business_id'] ?? 0), [25, 11], true)): ?>
+            <a href="paint_pos.php"><i class="bx bx-brush"></i> <span class="badge bg-success float-end">LIVE</span> <span>Paint POS</span></a>
+            <?php endif; ?>
         </li>
         <?php endif; ?>
         
@@ -104,7 +107,7 @@ try {
                 <li><a href="store_requirements.php">Store Requirements</a></li>
             </ul>
         </li>
-
+        <?php if(in_array((int)($_SESSION['current_business_id'] ?? 0), [25, 18], true)): ?>
         <!-- Online Store -->
         <li>
             <a href="javascript: void(0);" class="has-arrow">
@@ -117,7 +120,7 @@ try {
                 <li><a href="online_store_setup.php">Setup</a></li>
             </ul>
         </li>
-
+        <?php endif; ?>
         <!-- Inventory Management -->
         <?php if ($is_stock_manager): ?>
         <li class="menu-title">Inventory Management</li>
@@ -198,10 +201,12 @@ try {
             </a>
             <ul class="sub-menu">
                 <li><a href="users.php">User Management</a></li>
+                <li><a href="number-format-settings.php">Invoice Number Formates</a></li>
                 <li><a href="invoice-settings.php">Invoice Settings</a></li>
                 <li><a href="loyalty_settings.php">Loyalty Settings</a></li>
                 <li><a href="shops.php">Shop Management</a></li>
                 <li><a href="gst_rates.php">GST Rate</a></li>
+                <li><a href="customer_payment_restore.php">Deletes</a></li>
             </ul>
         </li>
         <?php endif; ?>

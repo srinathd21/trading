@@ -1809,10 +1809,11 @@
 
                     <div class="row">
                         <div class="col-6">
-                            <label for="date"><i class="fas fa-calendar-alt"></i>
-                                Date</label>
-                            <input type="date" id="date" name="date" class="p-1">
-                        </div>
+    <label for="date">
+        <i class="fas fa-calendar-alt"></i> Date & Time
+    </label>
+    <input type="datetime-local" id="date" name="date" class="p-1">
+</div>
                         <div class="col-6">
                             <label for="due_days">
                                 <i class="fas fa-calendar-alt"></i> Due Days
@@ -2156,6 +2157,10 @@
                             <span class="summary-label">IGST:</span>
                             <span class="summary-value" id="igst-display">₹ 0.00</span>
                         </div>
+                        <div class="summary-row" id="round-off-row">
+                            <span class="summary-label">Round Off:</span>
+                            <span class="summary-value" id="round-off">₹ 0.00</span>
+                        </div>
                         <div class="summary-row grand-total">
                             <span class="summary-label">Grand Total:</span>
                             <span class="summary-value" id="grand-total-display">₹ 0.00</span>
@@ -2396,6 +2401,32 @@
                             <textarea class="form-control" id="shipping-address" rows="3"
                                 placeholder="Enter complete shipping address"></textarea>
                         </div>
+                        <div class="row">
+    <div class="col-md-4 mb-3">
+        <label for="shipping-district" class="form-label">
+            <i class="fas fa-map-marker-alt me-1"></i> District
+        </label>
+        <input type="text" class="form-control" id="shipping-district"
+               placeholder="Enter district">
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label for="shipping-state" class="form-label">
+            <i class="fas fa-map me-1"></i> State
+        </label>
+        <input type="text" class="form-control" id="shipping-state"
+               placeholder="Enter state">
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label for="shipping-pincode" class="form-label">
+            <i class="fas fa-map-pin me-1"></i> Pincode
+        </label>
+        <input type="text" class="form-control" id="shipping-pincode"
+               maxlength="10"
+               placeholder="Enter pincode">
+    </div>
+</div>
                         <div class="mb-3">
                             <label for="shipping-charges" class="form-label">
                                 <i class="fas fa-rupee-sign me-1"></i> Shipping Charges
@@ -2425,6 +2456,95 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <?php include('pos/script.php'); ?>
+
+    <script>
+        /*
+         * Round-off display safety patch
+         * Keeps item/cart totals as decimal, rounds only final payable amount,
+         * and updates #round-off reliably.
+         */
+        (function () {
+            function parseMoney(value) {
+                return Number(String(value || '0').replace(/[^\d.-]/g, '')) || 0;
+            }
+
+            function setTextIfExists(id, value) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.textContent = value;
+                }
+            }
+
+            window.updateRoundOffDisplay = function () {
+                var actualGrandTotal = 0;
+
+                try {
+                    if (typeof window.calculateTotals === 'function') {
+                        var totals = window.calculateTotals() || {};
+                        actualGrandTotal = parseFloat(totals.grandTotal) || 0;
+                    }
+                } catch (e) {
+                    actualGrandTotal = 0;
+                }
+
+                // Fallback: use subtotal display if calculateTotals is not available yet.
+                if (!actualGrandTotal) {
+                    actualGrandTotal = parseMoney(document.getElementById('subtotal-display')?.textContent);
+                }
+
+                var roundedGrandTotal = Math.round(actualGrandTotal);
+                var roundOff = Number((roundedGrandTotal - actualGrandTotal).toFixed(2));
+
+                var roundOffText = roundOff < 0
+                    ? '-₹ ' + Math.abs(roundOff).toFixed(2)
+                    : '₹ ' + roundOff.toFixed(2);
+
+                setTextIfExists('round-off', roundOffText);
+                setTextIfExists('grand-total-display', '₹ ' + roundedGrandTotal);
+
+                return {
+                    actualGrandTotal: actualGrandTotal,
+                    roundedGrandTotal: roundedGrandTotal,
+                    roundOff: roundOff
+                };
+            };
+
+            function patchFunction(functionName) {
+                var original = window[functionName];
+                if (typeof original !== 'function' || original.__roundOffPatched) {
+                    return;
+                }
+
+                var patched = function () {
+                    var result = original.apply(this, arguments);
+                    setTimeout(window.updateRoundOffDisplay, 0);
+                    return result;
+                };
+
+                patched.__roundOffPatched = true;
+                window[functionName] = patched;
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                patchFunction('updateBillingSummary');
+                patchFunction('updatePaymentSummary');
+
+                ['additional-dis', 'overall-discount-type', 'cash-amount', 'upi-amount', 'bank-amount', 'cheque-amount', 'credit-amount', 'transportCharge', 'shipping-charges'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) {
+                        el.addEventListener('input', function () {
+                            setTimeout(window.updateRoundOffDisplay, 0);
+                        });
+                        el.addEventListener('change', function () {
+                            setTimeout(window.updateRoundOffDisplay, 0);
+                        });
+                    }
+                });
+
+                setTimeout(window.updateRoundOffDisplay, 300);
+            });
+        })();
+    </script>
 </body>
 
 </html>

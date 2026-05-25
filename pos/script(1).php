@@ -24,22 +24,317 @@
     let CURRENT_PRODUCT = null;
     let CURRENT_UNIT_IS_SECONDARY = false;
     let IS_CART_LOADED = false;
+    let CREDIT_DUE_DATE = null;
+    let CREDIT_DUE_DAYS = 30;
+    let PRODUCT_GST_FILTER = 'all';
+    let TRANSPORT_DETAILS = {
+        type: '',
+        charge: 0
+    };
+    function setupTransportSection() {
+        const toggleBtn = document.getElementById('btnToggleTransport');
+        const saveBtn = document.getElementById('btnSaveTransport');
+        const transportSection = document.getElementById('transportSection');
+
+        if (!toggleBtn || !transportSection) return;
+
+        // Toggle transport section visibility
+        toggleBtn.addEventListener('click', function () {
+            if (transportSection.classList.contains('show')) {
+                transportSection.classList.remove('show');
+                this.innerHTML = '<i class="fas fa-truck-moving me-1"></i> Transport';
+                this.title = 'Show transport details';
+            } else {
+                transportSection.classList.add('show');
+                this.innerHTML = '<i class="fas fa-times me-1"></i> Hide Transport';
+                this.title = 'Hide transport details';
+
+                // Load existing transport details
+                document.getElementById('transportType').value = TRANSPORT_DETAILS.type || '';
+                document.getElementById('transportCharge').value = TRANSPORT_DETAILS.charge || 0;
+            }
+        });
+
+        // Save transport details
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function () {
+                const transportType = document.getElementById('transportType').value.trim();
+                const transportCharge = parseFloat(document.getElementById('transportCharge').value) || 0;
+
+                TRANSPORT_DETAILS = {
+                    type: transportType,
+                    charge: transportCharge
+                };
+
+                // Also update SHIPPING_DETAILS for consistency
+                if (typeof SHIPPING_DETAILS !== 'undefined') {
+                    SHIPPING_DETAILS.transport_type = transportType;
+                    SHIPPING_DETAILS.transport_charge = transportCharge;
+                    if (typeof saveShippingDetailsToSession === 'function') {
+                        saveShippingDetailsToSession();
+                    }
+                }
+
+                // Update display
+                updateTransportDisplay();
+
+                // Update billing summary if charges changed
+                if (typeof updateBillingSummary === 'function') {
+                    updateBillingSummary();
+                }
+
+                // Show success message
+                if (typeof showToast === 'function') {
+                    showToast('Transport details saved successfully', 'success');
+                }
+
+                // Optionally hide section after save
+                // transportSection.classList.remove('show');
+                // toggleBtn.innerHTML = '<i class="fas fa-truck-moving me-1"></i> Transport';
+            });
+        }
+    }
+
+    function updateTransportDisplay() {
+        try {
+            // Update transport badge in shipping details section
+            const shippingContainer = document.getElementById('shippingDetailsHorizontal');
+            if (shippingContainer && TRANSPORT_DETAILS.type) {
+                // Check if transport badge already exists
+                let transportBadge = shippingContainer.querySelector('.transport-badge-display');
+
+                if (TRANSPORT_DETAILS.type) {
+                    const chargeText = TRANSPORT_DETAILS.charge > 0 ? ` (₹${TRANSPORT_DETAILS.charge.toFixed(2)})` : '';
+
+                    if (!transportBadge) {
+                        // Create new badge
+                        transportBadge = document.createElement('div');
+                        transportBadge.className = 'shipping-badge-horizontal transport-badge-display';
+                        transportBadge.innerHTML = `
+                        <i class="fas fa-truck-ramp-box"></i>
+                        <span class="badge-label">Transport:</span>
+                        <span class="badge-value">${escapeHtml(TRANSPORT_DETAILS.type)}${chargeText}</span>
+                    `;
+
+                        // Insert before the shipping actions
+                        const actionsDiv = shippingContainer.querySelector('.shipping-actions');
+                        if (actionsDiv) {
+                            shippingContainer.insertBefore(transportBadge, actionsDiv);
+                        } else {
+                            shippingContainer.appendChild(transportBadge);
+                        }
+                    } else {
+                        // Update existing badge
+                        transportBadge.innerHTML = `
+                        <i class="fas fa-truck-ramp-box"></i>
+                        <span class="badge-label">Transport:</span>
+                        <span class="badge-value">${escapeHtml(TRANSPORT_DETAILS.type)}${chargeText}</span>
+                    `;
+                    }
+                } else if (transportBadge) {
+                    transportBadge.remove();
+                }
+            }
+        } catch (error) {
+            console.error('Error updating transport display:', error);
+        }
+    }
+
+    // Override calculateTotals to include transport charges
+    const originalCalculateTotalsWithTransport = window.calculateTotals;
+    if (typeof originalCalculateTotalsWithTransport === 'function') {
+        window.calculateTotals = function () {
+            const totals = originalCalculateTotalsWithTransport();
+            const transportCharge = TRANSPORT_DETAILS.charge || 0;
+
+            return {
+                ...totals,
+                transportCharge: parseFloat(transportCharge.toFixed(2)),
+                grandTotal: parseFloat((totals.grandTotal + transportCharge).toFixed(2))
+            };
+        };
+    }
+
+    // Override updateBillingSummary to show transport charges
+    const originalUpdateBillingSummaryWithTransport = window.updateBillingSummary;
+    if (typeof originalUpdateBillingSummaryWithTransport === 'function') {
+        window.updateBillingSummary = function () {
+            originalUpdateBillingSummaryWithTransport();
+
+            const totals = window.calculateTotals();
+            const transportCharge = totals.transportCharge || 0;
+
+            let transportRow = document.getElementById('transport-charges-row');
+            const summaryBox = document.querySelector('.total-summary-box');
+
+            if (transportCharge > 0) {
+                if (!transportRow && summaryBox) {
+                    const grandTotalRow = document.querySelector('.total-summary-box .grand-total');
+                    if (grandTotalRow) {
+                        transportRow = document.createElement('div');
+                        transportRow.id = 'transport-charges-row';
+                        transportRow.className = 'summary-row';
+                        transportRow.innerHTML = `
+                        <span class="summary-label"><i class="fas fa-truck-ramp-box me-1"></i> Transport:</span>
+                        <span class="summary-value" id="transport-charges-display">₹ 0.00</span>
+                    `;
+                        grandTotalRow.parentNode.insertBefore(transportRow, grandTotalRow);
+                    }
+                }
+
+                if (transportRow) {
+                    const displaySpan = document.getElementById('transport-charges-display');
+                    if (displaySpan) {
+                        displaySpan.textContent = `₹ ${Number(transportCharge).toFixed(2)}`;
+                    }
+                    transportRow.style.display = '';
+                }
+            } else if (transportRow) {
+                transportRow.style.display = 'none';
+            }
+        };
+    }
+    function setupGstFilter() {
+        const toggle = document.getElementById('gstFilterToggle');
+        const filterAllBadge = document.getElementById('filterAllBadge');
+        const filterGstBadge = document.getElementById('filterGstBadge');
+        const filterNonGstBadge = document.getElementById('filterNonGstBadge');
+        const filterStatusText = document.getElementById('filterStatusText');
+
+        if (!toggle) return;
+
+        // Handle toggle switch
+        toggle.addEventListener('change', function () {
+            if (this.checked) {
+                // Check if we should show GST or Non-GST based on previous state
+                if (PRODUCT_GST_FILTER === 'non-gst') {
+                    PRODUCT_GST_FILTER = 'gst';
+                    filterStatusText.textContent = 'GST Products';
+                    updateFilterBadges('gst');
+                } else {
+                    PRODUCT_GST_FILTER = 'gst';
+                    filterStatusText.textContent = 'GST Products';
+                    updateFilterBadges('gst');
+                }
+            } else {
+                PRODUCT_GST_FILTER = 'all';
+                filterStatusText.textContent = 'All Products';
+                updateFilterBadges('all');
+            }
+
+            // Refresh product dropdown
+            populateProductDropdownFromSearch();
+
+            if (typeof showToast === 'function') {
+                showToast(`Showing ${filterStatusText.textContent}`, 'info');
+            }
+        });
+
+        // Handle badge clicks
+        if (filterAllBadge) {
+            filterAllBadge.addEventListener('click', function () {
+                PRODUCT_GST_FILTER = 'all';
+                toggle.checked = false;
+                filterStatusText.textContent = 'All Products';
+                updateFilterBadges('all');
+                populateProductDropdownFromSearch();
+                if (typeof showToast === 'function') {
+                    showToast('Showing all products', 'info');
+                }
+            });
+        }
+
+        if (filterGstBadge) {
+            filterGstBadge.addEventListener('click', function () {
+                PRODUCT_GST_FILTER = 'gst';
+                toggle.checked = true;
+                filterStatusText.textContent = 'GST Products';
+                updateFilterBadges('gst');
+                populateProductDropdownFromSearch();
+                if (typeof showToast === 'function') {
+                    showToast('Showing GST products only', 'info');
+                }
+            });
+        }
+
+        if (filterNonGstBadge) {
+            filterNonGstBadge.addEventListener('click', function () {
+                PRODUCT_GST_FILTER = 'non-gst';
+                toggle.checked = true;
+                filterStatusText.textContent = 'Non-GST Products';
+                updateFilterBadges('non-gst');
+                populateProductDropdownFromSearch();
+                if (typeof showToast === 'function') {
+                    showToast('Showing non-GST products only', 'info');
+                }
+            });
+        }
+    }
+    function updateFilterBadges(activeFilter) {
+        const allBadge = document.getElementById('filterAllBadge');
+        const gstBadge = document.getElementById('filterGstBadge');
+        const nonGstBadge = document.getElementById('filterNonGstBadge');
+
+        // Reset all badges
+        [allBadge, gstBadge, nonGstBadge].forEach(badge => {
+            if (badge) {
+                badge.classList.remove('active-gst', 'active-non-gst', 'all');
+                badge.style.background = '#e9ecef';
+                badge.style.color = '#495057';
+            }
+        });
+
+        // Highlight active badge
+        if (activeFilter === 'all' && allBadge) {
+            allBadge.classList.add('all');
+            allBadge.style.background = '#17a2b8';
+            allBadge.style.color = 'white';
+        } else if (activeFilter === 'gst' && gstBadge) {
+            gstBadge.classList.add('active-gst');
+            gstBadge.style.background = '#28a745';
+            gstBadge.style.color = 'white';
+        } else if (activeFilter === 'non-gst' && nonGstBadge) {
+            nonGstBadge.classList.add('active-non-gst');
+            nonGstBadge.style.background = '#dc3545';
+            nonGstBadge.style.color = 'white';
+        }
+    }
+
+
+
     // ==================== INITIALIZATION ====================
     document.addEventListener('DOMContentLoaded', function () {
         console.log('POS System: Initializing...');
+
         try {
             initializeApp();
             setupEventListeners();
             loadInitialData();
             loadCartFromSession();
 
+            // Setup GST Filter
+            setupGstFilter();
+
+            // Setup Transport Section
+            setupTransportSection();
+
             // Add profit button after everything loads
             setTimeout(() => {
                 addProfitButtonToFixedBottom();
             }, 500);
+
+            // Initialize shipping modal
+            setTimeout(() => {
+                if (typeof initShippingModal === 'function') {
+                    initShippingModal();
+                }
+            }, 500);
+
         } catch (error) {
             console.error('POS System: Initialization failed:', error);
-            showToast('System initialization failed. Please refresh the page.', 'danger');
+            if (typeof showToast === 'function') {
+                showToast('System initialization failed. Please refresh the page.', 'danger');
+            }
         }
     });
     const style = document.createElement('style');
@@ -136,6 +431,224 @@
             toast.addEventListener('mouseleave', Swal.resumeTimer)
         }
     });
+    // Add this function to load credit settings
+    async function loadCreditSettings() {
+        try {
+            const response = await fetchWithTimeout('api/settings.php?action=get_credit_settings', {
+                timeout: 5000
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.credit_period_days) {
+                    CREDIT_DUE_DAYS = parseInt(data.credit_period_days);
+
+                    // Update due date placeholder
+                    const dueDateInput = document.getElementById('credit-due-date');
+                    if (dueDateInput) {
+                        const defaultDueDate = new Date();
+                        defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+                        dueDateInput.placeholder = `Due: ${defaultDueDate.toISOString().split('T')[0]}`;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load credit settings:', error);
+        }
+    }
+    // Add this function to handle due days selection
+    function setupDueDaysListener() {
+        const dueDaysSelect = document.getElementById('due_days');
+        const dueDateInput = document.getElementById('credit-due-date');
+
+        if (dueDaysSelect && dueDateInput) {
+            // Remove any existing event listener to avoid duplicates
+            dueDaysSelect.removeEventListener('change', handleDueDaysChange);
+            // Add the event listener
+            dueDaysSelect.addEventListener('change', handleDueDaysChange);
+
+            // Also set initial due date if dropdown has a value
+            if (dueDaysSelect.value) {
+                updateDueDateFromDays(parseInt(dueDaysSelect.value), dueDateInput);
+            }
+        }
+    }
+
+    // Handle due days dropdown change
+    function handleDueDaysChange(event) {
+        const days = parseInt(event.target.value);
+        const dueDateInput = document.getElementById('credit-due-date');
+
+        if (days && dueDateInput) {
+            updateDueDateFromDays(days, dueDateInput);
+
+            // Show a toast notification
+            if (typeof showToast === 'function') {
+                showToast(`Due date set to ${dueDateInput.value} (${days} days from today)`, 'info');
+            }
+
+            // Trigger change event on due date input
+            const changeEvent = new Event('change', { bubbles: true });
+            dueDateInput.dispatchEvent(changeEvent);
+        }
+    }
+
+    // Calculate due date based on days
+    function updateDueDateFromDays(days, dueDateInput) {
+        if (!days || !dueDateInput) return;
+
+        const today = new Date();
+        const dueDate = new Date();
+        dueDate.setDate(today.getDate() + days);
+
+        // Format as YYYY-MM-DD for date input
+        const formattedDate = dueDate.toISOString().split('T')[0];
+        dueDateInput.value = formattedDate;
+
+        // Update the global variable
+        if (typeof CREDIT_DUE_DATE !== 'undefined') {
+            window.CREDIT_DUE_DATE = formattedDate;
+        }
+    }
+    // Modify the payment-input-card for credit to include due date
+    // Add this to the credit-input-card HTML section:
+    // Replace the existing credit-input-card with this updated version
+    function updateCreditPaymentCard() {
+        const creditCard = document.getElementById('credit-input-card');
+        if (!creditCard) return;
+
+        // Check if due date field already exists
+        if (!document.getElementById('credit-due-date')) {
+            const dueDateHTML = `
+            <div class="due-date-field mt-2">
+                <label for="credit-due-date" class="form-label" style="font-size: 11px;">
+                    <i class="fas fa-calendar-alt me-1"></i> Due Date
+                </label>
+                <input type="date" id="credit-due-date" name="credit-due-date" 
+                       class="form-control form-control-sm"
+                       style="font-size: 11px;">
+                <small class="text-muted" style="font-size: 9px;">
+                    Payment due date for credit transaction
+                </small>
+            </div>
+        `;
+
+            // Insert after credit reference field
+            const creditReference = document.getElementById('credit-reference');
+            if (creditReference && creditReference.parentNode) {
+                creditReference.parentNode.insertAdjacentHTML('beforeend', dueDateHTML);
+
+                // Set default due date
+                const dueDateInput = document.getElementById('credit-due-date');
+                if (dueDateInput) {
+                    // Check if due days dropdown has a value
+                    const dueDaysSelect = document.getElementById('due_days');
+                    if (dueDaysSelect && dueDaysSelect.value) {
+                        updateDueDateFromDays(parseInt(dueDaysSelect.value), dueDateInput);
+                    } else {
+                        const defaultDueDate = new Date();
+                        defaultDueDate.setDate(defaultDueDate.getDate() + (typeof CREDIT_DUE_DAYS !== 'undefined' ? CREDIT_DUE_DAYS : 30));
+                        dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+                    }
+
+                    if (typeof CREDIT_DUE_DATE !== 'undefined') {
+                        window.CREDIT_DUE_DATE = dueDateInput.value;
+                    }
+                }
+
+                // Add change event listener
+                dueDateInput.addEventListener('change', function () {
+                    if (typeof CREDIT_DUE_DATE !== 'undefined') {
+                        window.CREDIT_DUE_DATE = this.value;
+                    }
+                    updatePaymentSummary();
+                    showCreditDueDateWarning();
+                });
+            }
+        }
+
+        // Also ensure due days dropdown listener is set up
+        setupDueDaysListener();
+    }
+    function resetFormWithDueDays() {
+        // Call the original resetForm if it exists
+        if (typeof originalResetForm === 'function') {
+            originalResetForm();
+        } else if (typeof resetForm === 'function') {
+            resetForm();
+        }
+
+        // Reset due days dropdown
+        const dueDaysSelect = document.getElementById('due_days');
+        if (dueDaysSelect) {
+            dueDaysSelect.value = '';
+        }
+
+        // Reset credit due date to default
+        const dueDateInput = document.getElementById('credit-due-date');
+        if (dueDateInput && typeof CREDIT_DUE_DAYS !== 'undefined') {
+            const defaultDueDate = new Date();
+            defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+            dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+            if (typeof CREDIT_DUE_DATE !== 'undefined') {
+                window.CREDIT_DUE_DATE = dueDateInput.value;
+            }
+        }
+    }
+
+    // Save reference to original resetForm if it exists
+    if (typeof resetForm !== 'undefined') {
+        window.originalResetForm = resetForm;
+        window.resetForm = resetFormWithDueDays;
+    }
+
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', function () {
+        // Wait a bit for the credit payment card to be created
+        setTimeout(() => {
+            setupDueDaysListener();
+        }, 500);
+    });
+    // Add function to show credit due date warning
+    function showCreditDueDateWarning() {
+        const creditAmount = parseFloat(document.getElementById('credit-amount').value) || 0;
+        const dueDate = document.getElementById('credit-due-date')?.value;
+
+        if (creditAmount > 0 && dueDate) {
+            const today = new Date();
+            const due = new Date(dueDate);
+            const daysUntilDue = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+
+            let warningHTML = '';
+            if (daysUntilDue < 0) {
+                warningHTML = `
+                <div class="credit-due-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Overdue!</strong> Payment due date has passed.
+                </div>
+            `;
+            } else if (daysUntilDue <= 7) {
+                warningHTML = `
+                <div class="credit-due-warning">
+                    <i class="fas fa-clock"></i>
+                    <strong>Due in ${daysUntilDue} days!</strong> Payment is due soon.
+                </div>
+            `;
+            }
+
+            // Remove existing warning and add new one
+            const existingWarning = document.querySelector('#credit-input-card .credit-due-warning');
+            if (existingWarning) existingWarning.remove();
+
+            if (warningHTML) {
+                const creditCard = document.getElementById('credit-input-card');
+                const dueDateField = document.querySelector('#credit-input-card .due-date-field');
+                if (dueDateField) {
+                    dueDateField.insertAdjacentHTML('afterend', warningHTML);
+                }
+            }
+        }
+    }
 
     // Success Toast
     function showSuccessToast(message) {
@@ -184,8 +697,9 @@
             }
 
             // Set today's date
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date').value = today;
+            const now = new Date();
+now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+document.getElementById('date').value = now.toISOString().slice(0, 16);
 
             // Set quotation valid until (15 days from now)
             const quotationDate = new Date();
@@ -240,7 +754,7 @@
             // Load products once
             await loadProducts();
 
-            // Pre-populate the dropdown with first 10 products
+            // Put it here
             populateProductDropdownFromSearch();
 
             // Load other data in background
@@ -252,7 +766,6 @@
 
             console.log(`POS System: Ready with ${PRODUCTS.length} products loaded locally`);
 
-            // Only show toast if not already shown
             if (!IS_CART_LOADED) {
                 showToast('System ready! Products loaded locally.', 'success');
             }
@@ -398,19 +911,26 @@
             throw error;
         }
     }
-    async function checkAndGenerateInvoiceNumber() {
+    async function checkAndGenerateInvoiceNumber(force = false) {
         try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return null;
+
+            // if user already entered invoice number, keep it
+            if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
+                return invoiceInput.value.trim();
+            }
+
             const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({
-                    prefix: GST_TYPE === 'gst' ? 'INV' : 'INVNG',
-                    year_month: new Date().toISOString().substring(0, 7).replace('-', ''),
-                    invoice_type: GST_TYPE
-                }),
+body: JSON.stringify({
+    invoice_type: GST_TYPE,
+    invoice_date: document.getElementById('date')?.value || ''
+}),
                 timeout: 5000
             });
 
@@ -420,17 +940,19 @@
 
             const data = await response.json();
 
-            if (data.success) {
-                document.getElementById('invoice-number').value = data.invoice_number;
-                console.log('Generated invoice number:', data.invoice_number);
-                return data.invoice_number;
+            if (data.success && data.invoice_number) {
+                // only fill if empty or forced
+                if (force || !invoiceInput.value || invoiceInput.value.trim() === '') {
+                    invoiceInput.value = data.invoice_number;
+                }
+                return invoiceInput.value.trim();
             } else {
                 console.warn('Could not generate invoice number:', data.message);
-                return null;
+                return invoiceInput.value.trim();
             }
         } catch (error) {
             console.warn('Error generating invoice number:', error);
-            return null;
+            return document.getElementById('invoice-number')?.value?.trim() || null;
         }
     }
     async function fetchWithTimeout(url, options = {}) {
@@ -483,89 +1005,184 @@
     }
 
     function populateProductDropdownFromSearch(searchTerm = '') {
-    const select = document.getElementById('search-product');
-    if (!select) return;
+        const select = document.getElementById('search-product');
+        if (!select) return;
 
-    // Clear existing options
-    select.innerHTML = '<option value="">-- Search product --</option>';
+        // Clear existing options
+        select.innerHTML = '<option value="">-- Search product --</option>';
 
-    let productsToShow = [];
+        let productsToShow = [];
 
-    if (!searchTerm || searchTerm.trim().length < 2) {
-        // ✅ SHOW ALL PRODUCTS - removed the .slice(0, 10) limit
-        productsToShow = PRODUCTS; // Now shows ALL 13 products
-    } else {
-        productsToShow = searchProductsLocally(searchTerm);
-    }
+        if (!searchTerm || searchTerm.trim().length < 2) {
+            productsToShow = PRODUCTS;
+        } else {
+            productsToShow = searchProductsLocally(searchTerm);
+        }
 
-    productsToShow.forEach((product, index) => {
-        try {
-            const option = document.createElement('option');
-            option.value = product.id;
-
-            // COLORS FOR CATEGORY AND SUBCATEGORY
-            const categoryColor = getCategoryColor(product.category_name || '');
-            const subcategoryColor = getSubcategoryColor(product.subcategory_name || '');
-
-            // Build display text with COLORED category and subcategory
-            let displayText = `${escapeHtml(product.product_name)}`;
-
-            // Add colored category and subcategory
-            if (product.category_name) {
-                displayText += ` <span style="color: ${categoryColor}; font-weight: 500;">[${escapeHtml(product.category_name)}`;
-                if (product.subcategory_name) {
-                    displayText += ` <span style="color: ${subcategoryColor};">→ ${escapeHtml(product.subcategory_name)}</span>`;
-                }
-                displayText += ']</span>';
+        // GST / NON GST FILTER
+        if (typeof PRODUCT_GST_FILTER !== 'undefined') {
+            if (PRODUCT_GST_FILTER === 'gst') {
+                productsToShow = productsToShow.filter(product => {
+                    const hsn = (product.hsn_code || '').toString().trim();
+                    return hsn !== '' && hsn !== '0' && hsn.toLowerCase() !== 'null';
+                });
+            } else if (PRODUCT_GST_FILTER === 'non-gst') {
+                productsToShow = productsToShow.filter(product => {
+                    const hsn = (product.hsn_code || '').toString().trim();
+                    return hsn === '' || hsn === '0' || hsn.toLowerCase() === 'null';
+                });
             }
+        }
 
-            if (product.product_code) {
-                displayText += ` <span style="color: #6c757d; font-size: 0.9em;">${escapeHtml(product.product_code)}</span>`;
-            }
+        // Sort products: those with old stock first, then by name
+        productsToShow.sort((a, b) => {
+            const aHasOldStock = (a.shop_old_qty || 0) > 0;
+            const bHasOldStock = (b.shop_old_qty || 0) > 0;
 
-            // Get stock value
-            const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
-            const shopStockSecondary = parseFloat(product.shop_stock_secondary) || 0;
+            if (aHasOldStock && !bHasOldStock) return -1;
+            if (!aHasOldStock && bHasOldStock) return 1;
+            return (a.product_name || '').localeCompare(b.product_name || '');
+        });
 
-            // COLOR-CODED STOCK BADGES
-            const stockColor = getStockColor(shopStockPrimary);
-            const stockBgColor = getStockBackgroundColor(shopStockPrimary);
+        productsToShow.forEach((product, index) => {
+            try {
+                const option = document.createElement('option');
+                option.value = product.id;
 
-            // Add stock badges with colors
-            if (shopStockPrimary > 0) {
-                if (product.secondary_unit && product.sec_unit_conversion) {
-                    // Show both primary and secondary stock with colors
+                // Get stock values
+                const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
+                const shopStockSecondary = parseFloat(product.shop_stock_secondary) || 0;
+                const oldQty = parseFloat(product.shop_old_qty) || 0;
+
+                // Determine if there's old stock
+                const hasOldStock = oldQty > 0;
+
+                // Calculate new stock quantity
+                const newStockQty = Math.max(0, shopStockPrimary - oldQty);
+
+                // COLORS FOR CATEGORY AND SUBCATEGORY
+                const categoryColor = getCategoryColor(product.category_name || '');
+                const subcategoryColor = getSubcategoryColor(product.subcategory_name || '');
+
+                // Build display text with COLORED category and subcategory
+                let displayText = `${escapeHtml(product.product_name)}`;
+
+                // Add stock type indicator
+                if (hasOldStock) {
                     displayText += ` <span style="
-                        background-color: ${stockBgColor};
-                        color: ${stockColor};
+                    background-color: #f39c12;
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    margin-left: 5px;
+                ">OLD STOCK</span>`;
+                } else if (shopStockPrimary > 0) {
+                    displayText += ` <span style="
+                    background-color: #3498db;
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    margin-left: 5px;
+                ">NEW STOCK</span>`;
+                }
+
+                // Add colored category and subcategory
+                if (product.category_name) {
+                    displayText += ` <span style="color: ${categoryColor}; font-weight: 500;">[${escapeHtml(product.category_name)}`;
+                    if (product.subcategory_name) {
+                        displayText += ` <span style="color: ${subcategoryColor};">→ ${escapeHtml(product.subcategory_name)}</span>`;
+                    }
+                    displayText += ']</span>';
+                }
+
+                if (product.product_code) {
+                    displayText += ` <span style="color: #6c757d; font-size: 0.9em;">${escapeHtml(product.product_code)}</span>`;
+                }
+
+                // GST / NON GST badge
+                const hsnCode = (product.hsn_code || '').toString().trim();
+                if (hsnCode !== '' && hsnCode !== '0' && hsnCode.toLowerCase() !== 'null') {
+                    displayText += ` <span style="
+                    background-color: #28a745;
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    margin-left: 5px;
+                ">GST</span>`;
+                } else {
+                    displayText += ` <span style="
+                    background-color: #6c757d;
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    margin-left: 5px;
+                ">NON GST</span>`;
+                }
+
+                // COLOR-CODED STOCK BADGES with old/new split
+                if (shopStockPrimary > 0) {
+                    if (oldQty > 0) {
+                        displayText += ` <span style="
+                        background-color: #f39c12;
+                        color: white;
                         padding: 2px 8px;
                         border-radius: 12px;
                         font-size: 0.85em;
                         font-weight: 600;
                         display: inline-block;
                         margin: 2px 0;
-                    ">📦 ${Math.round(shopStockPrimary)} ${product.unit_of_measure}</span>`;
+                    ">📦 Old: ${Number(oldQty).toFixed(2)} ${product.unit_of_measure}</span>`;
+                    }
 
-                    displayText += ` <span style="
-                        background-color: #e3f2fd;
-                        color: #0d47a1;
-                        padding: 2px 8px;
-                        border-radius: 12px;
-                        font-size: 0.85em;
-                        margin: 2px 0;
-                    ">↳ ${Math.round(shopStockSecondary)} ${product.secondary_unit}</span>`;
-                } else {
-                    displayText += ` <span style="
-                        background-color: ${stockBgColor};
-                        color: ${stockColor};
+                    if (newStockQty > 0) {
+                        displayText += ` <span style="
+                        background-color: #3498db;
+                        color: white;
                         padding: 2px 8px;
                         border-radius: 12px;
                         font-size: 0.85em;
                         font-weight: 600;
-                    ">📦 ${Math.round(shopStockPrimary)} ${product.unit_of_measure}</span>`;
-                }
-            } else {
-                displayText += ` <span style="
+                        display: inline-block;
+                        margin: 2px 0;
+                    ">🆕: ${Number(newStockQty).toFixed(2)} ${product.unit_of_measure}</span>`;
+                    }
+
+                    if (product.secondary_unit && product.sec_unit_conversion) {
+                        const oldSecondary = oldQty * product.sec_unit_conversion;
+                        const newSecondary = newStockQty * product.sec_unit_conversion;
+
+                        if (oldSecondary > 0) {
+                            displayText += ` <span style="
+                            background-color: #f1c40f;
+                            color: #2c3e50;
+                            padding: 2px 8px;
+                            border-radius: 12px;
+                            font-size: 0.85em;
+                            margin: 2px 0;
+                        ">↳ Old: ${Number(oldSecondary).toFixed(2)} ${product.secondary_unit}</span>`;
+                        }
+
+                        if (newSecondary > 0) {
+                            displayText += ` <span style="
+                            background-color: #85c1e9;
+                            color: #1a5276;
+                            padding: 2px 8px;
+                            border-radius: 12px;
+                            font-size: 0.85em;
+                            margin: 2px 0;
+                        ">↳ New: ${Number(newSecondary).toFixed(2)} ${product.secondary_unit}</span>`;
+                        }
+                    }
+                } else {
+                    displayText += ` <span style="
                     background-color: #ffebee;
                     color: #c62828;
                     padding: 2px 8px;
@@ -573,61 +1190,66 @@
                     font-size: 0.85em;
                     font-weight: 600;
                 ">⛔ Out of stock</span>`;
-            }
+                }
 
-            // Add price with color
-            const price = GLOBAL_PRICE_TYPE === 'wholesale' ?
-                (product.wholesale_price || product.retail_price || 0) :
-                (product.retail_price || 0);
-            displayText += ` <span style="
+                // Add price with color
+                const price = GLOBAL_PRICE_TYPE === 'wholesale'
+                    ? (product.wholesale_price || product.retail_price || 0)
+                    : (product.retail_price || 0);
+
+                displayText += ` <span style="
                 color: #2e7d32;
                 font-weight: 700;
                 background-color: #e8f5e9;
                 padding: 2px 8px;
                 border-radius: 12px;
-            ">₹${Math.round(price)}</span>`;
+            ">₹${Number(price).toFixed(2)}</span>`;
 
-            option.innerHTML = displayText;
+                option.innerHTML = displayText;
 
-            // Store data as attributes
-            option.dataset.productId = product.id;
-            option.dataset.productName = product.product_name;
-            option.dataset.productCode = product.product_code || '';
-            option.dataset.retail = product.retail_price || 0;
-            option.dataset.wholesale = product.wholesale_price || 0;
-            option.dataset.mrp = product.mrp || 0;
-            option.dataset.shopStockPrimary = shopStockPrimary;
-            option.dataset.shopStockSecondary = shopStockSecondary;
-            option.dataset.unit = product.unit_of_measure || 'PCS';
-            option.dataset.hsn = product.hsn_code || '';
-            option.dataset.cgst = product.cgst_rate || 0;
-            option.dataset.sgst = product.sgst_rate || 0;
-            option.dataset.igst = product.igst_rate || 0;
-            option.dataset.referral = product.referral_enabled || 0;
-            option.dataset.secondary = product.secondary_unit || '';
-            option.dataset.conversion = product.sec_unit_conversion || 1;
-            option.dataset.extraCharge = product.sec_unit_extra_charge || 0;
-            option.dataset.extraChargeType = product.sec_unit_price_type || 'fixed';
-            option.dataset.stockPrice = product.stock_price || 0;
-            option.dataset.categoryName = product.category_name || '';
-            option.dataset.subcategoryName = product.subcategory_name || '';
+                // Store data as attributes - include old_qty
+                option.dataset.productId = product.id;
+                option.dataset.productName = product.product_name;
+                option.dataset.productCode = product.product_code || '';
+                option.dataset.retail = product.retail_price || 0;
+                option.dataset.wholesale = product.wholesale_price || 0;
+                option.dataset.mrp = product.mrp || 0;
+                option.dataset.shopStockPrimary = shopStockPrimary;
+                option.dataset.shopStockSecondary = shopStockSecondary;
+                option.dataset.oldQty = oldQty;
+                option.dataset.newStockQty = newStockQty;
+                option.dataset.unit = product.unit_of_measure || 'PCS';
+                option.dataset.hsn = product.hsn_code || '';
+                option.dataset.cgst = product.cgst_rate || 0;
+                option.dataset.sgst = product.sgst_rate || 0;
+                option.dataset.igst = product.igst_rate || 0;
+                option.dataset.referral = product.referral_enabled || 0;
+                option.dataset.secondary = product.secondary_unit || '';
+                option.dataset.conversion = product.sec_unit_conversion || 1;
+                option.dataset.extraCharge = product.sec_unit_extra_charge || 0;
+                option.dataset.extraChargeType = product.sec_unit_price_type || 'fixed';
+                option.dataset.stockPrice = product.stock_price || 0;
+                option.dataset.categoryName = product.category_name || '';
+                option.dataset.subcategoryName = product.subcategory_name || '';
+                option.dataset.useBatchTracking = product.use_batch_tracking || 0;
 
-            select.appendChild(option);
+                select.appendChild(option);
 
-        } catch (productError) {
-            console.warn('Error processing product:', productError);
-        }
-    });
+            } catch (productError) {
+                console.warn('Error processing product:', productError);
+            }
+        });
 
-    // Refresh Select2
-    if (typeof $.fn.select2 !== 'undefined') {
-        try {
-            $('#search-product').trigger('change.select2');
-        } catch (select2Error) {
-            console.warn('Select2 refresh error:', select2Error);
+        // Refresh Select2
+        if (typeof $.fn.select2 !== 'undefined') {
+            try {
+                $('#search-product').trigger('change.select2');
+            } catch (select2Error) {
+                console.warn('Select2 refresh error:', select2Error);
+            }
         }
     }
-}
+
     function getCategoryColor(categoryName) {
         const colorMap = {
             'Electronics': '#0d47a1',
@@ -678,8 +1300,18 @@
     // ==================== EVENT LISTENERS SETUP ====================
     function setupEventListeners() {
         console.log('POS System: Setting up event listeners...');
+        const invoiceDateInput = document.getElementById('date');
+if (invoiceDateInput) {
+    invoiceDateInput.addEventListener('change', function () {
+        checkAndGenerateInvoiceNumber(true);
+    });
+}
 
         try {
+            const btnSaveTransport = document.getElementById('btnSaveTransport');
+            if (btnSaveTransport) {
+                btnSaveTransport.addEventListener('click', saveTransportDetails);
+            }
             // Product selection - USE A DIFFERENT APPROACH TO AVOID RECURSION
             $('#search-product').on('change.select2', function (e) {
                 // Use a flag to prevent recursion
@@ -721,7 +1353,11 @@
                 updateCartPriceTypes();
                 populateProductDropdownFromSearch();
             });
-
+            // Invoice type change
+document.getElementById('invoice-type').addEventListener('change', function () {
+    GST_TYPE = this.value === 'non-gst' ? 'non-gst' : 'gst';
+    checkAndGenerateInvoiceNumber(true);
+});
             // Invoice type change
             document.getElementById('invoice-type').addEventListener('change', async function () {
                 GST_TYPE = this.value;
@@ -835,7 +1471,22 @@
                     window.location.href = 'invoices.php';
                 }
             });
+            document.querySelectorAll('input[name="product-gst-filter"]').forEach(radio => {
+                radio.addEventListener('change', function () {
+                    PRODUCT_GST_FILTER = this.value;
+                    populateProductDropdownFromSearch();
 
+                    if (typeof showToast === 'function') {
+                        if (PRODUCT_GST_FILTER === 'gst') {
+                            showToast('Showing GST products only', 'info');
+                        } else if (PRODUCT_GST_FILTER === 'non-gst') {
+                            showToast('Showing non-GST products only', 'info');
+                        } else {
+                            showToast('Showing all products', 'info');
+                        }
+                    }
+                });
+            });
             // Form reset on page unload warning
             window.addEventListener('beforeunload', function (e) {
                 if (CART.length > 0) {
@@ -1000,14 +1651,52 @@
                 id: product.id,
                 name: product.product_name,
                 stock_primary: product.shop_stock_primary,
-                stock_secondary: product.shop_stock_secondary,
-                unit_of_measure: product.unit_of_measure,
-                secondary_unit: product.secondary_unit,
-                sec_unit_conversion: product.sec_unit_conversion
+                old_qty: product.shop_old_qty,
+                use_batch_tracking: product.use_batch_tracking
             });
 
             CURRENT_PRODUCT = product;
             CURRENT_UNIT_IS_SECONDARY = false;
+
+            // Calculate new stock quantity
+            const oldQty = parseFloat(product.shop_old_qty) || 0;
+            const totalStock = parseFloat(product.shop_stock_primary) || 0;
+            const newStockQty = Math.max(0, totalStock - oldQty);
+
+            // Show warning if old stock exists
+            if (oldQty > 0) {
+                const warningDiv = document.getElementById('stock-warning');
+                if (!warningDiv) {
+                    // Create warning div if it doesn't exist
+                    const newWarning = document.createElement('div');
+                    newWarning.id = 'stock-warning';
+                    newWarning.className = 'alert alert-warning mt-2';
+                    newWarning.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Old Stock Available:</strong> ${oldQty} ${product.unit_of_measure} 
+                    (New Stock: ${newStockQty} ${product.unit_of_measure})
+                    <br><small>Old stock must be sold first before new stock can be sold.</small>
+                `;
+
+                    const formSection = document.querySelector('.product-search-section');
+                    if (formSection) {
+                        formSection.appendChild(newWarning);
+                    }
+                } else {
+                    warningDiv.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Old Stock Available:</strong> ${oldQty} ${product.unit_of_measure} 
+                    (New Stock: ${newStockQty} ${product.unit_of_measure})
+                    <br><small>Old stock must be sold first before new stock can be sold.</small>
+                `;
+                    warningDiv.style.display = 'block';
+                }
+            } else {
+                const warningDiv = document.getElementById('stock-warning');
+                if (warningDiv) {
+                    warningDiv.style.display = 'none';
+                }
+            }
 
             // Calculate GST exclusive price
             const cgstRate = parseFloat(product.cgst_rate) || 0;
@@ -1022,8 +1711,8 @@
             }
 
             // Set form values
-            document.getElementById('mrp').value = Math.round(parseFloat(product.mrp) || 0);
-            document.getElementById('selling-price').value = Math.round(sellingPrice);
+            document.getElementById('mrp').value = Number(parseFloat(product.mrp) || 0).toFixed(2);
+            document.getElementById('selling-price').value = Number(sellingPrice).toFixed(2);
             document.getElementById('qty-unit').textContent = product.unit_of_measure || 'PCS';
             document.getElementById('qty-input').value = '1';
 
@@ -1149,7 +1838,12 @@
     // ==================== UPDATE THE EVENT LISTENER SETUP ====================
     function setupEventListeners() {
         console.log('POS System: Setting up event listeners...');
-
+        const invoiceDateInput = document.getElementById('date');
+if (invoiceDateInput) {
+    invoiceDateInput.addEventListener('change', function () {
+        checkAndGenerateInvoiceNumber(true);
+    });
+}
         try {
             // Product selection - USE A DIFFERENT APPROACH TO AVOID RECURSION
             $('#search-product').on('change.select2', function (e) {
@@ -1192,6 +1886,11 @@
                 updateCartPriceTypes();
                 populateProductDropdownFromSearch();
             });
+            // Invoice type change
+document.getElementById('invoice-type').addEventListener('change', function () {
+    GST_TYPE = this.value === 'non-gst' ? 'non-gst' : 'gst';
+    checkAndGenerateInvoiceNumber(true);
+});
             // Add this to setupEventListeners() function:
             document.getElementById('search-product').addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && this.value) {
@@ -1227,31 +1926,31 @@
             });
 
             // Add keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    // Ctrl+Enter to add product
-    if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
-        if (CURRENT_PRODUCT) {
-            addProductToCart();
-        }
-    }
-    
-    // F1 for help
-    if (e.key === 'F1') {
-        e.preventDefault();
-        showInfoModal('Keyboard Shortcuts', 
-            'Ctrl+Enter: Add product quickly, ' +
-            'Esc: Go to invoices page, ' +
-            'F1: Show this help'
-        );
-    }
-    
-    // Escape key handler to go to invoices.php - NO ALERT
-    if (e.key === 'Escape') {
-        e.preventDefault();
-        window.location.href = 'invoices.php';
-    }
-});
+            document.addEventListener('keydown', function (e) {
+                // Ctrl+Enter to add product
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    if (CURRENT_PRODUCT) {
+                        addProductToCart();
+                    }
+                }
+
+                // F1 for help
+                if (e.key === 'F1') {
+                    e.preventDefault();
+                    showInfoModal('Keyboard Shortcuts',
+                        'Ctrl+Enter: Add product quickly, ' +
+                        'Esc: Go to invoices page, ' +
+                        'F1: Show this help'
+                    );
+                }
+
+                // Escape key handler to go to invoices.php - NO ALERT
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    window.location.href = 'invoices.php';
+                }
+            });
             // Invoice type change
             document.getElementById('invoice-type').addEventListener('change', async function () {
                 GST_TYPE = this.value;
@@ -1346,11 +2045,6 @@ document.addEventListener('keydown', function(e) {
             const qtyInput = document.getElementById('qty-input');
             let qty = parseFloat(qtyInput.value) || 1;
 
-            // For secondary units, round to whole number
-            if (CURRENT_UNIT_IS_SECONDARY) {
-                qty = Math.round(qty);
-            }
-
             if (qty <= 0) {
                 showToast('Please enter a valid quantity (greater than 0)', 'warning');
                 qtyInput.focus();
@@ -1366,28 +2060,85 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
 
-            // Check stock - convert to primary unit if needed
-            const shopStock = product.shop_stock || 0;
-            let stockToCheck = shopStock;
+            // Get stock information
+            const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
+            const oldQty = parseFloat(product.shop_old_qty) || 0;
+            const newStockQty = Math.max(0, shopStockPrimary - oldQty);
+            const secUnitConversion = parseFloat(product.sec_unit_conversion) || 1;
 
-            if (CURRENT_UNIT_IS_SECONDARY && product.sec_unit_conversion) {
-                // Convert secondary unit quantity to primary unit for stock check
-                const qtyInPrimary = qty / product.sec_unit_conversion;
-                if (qtyInPrimary > shopStock) {
-                    showToast(`Insufficient stock! Available: ${shopStock} ${product.unit_of_measure} (≈${Math.round(shopStock * product.sec_unit_conversion)} ${product.secondary_unit})`, 'warning');
-                    qtyInput.value = Math.round(shopStock * product.sec_unit_conversion);
-                    qtyInput.focus();
-                    qtyInput.select();
-                    return;
+            console.log('Stock check details:', {
+                productName: product.product_name,
+                shopStockPrimary: shopStockPrimary,
+                oldQty: oldQty,
+                newStockQty: newStockQty,
+                secUnitConversion: secUnitConversion,
+                qtyRequested: qty,
+                isSecondaryUnit: CURRENT_UNIT_IS_SECONDARY,
+                unit: document.getElementById('qty-unit').textContent
+            });
+
+            // Calculate quantity in primary units
+            let qtyInPrimary = qty;
+            if (CURRENT_UNIT_IS_SECONDARY && secUnitConversion > 0) {
+                qtyInPrimary = qty / secUnitConversion;
+            }
+
+            // Check total stock availability first
+            if (qtyInPrimary > shopStockPrimary) {
+                const availableSecondary = Math.floor(shopStockPrimary * secUnitConversion);
+                const unitText = CURRENT_UNIT_IS_SECONDARY ?
+                    `${availableSecondary} ${product.secondary_unit}` :
+                    `${shopStockPrimary} ${product.unit_of_measure}`;
+
+                showToast(
+                    `Insufficient stock! Available: ${unitText}`,
+                    'warning'
+                );
+
+                // Set maximum available quantity
+                if (CURRENT_UNIT_IS_SECONDARY) {
+                    qtyInput.value = availableSecondary.toString();
+                } else {
+                    qtyInput.value = shopStockPrimary.toString();
                 }
-                stockToCheck = qtyInPrimary;
-            } else if (qty > shopStock) {
-                showToast(`Insufficient stock! Available: ${shopStock}`, 'warning');
-                qtyInput.value = shopStock.toString();
                 qtyInput.focus();
                 qtyInput.select();
                 return;
             }
+
+            // Check if trying to sell new stock while old stock still exists
+            // Calculate total old stock already in cart for this product
+            let totalOldStockInCart = 0;
+            CART.forEach(item => {
+                if (item.product_id === product.id && item.is_from_old_stock) {
+                    totalOldStockInCart += item.quantity_in_primary;
+                }
+            });
+
+            const remainingOldStock = oldQty - totalOldStockInCart;
+
+            // If there's still old stock remaining and this sale would dip into new stock
+            if (remainingOldStock > 0 && qtyInPrimary > remainingOldStock) {
+                const newStockToSell = qtyInPrimary - remainingOldStock;
+
+                showToast(
+                    `Cannot sell new stock while old stock remains. ` +
+                    `Remaining old stock: ${Math.floor(remainingOldStock * 100) / 100} ${product.unit_of_measure}. ` +
+                    `Please reduce quantity to ${Math.floor(remainingOldStock * 100) / 100} or less to sell only old stock.`,
+                    'warning'
+                );
+
+                // Suggest maximum old stock quantity
+                qtyInput.value = CURRENT_UNIT_IS_SECONDARY ?
+                    (remainingOldStock * secUnitConversion).toFixed(2) :
+                    remainingOldStock.toFixed(2);
+                qtyInput.focus();
+                qtyInput.select();
+                return;
+            }
+
+            // Determine if this sale is from old stock or new stock
+            const isFromOldStock = (remainingOldStock > 0 && qtyInPrimary <= remainingOldStock);
 
             // Get values from form
             const mrp = parseFloat(document.getElementById('mrp').value) || 0;
@@ -1398,8 +2149,12 @@ document.addEventListener('keydown', function(e) {
             const unit = document.getElementById('qty-unit').textContent;
             const isSecondaryUnit = CURRENT_UNIT_IS_SECONDARY;
 
-            // Round selling price
-            sellingPrice = Math.round(sellingPrice);
+            // For secondary units, round price to 2 decimal places
+            if (isSecondaryUnit) {
+                sellingPrice = parseFloat(sellingPrice.toFixed(2));
+            } else {
+                sellingPrice = Number(sellingPrice).toFixed(2);
+            }
 
             // Calculate price with discount
             let finalPrice = sellingPrice;
@@ -1419,36 +2174,41 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
 
-            // Round final price
-            finalPrice = Math.round(finalPrice);
-
-            // Calculate GST rates
-            const cgstRate = parseFloat(product.cgst_rate) || 0;
-            const sgstRate = parseFloat(product.sgst_rate) || 0;
-            const igstRate = parseFloat(product.igst_rate) || 0;
-            const totalGSTRate = cgstRate + sgstRate + igstRate;
-
-            // Calculate referral commission
-            let referralCommission = 0;
-            if (product.referral_enabled == 1 && SELECTED_REFERRAL_ID) {
-                const referralType = product.referral_type || 'percentage';
-                const referralValue = parseFloat(product.referral_value) || 0;
-
-                if (referralType === 'percentage') {
-                    referralCommission = finalPrice * (referralValue / 100);
-                } else {
-                    referralCommission = referralValue * qty;
-                }
+            // Round final price appropriately
+            if (isSecondaryUnit) {
+                finalPrice = parseFloat(finalPrice.toFixed(2));
+            } else {
+                finalPrice = Math.round(finalPrice);
             }
 
-            // Generate cart item ID
-            const cartItemId = `${product.id}-${unit}-${finalPrice.toFixed(0)}-${discountType}`;
+            // Create cart item ID with all relevant info
+            const cartItemId = `${product.id}-${unit}-${finalPrice.toFixed(2)}-${discountType}-${isSecondaryUnit}-${isFromOldStock ? 'old' : 'new'}`;
 
-            // Create cart item
+            // Show product name with category and subcategory
+            const productName = product.product_name;
+            const categoryName = product.category_name || '';
+            const subcategoryName = product.subcategory_name || '';
+
+            let displayName = productName;
+            if (categoryName) {
+                displayName += ` (${categoryName}`;
+                if (subcategoryName) {
+                    displayName += ` - ${subcategoryName}`;
+                }
+                displayName += ')';
+            }
+
+            // Add stock type indicator to display name
+            if (isFromOldStock) {
+                displayName += ' <span class="badge bg-warning text-dark">OLD STOCK</span>';
+            } else {
+                displayName += ' <span class="badge bg-info">NEW STOCK</span>';
+            }
+
             const cartItem = {
                 id: cartItemId,
                 product_id: product.id,
-                name: product.product_name,
+                name: displayName,
                 code: product.product_code || product.id.toString(),
                 mrp: mrp,
                 base_price: sellingPrice,
@@ -1456,70 +2216,118 @@ document.addEventListener('keydown', function(e) {
                 price_type: GLOBAL_PRICE_TYPE,
                 quantity: qty,
                 unit: unit,
-
                 is_secondary_unit: isSecondaryUnit,
+                is_from_old_stock: isFromOldStock, // Flag to identify stock type
                 discount_value: discount,
                 discount_type: discountType,
                 discount_amount: discountValue,
-                shop_stock: shopStock,
+                shop_stock: shopStockPrimary,
+                old_qty: oldQty,
+                new_stock_qty: newStockQty,
                 hsn_code: product.hsn_code || '',
-                cgst_rate: cgstRate,
-                sgst_rate: sgstRate,
-                igst_rate: igstRate,
-                total_gst_rate: totalGSTRate,
+                cgst_rate: parseFloat(product.cgst_rate) || 0,
+                sgst_rate: parseFloat(product.sgst_rate) || 0,
+                igst_rate: parseFloat(product.igst_rate) || 0,
                 referral_enabled: product.referral_enabled || 0,
                 referral_type: product.referral_type || 'percentage',
                 referral_value: parseFloat(product.referral_value) || 0,
-                referral_commission: referralCommission,
+                referral_commission: 0,
                 secondary_unit: product.secondary_unit || '',
-                sec_unit_conversion: parseFloat(product.sec_unit_conversion) || 1,
+                sec_unit_conversion: secUnitConversion,
                 stock_price: parseFloat(product.stock_price) || 0,
                 retail_price: parseFloat(product.retail_price) || 0,
                 wholesale_price: parseFloat(product.wholesale_price) || 0,
                 unit_of_measure: product.unit_of_measure || 'PCS',
+                quantity_in_primary: qtyInPrimary,
                 added_at: new Date().toISOString(),
-                total: finalPrice * qty
+                total: finalPrice * qty,
+                original_product_name: product.product_name,
+                category_name: categoryName,
+                subcategory_name: subcategoryName,
+                use_batch_tracking: product.use_batch_tracking || 0
             };
 
-            console.log('Creating cart item:', cartItem);
+            // Calculate referral commission
+            if (cartItem.referral_enabled == 1 && SELECTED_REFERRAL_ID) {
+                const referralType = cartItem.referral_type || 'percentage';
+                const referralValue = cartItem.referral_value || 0;
 
-            // Check if item already exists in cart with same product, unit, price, and discount type
+                if (referralType === 'percentage') {
+                    cartItem.referral_commission = cartItem.total * (referralValue / 100);
+                } else {
+                    cartItem.referral_commission = referralValue * cartItem.quantity;
+                }
+            }
+
+            // Check if item already exists in cart with same stock type
             const existingIndex = CART.findIndex(item =>
                 item.product_id === cartItem.product_id &&
                 item.unit === cartItem.unit &&
-
-                Math.abs(item.price - cartItem.price) < 1 &&
-                item.discount_type === cartItem.discount_type
+                Math.abs(item.price - cartItem.price) < 0.01 &&
+                item.discount_type === cartItem.discount_type &&
+                item.is_secondary_unit === cartItem.is_secondary_unit &&
+                item.is_from_old_stock === cartItem.is_from_old_stock // Separate old and new stock in cart
             );
 
             if (existingIndex >= 0) {
-                // Update quantity
-                const newQty = CART[existingIndex].quantity + qty;
+                // Update quantity - check combined stock by type
+                const newQtyInPrimary = CART[existingIndex].quantity_in_primary + qtyInPrimary;
 
-                // Check stock again
-                if (shopStock < newQty) {
-                    showToast(`Insufficient stock for additional quantity. Available: ${shopStock - CART[existingIndex].quantity}`, 'warning');
-                    return;
+                // If this is old stock, check against remaining old stock
+                if (isFromOldStock) {
+                    // Calculate total old stock in cart after this addition
+                    let totalOldInCart = 0;
+                    CART.forEach(item => {
+                        if (item.product_id === product.id && item.is_from_old_stock) {
+                            totalOldInCart += item.quantity_in_primary;
+                        }
+                    });
+                    totalOldInCart += qtyInPrimary;
+
+                    if (totalOldInCart > oldQty) {
+                        const availableOld = oldQty - (totalOldInCart - qtyInPrimary);
+                        showToast(
+                            `Cannot add more old stock. Remaining old stock: ${Math.floor(availableOld * 100) / 100} ${product.unit_of_measure}`,
+                            'warning'
+                        );
+                        return;
+                    }
+                } else {
+                    // For new stock, check against remaining new stock
+                    let totalNewInCart = 0;
+                    CART.forEach(item => {
+                        if (item.product_id === product.id && !item.is_from_old_stock) {
+                            totalNewInCart += item.quantity_in_primary;
+                        }
+                    });
+                    totalNewInCart += qtyInPrimary;
+
+                    if (totalNewInCart > newStockQty) {
+                        const availableNew = newStockQty - (totalNewInCart - qtyInPrimary);
+                        showToast(
+                            `Cannot add more new stock. Remaining new stock: ${Math.floor(availableNew * 100) / 100} ${product.unit_of_measure}`,
+                            'warning'
+                        );
+                        return;
+                    }
                 }
 
-                CART[existingIndex].quantity = newQty;
-                CART[existingIndex].total = CART[existingIndex].price * newQty;
+                CART[existingIndex].quantity += qty;
+                CART[existingIndex].quantity_in_primary = newQtyInPrimary;
+                CART[existingIndex].total = CART[existingIndex].price * CART[existingIndex].quantity;
 
-                showToast(`${product.product_name} quantity updated to ${newQty}`, 'info');
+                showToast(`${product.product_name} quantity updated to ${CART[existingIndex].quantity} ${unit} (${isFromOldStock ? 'Old Stock' : 'New Stock'})`, 'info');
 
             } else {
                 // Add new item
                 CART.push(cartItem);
-                showToast(`${product.product_name} added to cart`, 'success');
+                showToast(`${displayName} added to cart`, 'success');
             }
 
             // Update UI and clear form
             renderCart();
             saveCartToSession();
-
-            // Clear product form WITHOUT triggering change event
             clearProductFormSilently();
-
             updateBillingSummary();
             updateButtonStates();
 
@@ -1607,7 +2415,6 @@ document.addEventListener('keydown', function(e) {
 
             if (CART.length === 0) {
                 if (!emptyRow) {
-                    // Create empty row if it doesn't exist
                     const newEmptyRow = document.createElement('tr');
                     newEmptyRow.id = 'emptyCartRow';
                     newEmptyRow.innerHTML = '<td colspan="10" class="cart-empty">No items in cart</td>';
@@ -1628,85 +2435,90 @@ document.addEventListener('keydown', function(e) {
                     const row = document.createElement('tr');
                     row.id = `cart-row-${index}`;
 
-                    // Calculate item totals with GST included
-                    const gstRate = (item.cgst_rate || 0) + (item.sgst_rate || 0) + (item.igst_rate || 0);
-                    const priceWithoutGST = gstRate > 0 ? item.price / (1 + (gstRate / 100)) : item.price;
-                    const gstAmountPerUnit = item.price - priceWithoutGST;
-                    const itemTotal = item.price * item.quantity;
-                    const totalGST = gstAmountPerUnit * item.quantity;
-                    const totalWithoutGST = priceWithoutGST * item.quantity;
+                    // Calculate primary unit equivalent
+                    let primaryUnitDisplay = '';
+                    if (item.is_secondary_unit && item.sec_unit_conversion > 0) {
+                        const primaryQty = item.quantity / item.sec_unit_conversion;
+                        primaryUnitDisplay = `${primaryQty.toFixed(2)} ${item.unit_of_measure}`;
+                    }
 
-                    // Format quantity display (round for secondary units)
+                    // Format quantity display
                     let quantityDisplay = item.quantity;
-                    let primaryQuantityDisplay = '';
+                    if (item.is_secondary_unit) {
+                        quantityDisplay = parseFloat(item.quantity.toFixed(2));
+                    }
 
-                    if (item.is_secondary_unit && item.sec_unit_conversion && item.sec_unit_conversion > 0) {
-                        // For secondary units, show rounded value
-                        quantityDisplay = Math.round(item.quantity);
-                        const primaryQty = item.quantity * item.sec_unit_conversion;
-                        primaryQuantityDisplay = `(${parseFloat(primaryQty).toFixed(2)} ${item.unit_of_measure || 'PCS'})`;
+                    // Calculate item totals
+                    const itemTotal = item.price * item.quantity;
+
+                    // Add stock type badge
+                    let stockTypeBadge = '';
+                    if (item.is_from_old_stock) {
+                        stockTypeBadge = '<span class="badge bg-warning text-dark ms-1">OLD</span>';
+                    } else {
+                        stockTypeBadge = '<span class="badge bg-info ms-1">NEW</span>';
                     }
 
                     row.innerHTML = `
-                    <td>${index + 1}</td>
-                    <td class="text-start">
-                        <strong>${escapeHtml(item.name)}</strong><br>
-                        <small class="text-muted">${escapeHtml(item.code)}</small>
-                       
-                    </td>
-                    <td>
-                        <div class="d-flex align-items-center gap-1">
-                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" 
-                                    onclick="cartItemDecrement(${index})">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                            <input type="number" class="form-control form-control-sm text-center cart-qty-input" 
-                                   value="${quantityDisplay}" 
-                                   data-index="${index}"
-                                   min="${item.is_secondary_unit ? 1 : 1}" 
-                                   step="${item.is_secondary_unit ? 1 : 1}"
-                                   style="width: 80px;">
-                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" 
-                                    onclick="cartItemIncrement(${index})">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                        </div>
-                        ${primaryQuantityDisplay ? `<small class="text-muted d-block mt-1">${primaryQuantityDisplay}</small>` : ''}
-                    </td>
-                    <td>${escapeHtml(item.unit)}</td>
-                    <td>
-                        <select class="form-select form-select-sm cart-price-type-select" data-index="${index}">
-                            <option value="retail" ${item.price_type === 'retail' ? 'selected' : ''}>Retail</option>
-                            <option value="wholesale" ${item.price_type === 'wholesale' ? 'selected' : ''}>Wholesale</option>
+                <td>${index + 1}</td>
+                <td class="text-start">
+                    <strong>${escapeHtml(item.name)} ${stockTypeBadge}</strong><br>
+                    <small class="text-muted">${escapeHtml(item.code)}</small>
+                   
+                    ${primaryUnitDisplay ? `<br><small class="text-muted">${primaryUnitDisplay}</small>` : ''}
+                </td>
+                <td>
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" 
+                                onclick="cartItemDecrement(${index})">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <input type="number" class="form-control form-control-sm text-center cart-qty-input" 
+                               value="${quantityDisplay}" 
+                               data-index="${index}"
+                               min="${item.is_secondary_unit ? 0.01 : 1}" 
+                               step="${item.is_secondary_unit ? 0.01 : 1}"
+                               style="width: 80px;">
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" 
+                                onclick="cartItemIncrement(${index})">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </td>
+                <td>${escapeHtml(item.unit)}</td>
+                <td>
+                    <select class="form-select form-select-sm cart-price-type-select" data-index="${index}">
+                        <option value="retail" ${item.price_type === 'retail' ? 'selected' : ''}>Retail</option>
+                        <option value="wholesale" ${item.price_type === 'wholesale' ? 'selected' : ''}>Wholesale</option>
+                    </select>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center gap-1">
+                        <input type="number" class="form-control form-control-sm text-center cart-discount-value" 
+                               value="${item.discount_value || 0}" 
+                               data-index="${index}"
+                               min="0" ${item.discount_type === 'percentage' ? 'max="100"' : ''} step="0.01"
+                               style="width: 70px;">
+                        <select class="form-select form-select-sm cart-discount-type" data-index="${index}" style="width: 70px;">
+                            <option value="percentage" ${item.discount_type === 'percentage' ? 'selected' : ''}>%</option>
+                            <option value="fixed" ${item.discount_type === 'fixed' ? 'selected' : ''}>₹</option>
                         </select>
-                    </td>
-                    <td>
-                        <div class="d-flex align-items-center gap-1">
-                            <input type="number" class="form-control form-control-sm text-center cart-discount-value" 
-                                   value="${item.discount_value || 0}" 
-                                   data-index="${index}"
-                                   min="0" ${item.discount_type === 'percentage' ? 'max="100"' : ''} step="0.01"
-                                   style="width: 70px;">
-                            <select class="form-select form-select-sm cart-discount-type" data-index="${index}" style="width: 70px;">
-                                <option value="percentage" ${item.discount_type === 'percentage' ? 'selected' : ''}>%</option>
-                                <option value="fixed" ${item.discount_type === 'fixed' ? 'selected' : ''}>₹</option>
-                            </select>
-                        </div>
-                    </td>
-                    <td class="text-end">
-                        ₹${item.price.toFixed(0)}<br>
-                        <small class="text-muted">Ex-GST: ₹${Math.round(priceWithoutGST)}</small>
-                    </td>
-                    <td class="text-end">${gstRate.toFixed(2)}%</td>
-                    <td class="text-end">₹${Math.round(itemTotal)}</td>
-                    <td>
-                        <div class="cart-actions">
-                            <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${index})" title="Remove item">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
+                    </div>
+                </td>
+                <td class="text-end">
+                    ₹${item.price.toFixed(item.is_secondary_unit ? 2 : 0)}<br>
+                    <small class="text-muted">Per ${item.unit}</small>
+                </td>
+                <td class="text-end">${((item.cgst_rate || 0) + (item.sgst_rate || 0) + (item.igst_rate || 0)).toFixed(2)}%</td>
+                <td class="text-end">₹${item.is_secondary_unit ? itemTotal.toFixed(2) : Math.round(itemTotal)}</td>
+                <td>
+                    <div class="cart-actions">
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${index})" title="Remove item">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
 
                     tbody.appendChild(row);
                 } catch (rowError) {
@@ -1716,17 +2528,17 @@ document.addEventListener('keydown', function(e) {
 
             // Add live event listeners
             setTimeout(() => {
-                // Quantity inputs - live update
+                // Quantity inputs
                 document.querySelectorAll('.cart-qty-input').forEach(input => {
                     input.addEventListener('input', debounce(function () {
                         const index = parseInt(this.dataset.index);
-                        const value = parseFloat(this.value) || 1;
+                        const value = parseFloat(this.value) || (CART[index].is_secondary_unit ? 0.01 : 1);
                         liveUpdateCartItemQuantity(index, value);
                     }, 300));
 
                     input.addEventListener('change', function () {
                         const index = parseInt(this.dataset.index);
-                        const value = parseFloat(this.value) || 1;
+                        const value = parseFloat(this.value) || (CART[index].is_secondary_unit ? 0.01 : 1);
                         updateCartItemQuantity(index, value);
                     });
                 });
@@ -1739,7 +2551,7 @@ document.addEventListener('keydown', function(e) {
                     });
                 });
 
-                // Discount inputs - live update
+                // Discount inputs
                 document.querySelectorAll('.cart-discount-value').forEach(input => {
                     input.addEventListener('input', debounce(function () {
                         const index = parseInt(this.dataset.index);
@@ -1768,6 +2580,7 @@ document.addEventListener('keydown', function(e) {
             showToast('Error displaying cart. Please refresh page.', 'danger');
         }
     }
+
 
     function updateProductPriceDisplay() {
         try {
@@ -1902,16 +2715,6 @@ document.addEventListener('keydown', function(e) {
                 document.getElementById('unit-convert').innerHTML = '<i class="fas fa-undo me-1"></i> ';
                 document.getElementById('unit-convert').title = `Convert to ${product.unit_of_measure}`;
 
-                // Get base price
-                let basePrice = 0;
-                if (GLOBAL_PRICE_TYPE === 'wholesale') {
-                    basePrice = parseFloat(product.wholesale_price) || parseFloat(product.retail_price) || 0;
-                } else {
-                    basePrice = parseFloat(product.retail_price) || 0;
-                }
-
-                console.log('Base price for conversion:', basePrice);
-
                 // Convert quantity: primary to secondary
                 const currentQty = parseFloat(qtyInput.value) || 1;
                 const conversion = parseFloat(product.sec_unit_conversion) || 1;
@@ -1921,7 +2724,7 @@ document.addEventListener('keydown', function(e) {
                 // Reset discount when switching units
                 discountInput.value = '0';
 
-                // Update secondary unit price
+                // Update secondary unit price (this will now calculate correctly)
                 updateSecondaryUnitPrice();
 
                 showToast(`Converted to ${product.secondary_unit} (1 ${product.unit_of_measure} = ${product.sec_unit_conversion} ${product.secondary_unit})`, 'info');
@@ -1990,7 +2793,7 @@ document.addEventListener('keydown', function(e) {
 
             console.log('Base price:', basePrice, 'Price type:', GLOBAL_PRICE_TYPE);
 
-            // Default to product properties if not set
+            // Get secondary unit configuration
             const secUnitPriceType = product.sec_unit_price_type || 'fixed';
             const secUnitExtraCharge = parseFloat(product.sec_unit_extra_charge) || 0;
             const secUnitConversion = parseFloat(product.sec_unit_conversion) || 1;
@@ -2007,19 +2810,31 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
 
-            let sellingPrice = basePrice;
+            let sellingPrice = 0;
 
+            // FIRST: Calculate price per secondary unit
+            // Primary price per unit is for the primary unit (e.g., ₹300 per box)
+            // We need to get price per secondary unit (e.g., per PCS)
+
+            // Step 1: Calculate price per secondary unit from primary price
+            // For example: ₹300 per box / 3 PCS per box = ₹100 per PCS
+            let pricePerSecondaryUnit = basePrice / secUnitConversion;
+
+            console.log('Price per secondary unit before extra charge:', pricePerSecondaryUnit);
+
+            // Step 2: Add extra charge based on type
             if (secUnitPriceType === 'percentage') {
-                // Percentage extra charge on base price, then divide by conversion
-                const extraAmount = basePrice * (secUnitExtraCharge / 100);
-                sellingPrice = (basePrice + extraAmount) / secUnitConversion;
+                // Percentage extra charge on the price per secondary unit
+                const extraAmount = pricePerSecondaryUnit * (secUnitExtraCharge / 100);
+                sellingPrice = pricePerSecondaryUnit + extraAmount;
+                console.log(`Added ${secUnitExtraCharge}% extra: ₹${extraAmount}, new price: ₹${sellingPrice}`);
             } else {
-                // Fixed extra charge, then divide by conversion
-                const extraAmount = secUnitExtraCharge || 0;
-                sellingPrice = (basePrice + extraAmount) / secUnitConversion;
+                // Fixed extra charge per secondary unit
+                sellingPrice = pricePerSecondaryUnit + secUnitExtraCharge;
+                console.log(`Added fixed extra ₹${secUnitExtraCharge}, new price: ₹${sellingPrice}`);
             }
 
-            console.log('Calculated selling price:', sellingPrice);
+            console.log('Calculated selling price per secondary unit:', sellingPrice);
 
             // Format to 2 decimal places
             sellingPrice = parseFloat(sellingPrice.toFixed(2));
@@ -2148,7 +2963,7 @@ document.addEventListener('keydown', function(e) {
             if (isSecondaryUnit) {
                 sellingPrice = parseFloat(sellingPrice.toFixed(2));
             } else {
-                sellingPrice = Math.round(sellingPrice);
+                sellingPrice = Number(sellingPrice).toFixed(2);
             }
 
             // Calculate price with discount
@@ -2578,7 +3393,7 @@ document.addEventListener('keydown', function(e) {
 
                 if (totalCell) {
                     const total = finalPrice * item.quantity;
-                    totalCell.textContent = `₹${Math.round(total)}`;
+                    totalCell.textContent = `₹${Number(total).toFixed(2)}`;
                 }
             }
 
@@ -2635,80 +3450,97 @@ document.addEventListener('keydown', function(e) {
 
             // Get stock information
             const shopStockPrimary = parseFloat(product.shop_stock_primary) || 0;
+            const oldQty = parseFloat(product.shop_old_qty) || 0;
             const secUnitConversion = parseFloat(item.sec_unit_conversion) || 1;
 
-            // Stock validation
+            // Calculate new quantity in primary units
+            let newQtyInPrimary = newQty;
             if (item.is_secondary_unit && secUnitConversion > 0) {
-                // Convert secondary quantity to primary units
-                const newQtyInPrimary = newQty / secUnitConversion;
+                newQtyInPrimary = newQty / secUnitConversion;
+            }
 
-                // Check against available stock (including other cart items)
-                let totalQtyInCart = newQtyInPrimary;
+            // Check stock based on type (old vs new)
+            if (item.is_from_old_stock) {
+                // Calculate total old stock in cart after this update
+                let totalOldInCart = newQtyInPrimary;
 
-                // Sum quantities of same product in cart (excluding current index)
+                // Sum old stock quantities of same product in cart (excluding current index)
                 CART.forEach((cartItem, idx) => {
-                    if (idx !== index && cartItem.product_id === item.product_id) {
-                        totalQtyInCart += cartItem.quantity_in_primary;
+                    if (idx !== index && cartItem.product_id === item.product_id && cartItem.is_from_old_stock) {
+                        totalOldInCart += cartItem.quantity_in_primary;
                     }
                 });
 
-                if (totalQtyInCart > shopStockPrimary) {
-                    // Calculate available secondary units
-                    let availableForThisItem = shopStockPrimary;
+                if (totalOldInCart > oldQty) {
+                    // Calculate available old stock for this item
+                    let availableForThisItem = oldQty;
 
-                    // Subtract quantities of other cart items
+                    // Subtract quantities of other old stock items
                     CART.forEach((cartItem, idx) => {
-                        if (idx !== index && cartItem.product_id === item.product_id) {
+                        if (idx !== index && cartItem.product_id === item.product_id && cartItem.is_from_old_stock) {
                             availableForThisItem -= cartItem.quantity_in_primary;
                         }
                     });
 
-                    const availableSecondary = Math.floor(availableForThisItem * secUnitConversion);
+                    if (availableForThisItem <= 0) {
+                        showToast(`No old stock available for this product`, 'warning');
+                        return;
+                    }
+
+                    const availableQty = item.is_secondary_unit ?
+                        Math.floor(availableForThisItem * secUnitConversion * 100) / 100 :
+                        Math.floor(availableForThisItem * 100) / 100;
+
                     showToast(
-                        `Insufficient stock. Available: ${shopStockPrimary} ${product.unit_of_measure} (≈${availableSecondary} ${item.secondary_unit})`,
+                        `Insufficient old stock. Available: ${availableQty} ${item.unit}`,
                         'warning'
                     );
                     return;
                 }
-
-                // Update quantity
-                CART[index].quantity = Math.floor(newQty); // Round down for secondary units
-                CART[index].quantity_in_primary = newQtyInPrimary;
-
             } else {
-                // For primary units - check total quantity in cart
-                let totalQtyInCart = newQty;
+                // For new stock - check against new stock quantity
+                let totalNewInCart = newQtyInPrimary;
 
-                // Sum quantities of same product in cart (excluding current index)
+                // Sum new stock quantities of same product in cart (excluding current index)
                 CART.forEach((cartItem, idx) => {
-                    if (idx !== index && cartItem.product_id === item.product_id) {
-                        totalQtyInCart += cartItem.quantity;
+                    if (idx !== index && cartItem.product_id === item.product_id && !cartItem.is_from_old_stock) {
+                        totalNewInCart += cartItem.quantity_in_primary;
                     }
                 });
 
-                if (totalQtyInCart > shopStockPrimary) {
-                    // Calculate available for this item
-                    let availableForThisItem = shopStockPrimary;
+                const newStockQty = Math.max(0, shopStockPrimary - oldQty);
 
-                    // Subtract quantities of other cart items
+                if (totalNewInCart > newStockQty) {
+                    // Calculate available new stock for this item
+                    let availableForThisItem = newStockQty;
+
+                    // Subtract quantities of other new stock items
                     CART.forEach((cartItem, idx) => {
-                        if (idx !== index && cartItem.product_id === item.product_id) {
-                            availableForThisItem -= cartItem.quantity;
+                        if (idx !== index && cartItem.product_id === item.product_id && !cartItem.is_from_old_stock) {
+                            availableForThisItem -= cartItem.quantity_in_primary;
                         }
                     });
 
+                    if (availableForThisItem <= 0) {
+                        showToast(`No new stock available for this product`, 'warning');
+                        return;
+                    }
+
+                    const availableQty = item.is_secondary_unit ?
+                        Math.floor(availableForThisItem * secUnitConversion * 100) / 100 :
+                        Math.floor(availableForThisItem * 100) / 100;
+
                     showToast(
-                        `Insufficient stock. Available: ${shopStockPrimary} ${product.unit_of_measure}`,
+                        `Insufficient new stock. Available: ${availableQty} ${item.unit}`,
                         'warning'
                     );
                     return;
                 }
-
-                // Update quantity
-                CART[index].quantity = newQty;
-                CART[index].quantity_in_primary = newQty;
             }
 
+            // Update quantity
+            CART[index].quantity = newQty;
+            CART[index].quantity_in_primary = newQtyInPrimary;
             CART[index].total = CART[index].price * CART[index].quantity;
 
             // Update UI and save to session
@@ -2721,6 +3553,33 @@ document.addEventListener('keydown', function(e) {
             showToast('Error updating quantity. Please try again.', 'danger');
         }
     }
+    // ==================== ADD STYLE FOR OLD/NEW STOCK INDICATORS ====================
+    const stockStyle = document.createElement('style');
+    stockStyle.textContent = `
+    .stock-type-badge {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin-left: 5px;
+        font-weight: 600;
+    }
+    .old-stock-badge {
+        background-color: #f39c12;
+        color: white;
+    }
+    .new-stock-badge {
+        background-color: #3498db;
+        color: white;
+    }
+    .stock-warning {
+        border-left: 4px solid #f39c12;
+        background-color: #fff3cd;
+        padding: 10px;
+        margin-bottom: 15px;
+        border-radius: 4px;
+    }
+`;
+    document.head.appendChild(stockStyle);
     function updateCartItemPriceType(index, priceType) {
         try {
             if (!CART[index]) {
@@ -2993,44 +3852,63 @@ document.addEventListener('keydown', function(e) {
 
 
     // ==================== CALCULATION FUNCTIONS ====================
-    function calculateItemGST(item) {
+    function calculateItemGST(item, overallDiscountShare = 0) {
         try {
-            if (GST_TYPE === 'non-gst' || (item.cgst_rate + item.sgst_rate + item.igst_rate) <= 0) {
+            const qty = parseFloat(item.quantity) || 0;
+            const unitPrice = parseFloat(item.price) || 0;
+            const lineTotalBeforeDiscount = unitPrice * qty;
+            const discountShare = Math.max(0, parseFloat(overallDiscountShare) || 0);
+            const lineTotalAfterDiscount = Math.max(0, lineTotalBeforeDiscount - discountShare);
+
+            const cgstRate = parseFloat(item.cgst_rate) || 0;
+            const sgstRate = parseFloat(item.sgst_rate) || 0;
+            const igstRate = parseFloat(item.igst_rate) || 0;
+            const totalGSTRate = cgstRate + sgstRate + igstRate;
+
+            if (GST_TYPE === 'non-gst' || totalGSTRate <= 0) {
                 return {
-                    taxable: item.price * item.quantity,
+                    taxable: parseFloat(lineTotalAfterDiscount.toFixed(2)),
                     cgst: 0,
                     sgst: 0,
                     igst: 0,
-                    total: 0
+                    total: 0,
+                    line_total_before_discount: parseFloat(lineTotalBeforeDiscount.toFixed(2)),
+                    overall_discount_share: parseFloat(discountShare.toFixed(2)),
+                    line_total_after_discount: parseFloat(lineTotalAfterDiscount.toFixed(2))
                 };
             }
 
-            const itemTotal = item.price * item.quantity;
-            const totalGSTRate = item.cgst_rate + item.sgst_rate + item.igst_rate;
+            // Product prices are inclusive of GST in this POS.
+            // First distribute overall discount proportionally, then split GST from the discounted line value.
+            const taxableValue = lineTotalAfterDiscount / (1 + (totalGSTRate / 100));
+            const gstAmount = lineTotalAfterDiscount - taxableValue;
 
-            // GST is included in the price
-            // Calculate the taxable value (excluding GST)
-            const taxableValue = itemTotal / (1 + (totalGSTRate / 100));
-            const gstAmount = itemTotal - taxableValue;
-
-            // Distribute GST among components
-            let cgst = 0, sgst = 0, igst = 0;
-            if (totalGSTRate > 0) {
-                cgst = gstAmount * (item.cgst_rate / totalGSTRate);
-                sgst = gstAmount * (item.sgst_rate / totalGSTRate);
-                igst = gstAmount * (item.igst_rate / totalGSTRate);
-            }
+            const cgst = gstAmount * (cgstRate / totalGSTRate);
+            const sgst = gstAmount * (sgstRate / totalGSTRate);
+            const igst = gstAmount * (igstRate / totalGSTRate);
 
             return {
-                taxable: taxableValue,
-                cgst: cgst,
-                sgst: sgst,
-                igst: igst,
-                total: gstAmount
+                taxable: parseFloat(taxableValue.toFixed(2)),
+                cgst: parseFloat(cgst.toFixed(2)),
+                sgst: parseFloat(sgst.toFixed(2)),
+                igst: parseFloat(igst.toFixed(2)),
+                total: parseFloat(gstAmount.toFixed(2)),
+                line_total_before_discount: parseFloat(lineTotalBeforeDiscount.toFixed(2)),
+                overall_discount_share: parseFloat(discountShare.toFixed(2)),
+                line_total_after_discount: parseFloat(lineTotalAfterDiscount.toFixed(2))
             };
         } catch (error) {
             console.error('Error calculating item GST:', error);
-            return { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 };
+            return {
+                taxable: 0,
+                cgst: 0,
+                sgst: 0,
+                igst: 0,
+                total: 0,
+                line_total_before_discount: 0,
+                overall_discount_share: 0,
+                line_total_after_discount: 0
+            };
         }
     }
 
@@ -3053,6 +3931,44 @@ document.addEventListener('keydown', function(e) {
         }
     }
 
+    function calculateOverallDiscountDistribution(overallDiscount) {
+        const distribution = [];
+        const subtotal = CART.reduce((sum, item) => {
+            const qty = parseFloat(item.quantity) || 0;
+            const price = parseFloat(item.price) || 0;
+            return sum + (price * qty);
+        }, 0);
+
+        overallDiscount = parseFloat(overallDiscount) || 0;
+
+        if (subtotal <= 0 || overallDiscount <= 0 || CART.length === 0) {
+            CART.forEach(() => distribution.push(0));
+            return distribution;
+        }
+
+        overallDiscount = Math.min(overallDiscount, subtotal);
+        let distributedTotal = 0;
+
+        CART.forEach((item, index) => {
+            const itemAmount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            let share = 0;
+
+            // Last item receives rounding balance so total discount exactly matches bill discount.
+            if (index === CART.length - 1) {
+                share = overallDiscount - distributedTotal;
+            } else {
+                share = (itemAmount / subtotal) * overallDiscount;
+                share = parseFloat(share.toFixed(2));
+                distributedTotal += share;
+            }
+
+            share = Math.max(0, Math.min(share, itemAmount));
+            distribution.push(parseFloat(share.toFixed(2)));
+        });
+
+        return distribution;
+    }
+
     function calculateTotals() {
         try {
             let subtotal = 0;
@@ -3064,59 +3980,54 @@ document.addEventListener('keydown', function(e) {
             let totalReferralCommission = 0;
 
             CART.forEach(item => {
-                const itemTotal = item.price * item.quantity;
-                const itemGST = calculateItemGST(item);
-                const itemReferralCommission = calculateItemReferralCommission(item);
-
+                const itemTotal = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
                 subtotal += itemTotal;
-                totalTaxable += itemGST.taxable || 0;
-                totalCGST += itemGST.cgst;
-                totalSGST += itemGST.sgst;
-                totalIGST += itemGST.igst;
-                totalReferralCommission += itemReferralCommission;
+                totalReferralCommission += calculateItemReferralCommission(item);
 
-                // Calculate item discount
-                const product = findProductById(item.product_id);
-                if (product && item.discount_value > 0) {
-                    let basePrice = item.price_type === 'wholesale' ?
-                        parseFloat(product.wholesale_price) : parseFloat(product.retail_price);
-
-                    if (item.discount_type === 'percentage') {
-                        totalItemDiscount += (basePrice * (item.discount_value / 100)) * item.quantity;
-                    } else {
-                        totalItemDiscount += item.discount_value * item.quantity;
-                    }
-                }
+                // Item price in CART is already after item-level discount.
+                // Keep this only for display when the item stores discount_amount.
+                totalItemDiscount += parseFloat(item.discount_amount || 0) || 0;
             });
 
-            const subtotalAfterItems = subtotal - totalItemDiscount;
+            const subtotalAfterItems = subtotal;
 
-            // ==== FIX STARTS HERE ====
-            // Overall discount - CORRECTED to handle both percentage and rupees
-            const overallDiscVal = parseFloat(document.getElementById('additional-dis').value) || 0;
-            const overallDiscType = document.getElementById('overall-discount-type').value; // Changed from 'discount-type'
+            const overallDiscVal = parseFloat(document.getElementById('additional-dis')?.value) || 0;
+            const overallDiscType = document.getElementById('overall-discount-type')?.value || 'fixed';
             let overallDiscount = 0;
 
             if (overallDiscVal > 0) {
                 if (overallDiscType === 'percentage') {
                     overallDiscount = subtotalAfterItems * (overallDiscVal / 100);
                 } else {
-                    // Fixed rupees discount - ensure it doesn't exceed total
                     overallDiscount = Math.min(overallDiscVal, subtotalAfterItems);
                 }
             }
-            // ==== FIX ENDS HERE ====
+
+            overallDiscount = parseFloat(overallDiscount.toFixed(2));
+
+            // Main rule:
+            // Big amount item gets big discount, small amount item gets small discount.
+            // GST is calculated on each item's amount after its proportional discount share.
+            const discountDistribution = calculateOverallDiscountDistribution(overallDiscount);
+
+            CART.forEach((item, index) => {
+                const itemGST = calculateItemGST(item, discountDistribution[index] || 0);
+                totalTaxable += itemGST.taxable || 0;
+                totalCGST += itemGST.cgst || 0;
+                totalSGST += itemGST.sgst || 0;
+                totalIGST += itemGST.igst || 0;
+            });
 
             const totalBeforePoints = Math.max(0, subtotalAfterItems - overallDiscount);
 
-            // Loyalty points discount
-            const pointsDiscount = LOYALTY_POINTS_DISCOUNT > totalBeforePoints ?
-                totalBeforePoints : LOYALTY_POINTS_DISCOUNT;
+            const pointsDiscount = LOYALTY_POINTS_DISCOUNT > totalBeforePoints
+                ? totalBeforePoints
+                : LOYALTY_POINTS_DISCOUNT;
 
-            // GST total
-            const totalGST = GST_TYPE === 'gst' ? (totalCGST + totalSGST + totalIGST) : 0;
+            const totalGST = GST_TYPE === 'gst'
+                ? (totalCGST + totalSGST + totalIGST)
+                : 0;
 
-            // Grand total
             const grandTotal = Math.max(0, totalBeforePoints - pointsDiscount);
 
             return {
@@ -3131,9 +4042,9 @@ document.addEventListener('keydown', function(e) {
                 totalGST: parseFloat(totalGST.toFixed(2)),
                 totalReferralCommission: parseFloat(totalReferralCommission.toFixed(2)),
                 grandTotal: parseFloat(grandTotal.toFixed(2)),
-                subtotalAfterItems: parseFloat(subtotalAfterItems.toFixed(2))
+                subtotalAfterItems: parseFloat(subtotalAfterItems.toFixed(2)),
+                discountDistribution: discountDistribution
             };
-
         } catch (error) {
             console.error('Error calculating totals:', error);
             return {
@@ -3148,9 +4059,97 @@ document.addEventListener('keydown', function(e) {
                 totalGST: 0,
                 totalReferralCommission: 0,
                 grandTotal: 0,
-                subtotalAfterItems: 0
+                subtotalAfterItems: 0,
+                discountDistribution: []
             };
         }
+    }
+
+    function buildInvoiceItemsForPayload(totals) {
+        const distribution = totals.discountDistribution || calculateOverallDiscountDistribution(totals.overallDiscount || 0);
+
+        return CART.map((item, index) => {
+            const overallShare = parseFloat(distribution[index] || 0);
+            const gst = calculateItemGST(item, overallShare);
+            const lineBeforeDiscount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            const lineAfterDiscount = Math.max(0, lineBeforeDiscount - overallShare);
+
+            return {
+                product_id: item.product_id,
+                name: item.name,
+                code: item.code,
+                quantity: item.quantity,
+                unit: item.unit,
+                price: item.price,
+                price_type: item.price_type,
+
+                item_discount_value: item.discount_value || 0,
+                item_discount_type: item.discount_type || 'percentage',
+                item_discount_amount: item.discount_amount || 0,
+
+                overall_discount_share: parseFloat(overallShare.toFixed(2)),
+                discount_value: parseFloat(overallShare.toFixed(2)),
+                discount_type: 'fixed',
+
+                total: parseFloat(lineAfterDiscount.toFixed(2)),
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                taxable_value: gst.taxable,
+                cgst_amount: gst.cgst,
+                sgst_amount: gst.sgst,
+                igst_amount: gst.igst,
+                line_total_before_discount: parseFloat(lineBeforeDiscount.toFixed(2)),
+                line_total_after_discount: parseFloat(lineAfterDiscount.toFixed(2)),
+                stock_price: item.stock_price,
+                referral_enabled: item.referral_enabled,
+                referral_type: item.referral_type,
+                referral_value: item.referral_value,
+                referral_commission: calculateItemReferralCommission(item),
+                is_secondary_unit: item.is_secondary_unit,
+                sec_unit_conversion: item.sec_unit_conversion,
+                quantity_in_primary: item.quantity_in_primary || (
+                    item.is_secondary_unit
+                        ? (item.quantity / item.sec_unit_conversion)
+                        : item.quantity
+                )
+            };
+        });
+    }
+
+    function buildQuotationItemsForPayload(totals) {
+        const distribution = totals.discountDistribution || calculateOverallDiscountDistribution(totals.overallDiscount || 0);
+
+        return CART.map((item, index) => {
+            const overallShare = parseFloat(distribution[index] || 0);
+            const gst = calculateItemGST(item, overallShare);
+            const lineBeforeDiscount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            const lineAfterDiscount = Math.max(0, lineBeforeDiscount - overallShare);
+
+            return {
+                product_id: item.product_id,
+                product_name: item.name,
+                quantity: item.quantity,
+                unit_price: item.price,
+                discount_amount: parseFloat(overallShare.toFixed(2)),
+                discount_type: 'fixed',
+                total_price: parseFloat(lineAfterDiscount.toFixed(2)),
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                tax_amount: gst.total,
+                taxable_value: gst.taxable,
+                cgst_amount: gst.cgst,
+                sgst_amount: gst.sgst,
+                igst_amount: gst.igst,
+                overall_discount_share: parseFloat(overallShare.toFixed(2)),
+                line_total_before_discount: parseFloat(lineBeforeDiscount.toFixed(2)),
+                line_total_after_discount: parseFloat(lineAfterDiscount.toFixed(2)),
+                price_type: item.price_type
+            };
+        });
     }
     function updateBillingSummary() {
         try {
@@ -3204,6 +4203,14 @@ document.addEventListener('keydown', function(e) {
                 ACTIVE_PAYMENT_METHODS.add(method);
                 if (cardElement) {
                     cardElement.classList.add('active');
+
+                    // If credit method is selected, initialize due date field
+                    if (method === 'credit') {
+                        setTimeout(() => {
+                            updateCreditPaymentCard();
+                        }, 10);
+                    }
+
                     setTimeout(() => {
                         const amountInput = cardElement.querySelector('input[type="number"]');
                         if (amountInput) {
@@ -3219,6 +4226,12 @@ document.addEventListener('keydown', function(e) {
                     const amountInput = cardElement.querySelector('input[type="number"]');
                     if (amountInput) {
                         amountInput.value = '0';
+                    }
+
+                    // Clear credit due date warning if credit is deselected
+                    if (method === 'credit') {
+                        const warning = document.querySelector('#credit-input-card .credit-due-warning');
+                        if (warning) warning.remove();
                     }
                 }
             }
@@ -3243,6 +4256,9 @@ document.addEventListener('keydown', function(e) {
             const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
             const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
 
+            // Get credit due date if available
+            const creditDueDate = document.getElementById('credit-due-date')?.value || null;
+
             const totalPaid = cashAmount + upiAmount + bankAmount + chequeAmount + creditAmount;
             const changeGiven = totalPaid > grandTotal ? totalPaid - grandTotal : 0;
             const pendingAmount = totalPaid < grandTotal ? grandTotal - totalPaid : 0;
@@ -3252,13 +4268,14 @@ document.addEventListener('keydown', function(e) {
             document.getElementById('change-given').value = `₹ ${Math.round(changeGiven)}`;
             document.getElementById('pending-amount').value = `₹ ${Math.round(pendingAmount)}`;
 
-            // Show payment distribution
+            // Show payment distribution with due date for credit
             showPaymentDistribution({
                 cash: cashAmount,
                 upi: upiAmount,
                 bank: bankAmount,
                 cheque: chequeAmount,
                 credit: creditAmount,
+                credit_due_date: creditDueDate,
                 totalPaid: totalPaid,
                 grandTotal: grandTotal,
                 change: changeGiven,
@@ -3267,6 +4284,11 @@ document.addEventListener('keydown', function(e) {
 
             // Update generate bill button state
             updateGenerateBillButton(pendingAmount, totalPaid);
+
+            // Show credit due date warning if applicable
+            if (creditAmount > 0) {
+                showCreditDueDateWarning();
+            }
 
         } catch (error) {
             console.error('Error updating payment summary:', error);
@@ -3345,10 +4367,41 @@ document.addEventListener('keydown', function(e) {
             }
 
             if (paymentData.credit > 0) {
+                // Calculate days until due
+                let dueDateInfo = '';
+                if (paymentData.credit_due_date) {
+                    const today = new Date();
+                    const dueDate = new Date(paymentData.credit_due_date);
+                    const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+                    let dueDateClass = '';
+                    let dueDateIcon = '<i class="fas fa-calendar-alt me-1"></i>';
+
+                    if (daysUntilDue < 0) {
+                        dueDateClass = 'overdue-badge';
+                        dueDateIcon = '<i class="fas fa-exclamation-triangle me-1"></i>';
+                        dueDateInfo = `<span class="due-date-badge overdue-badge" style="margin-left: 10px;">
+                        ${dueDateIcon} OVERDUE by ${Math.abs(daysUntilDue)} days
+                    </span>`;
+                    } else if (daysUntilDue <= 7) {
+                        dueDateClass = 'text-warning';
+                        dueDateInfo = `<span class="due-date-badge" style="margin-left: 10px; background-color: #ffc107;">
+                        <i class="fas fa-clock me-1"></i> Due in ${daysUntilDue} days
+                    </span>`;
+                    } else {
+                        dueDateInfo = `<span class="due-date-badge" style="margin-left: 10px;">
+                        <i class="fas fa-calendar-check me-1"></i> Due: ${paymentData.credit_due_date}
+                    </span>`;
+                    }
+                }
+
                 distributionHTML += `
                 <div class="amount-distribution-row">
                     <span><i class="fas fa-credit-card me-1"></i> Credit:</span>
-                    <span>₹ ${Math.round(paymentData.credit)}</span>
+                    <span>
+                        ₹ ${Math.round(paymentData.credit)}
+                        ${dueDateInfo}
+                    </span>
                 </div>
             `;
             }
@@ -3467,6 +4520,12 @@ document.addEventListener('keydown', function(e) {
             const chequeAmount = ACTIVE_PAYMENT_METHODS.has('cheque') ? parseFloat(document.getElementById('cheque-amount').value) || 0 : 0;
             const creditAmount = ACTIVE_PAYMENT_METHODS.has('credit') ? parseFloat(document.getElementById('credit-amount').value) || 0 : 0;
 
+            // Get credit due date if credit payment is selected
+            let creditDueDate = null;
+            if (ACTIVE_PAYMENT_METHODS.has('credit') && creditAmount > 0) {
+                creditDueDate = document.getElementById('credit-due-date')?.value || null;
+            }
+
             return {
                 cash: cashAmount,
                 upi: upiAmount,
@@ -3477,7 +4536,8 @@ document.addEventListener('keydown', function(e) {
                 upi_reference: document.getElementById('upi-reference').value || '',
                 bank_reference: document.getElementById('bank-reference').value || '',
                 cheque_number: document.getElementById('cheque-number').value || '',
-                credit_reference: document.getElementById('credit-reference').value || ''
+                credit_reference: document.getElementById('credit-reference').value || '',
+                credit_due_date: creditDueDate
             };
         } catch (error) {
             console.error('Error collecting payment data:', error);
@@ -3491,7 +4551,8 @@ document.addEventListener('keydown', function(e) {
                 upi_reference: '',
                 bank_reference: '',
                 cheque_number: '',
-                credit_reference: ''
+                credit_reference: '',
+                credit_due_date: null
             };
         }
     }
@@ -3924,24 +4985,26 @@ document.addEventListener('keydown', function(e) {
     }
 
     // ==================== INVOICE FUNCTIONS ====================
-    function generateInvoiceNumber() {
+    function generateInvoiceNumber(force = false) {
         try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return '';
+
+            // do not overwrite manual value
+            if (!force && invoiceInput.value && invoiceInput.value.trim() !== '') {
+                return invoiceInput.value.trim();
+            }
+
             const prefix = GST_TYPE === 'gst' ? 'INV' : 'INVNG';
             const now = new Date();
             const year = now.getFullYear();
             const month = (now.getMonth() + 1).toString().padStart(2, '0');
             const yearMonth = year.toString() + month;
 
-            // Generate invoice number (this will be updated after fetching latest from DB)
             const tempNumber = `${prefix}${yearMonth}-9999`;
+            invoiceInput.value = tempNumber;
 
-            const invoiceInput = document.getElementById('invoice-number');
-            if (invoiceInput) {
-                invoiceInput.value = tempNumber;
-            }
-
-            // Fetch the latest invoice number from database
-            fetchLatestInvoiceNumber(prefix, yearMonth);
+            fetchLatestInvoiceNumber(prefix, yearMonth, force);
 
             return tempNumber;
         } catch (error) {
@@ -3950,8 +5013,16 @@ document.addEventListener('keydown', function(e) {
         }
     }
 
-    async function fetchLatestInvoiceNumber(prefix, yearMonth) {
+    async function fetchLatestInvoiceNumber(prefix, yearMonth, force = false) {
         try {
+            const invoiceInput = document.getElementById('invoice-number');
+            if (!invoiceInput) return;
+
+            // do not overwrite manual value
+            if (!force && invoiceInput.value && !invoiceInput.value.endsWith('-9999')) {
+                return;
+            }
+
             const response = await fetchWithTimeout('api/invoices.php?action=get_next_invoice_number', {
                 method: 'POST',
                 headers: {
@@ -3974,14 +5045,29 @@ document.addEventListener('keydown', function(e) {
             const data = await response.json();
 
             if (data.success && data.invoice_number) {
-                document.getElementById('invoice-number').value = data.invoice_number;
+                // do not overwrite manual value
+                if (!force && invoiceInput.value && !invoiceInput.value.endsWith('-9999')) {
+                    return;
+                }
+
+                invoiceInput.value = data.invoice_number;
                 console.log('Updated invoice number to:', data.invoice_number);
             }
         } catch (error) {
             console.warn('Error fetching latest invoice number:', error);
-            // Continue with locally generated number
         }
     }
+    function formatDateTimeForMysql(value) {
+    if (!value) {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        value = now.toISOString().slice(0, 16);
+    }
+
+    // datetime-local gives: 2026-05-14T11:05
+    // MySQL needs: 2026-05-14 11:05:00
+    return value.replace('T', ' ') + ':00';
+}
     let isGeneratingBill = false;
     async function generateBill() {
         try {
@@ -4011,10 +5097,17 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
 
-            // Generate fresh invoice number to avoid duplicates
-            await checkAndGenerateInvoiceNumber();
 
-            const currentInvoiceNumber = document.getElementById('invoice-number').value;
+            const currentInvoiceNumber = (document.getElementById('invoice-number').value || '').trim();
+
+            if (!currentInvoiceNumber) {
+                showWarningModal('Invoice Number Required', 'Please enter invoice number');
+                document.getElementById('invoice-number').focus();
+                document.getElementById('invoice-number').select();
+                return;
+            }
+
+            console.log('Using invoice number:', currentInvoiceNumber);
             console.log('Using invoice number:', currentInvoiceNumber);
 
             // Check customer credit limit if customer exists
@@ -4086,19 +5179,24 @@ document.addEventListener('keydown', function(e) {
             }
 
             // Prepare invoice data
+            // Prepare invoice data
             const invoiceData = {
                 customer_name: customerName,
                 customer_phone: document.getElementById('customer-contact').value || '',
                 customer_address: document.getElementById('customer-address').value || '',
                 customer_gstin: document.getElementById('customer-gstin').value || '',
                 customer_id: CURRENT_CUSTOMER_ID,
-                invoice_number: document.getElementById('invoice-number').value,
+
+                invoice_number: (document.getElementById('invoice-number').value || '').trim(),
+                invoice_date: (document.getElementById('date').value || '').trim(),
+                date: (document.getElementById('date').value || '').trim(),
+
                 invoice_type: GST_TYPE,
-                date: document.getElementById('date').value,
                 price_type: GLOBAL_PRICE_TYPE,
                 referral_id: SELECTED_REFERRAL_ID,
                 points_used: POINTS_USED,
                 points_discount: totals.pointsDiscount,
+
                 subtotal: totals.subtotal,
                 discount: document.getElementById('additional-dis').value,
                 discount_type: document.getElementById('overall-discount-type').value,
@@ -4110,37 +5208,24 @@ document.addEventListener('keydown', function(e) {
                 total_gst: totals.totalGST,
                 grand_total: totals.grandTotal,
                 referral_commission: totals.totalReferralCommission,
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
-                })),
+
+                shipping_details: {
+                    name: SHIPPING_DETAILS.name || '',
+                    contact: SHIPPING_DETAILS.contact || '',
+                    gstin: SHIPPING_DETAILS.gstin || '',
+                    address: SHIPPING_DETAILS.address || '',
+                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
+                    transport_type: SHIPPING_DETAILS.transport_type || '',
+                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+                },
+                items: buildInvoiceItemsForPayload(totals),
+
                 payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
                 payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
+                pending_amount: paymentData.totalPaid < totals.grandTotal
+                    ? (totals.grandTotal - paymentData.totalPaid)
+                    : 0
             };
 
             console.log('📤 Invoice Data to be saved:', JSON.stringify(invoiceData, null, 2));
@@ -4192,8 +5277,40 @@ document.addEventListener('keydown', function(e) {
                             CART = [];
                             clearCartFromSession();
 
-                            // Reset form
-                            resetForm();
+                            // Clear shipping details from memory
+                            SHIPPING_DETAILS = {
+                                name: '',
+                                contact: '',
+                                gstin: '',
+                                address: '',
+                                vehicle_number: '',
+                                transport_type: '',
+                                charges: 0
+                            };
+
+                            // Clear shipping details from session storage
+                            sessionStorage.removeItem('pos_shipping_details');
+
+                            // Update shipping display to show empty state
+                            if (typeof updateShippingDetailsHorizontal === 'function') {
+                                updateShippingDetailsHorizontal();
+                            }
+
+                            // Clear shipping charges row from total summary
+                            const shippingRow = document.getElementById('shipping-charges-row');
+                            if (shippingRow) {
+                                shippingRow.style.display = 'none';
+                            }
+
+                            // Clear shipping summary if exists
+                            const shippingSummary = document.getElementById('shippingSummary');
+                            if (shippingSummary) {
+                                shippingSummary.classList.remove('show');
+                                shippingSummary.innerHTML = '';
+                            }
+
+                            // Refresh full page
+                            window.location.reload();
                         }
                     );
 
@@ -4299,8 +5416,14 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
 
-            await checkAndGenerateInvoiceNumber();
-            const currentInvoiceNumber = document.getElementById('invoice-number').value;
+            const currentInvoiceNumber = (document.getElementById('invoice-number').value || '').trim();
+
+            if (!currentInvoiceNumber) {
+                showWarningModal('Invoice Number Required', 'Please enter invoice number');
+                document.getElementById('invoice-number').focus();
+                document.getElementById('invoice-number').select();
+                return;
+            }
             console.log('Using invoice number for print:', currentInvoiceNumber);
 
             // Show loading modal
@@ -4316,9 +5439,15 @@ document.addEventListener('keydown', function(e) {
                 customer_address: document.getElementById('customer-address').value || '',
                 customer_gstin: document.getElementById('customer-gstin').value || '',
                 customer_id: CURRENT_CUSTOMER_ID,
-                invoice_number: currentInvoiceNumber,
+
+                invoice_number: (currentInvoiceNumber || '').trim(),
+
+invoice_date: formatDateTimeForMysql(document.getElementById('date').value),
+date: formatDateTimeForMysql(document.getElementById('date').value),
+
+// overwrite created_at also with invoice date time
+created_at: formatDateTimeForMysql(document.getElementById('date').value),
                 invoice_type: GST_TYPE,
-                date: document.getElementById('date').value,
                 price_type: GLOBAL_PRICE_TYPE,
                 referral_id: SELECTED_REFERRAL_ID,
                 points_used: POINTS_USED,
@@ -4334,37 +5463,25 @@ document.addEventListener('keydown', function(e) {
                 total_gst: totals.totalGST,
                 grand_total: totals.grandTotal,
                 referral_commission: totals.totalReferralCommission,
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (item.is_secondary_unit ? (item.quantity / item.sec_unit_conversion) : item.quantity)
-                })),
+
+                shipping_details: {
+                    name: SHIPPING_DETAILS.name || '',
+                    contact: SHIPPING_DETAILS.contact || '',
+                    gstin: SHIPPING_DETAILS.gstin || '',
+                    address: SHIPPING_DETAILS.address || '',
+                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
+                    transport_type: SHIPPING_DETAILS.transport_type || '',
+                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+                },
+
+                items: buildInvoiceItemsForPayload(totals),
+
                 payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
                 payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal ? totals.grandTotal - paymentData.totalPaid : 0
+                pending_amount: paymentData.totalPaid < totals.grandTotal
+                    ? (totals.grandTotal - paymentData.totalPaid)
+                    : 0
             };
 
             console.log('📤 Sending invoice data for print...', invoiceData);
@@ -4399,33 +5516,62 @@ document.addEventListener('keydown', function(e) {
                     CART = [];
                     clearCartFromSession();
 
+                    // Clear shipping details from memory
+                    SHIPPING_DETAILS = {
+                        name: '',
+                        contact: '',
+                        gstin: '',
+                        address: '',
+                        vehicle_number: '',
+                        transport_type: '',
+                        charges: 0
+                    };
+
+                    // Clear shipping details from session storage
+                    sessionStorage.removeItem('pos_shipping_details');
+
+                    // Update shipping display to show empty state
+                    if (typeof updateShippingDetailsHorizontal === 'function') {
+                        updateShippingDetailsHorizontal();
+                    }
+
+                    // Clear shipping charges row from total summary
+                    const shippingRow = document.getElementById('shipping-charges-row');
+                    if (shippingRow) {
+                        shippingRow.style.display = 'none';
+                    }
+
+                    // Clear shipping summary from address section if it exists
+                    const shippingSummary = document.getElementById('shippingSummary');
+                    if (shippingSummary) {
+                        shippingSummary.classList.remove('show');
+                        shippingSummary.innerHTML = '';
+                    }
+
                     showSuccessModal(
                         'Invoice Saved Successfully!',
                         'Opening print preview...',
                         function () {
+                            let printWindow = null;
+
                             if (data.print_url) {
                                 console.log('Opening print URL:', data.print_url);
-                                const printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
-                                if (!printWindow) {
-                                    showWarningToast('Popup blocked. Please allow popups for print preview.');
-                                } else {
-                                    printWindow.focus();
-                                }
+                                printWindow = window.open(data.print_url, '_blank', 'width=900,height=700');
                             } else {
                                 const defaultPrintUrl = `invoice_print.php?invoice_id=${invoiceId}`;
-                                const printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
-
-                                if (!printWindow) {
-                                    showWarningToast('Popup blocked. Please allow popups for print preview.');
-                                } else {
-                                    printWindow.focus();
-                                }
+                                printWindow = window.open(defaultPrintUrl, '_blank', 'width=900,height=700');
                             }
 
-                            // Reset form after delay
+                            if (!printWindow) {
+                                showWarningToast('Popup blocked. Please allow popups for print preview.');
+                            } else {
+                                printWindow.focus();
+                            }
+
+                            // Refresh full page after short delay
                             setTimeout(() => {
-                                resetForm();
-                            }, 500);
+                                window.location.reload();
+                            }, 700);
                         }
                     );
 
@@ -4495,6 +5641,15 @@ document.addEventListener('keydown', function(e) {
             document.getElementById('cheque-number').value = '';
             document.getElementById('credit-reference').value = '';
 
+            // Reset credit due date
+            const dueDateInput = document.getElementById('credit-due-date');
+            if (dueDateInput) {
+                const defaultDueDate = new Date();
+                defaultDueDate.setDate(defaultDueDate.getDate() + CREDIT_DUE_DAYS);
+                dueDateInput.value = defaultDueDate.toISOString().split('T')[0];
+                CREDIT_DUE_DATE = dueDateInput.value;
+            }
+
             // Hide all payment cards except cash
             document.querySelectorAll('.payment-input-card').forEach(card => {
                 card.classList.remove('active');
@@ -4514,6 +5669,30 @@ document.addEventListener('keydown', function(e) {
             const distributionContainer = document.getElementById('paymentDistribution');
             if (distributionContainer) {
                 distributionContainer.remove();
+            }
+
+            // Clear shipping details
+            SHIPPING_DETAILS = {
+                name: '',
+                contact: '',
+                gstin: '',
+                address: '',
+                vehicle_number: '',
+                charges: 0
+            };
+
+            sessionStorage.removeItem('pos_shipping_details');
+            updateShippingDetailsHorizontal();
+
+            const shippingRow = document.getElementById('shipping-charges-row');
+            if (shippingRow) {
+                shippingRow.style.display = 'none';
+            }
+
+            const shippingSummary = document.getElementById('shippingSummary');
+            if (shippingSummary) {
+                shippingSummary.classList.remove('show');
+                shippingSummary.innerHTML = '';
             }
 
             // Generate new invoice number
@@ -5222,7 +6401,7 @@ document.addEventListener('keydown', function(e) {
                                                 <th>Qty</th>
                                                 <th>Unit</th>
                                                 <th>Stock Price</th>
-                                                <th>Selling Price (Ex-GST)</th>
+                                                <th>Selling Price</th>
                                                 <th>Profit/Unit</th>
                                                 <th>Total Profit</th>
                                                 <th>Margin %</th>
@@ -5240,7 +6419,7 @@ document.addEventListener('keydown', function(e) {
                                     <div class="row">
                                         <div class="col-md-6">
                                             <div class="d-flex justify-content-between mb-2">
-                                                <span class="fw-bold">Total Selling Value (Ex-GST):</span>
+                                                <span class="fw-bold">Total Selling Value</span>
                                                 <span id="profitTotalSellingValue" class="text-primary fw-bold">₹ 0</span>
                                             </div>
                                             <div class="d-flex justify-content-between mb-2">
@@ -5815,21 +6994,7 @@ document.addEventListener('keydown', function(e) {
                         total_tax: totals.totalGST,
                         grand_total: totals.grandTotal,
                         notes: notes,
-                        items: CART.map(item => ({
-                            product_id: item.product_id,
-                            product_name: item.name,
-                            quantity: item.quantity,
-                            unit_price: item.price,
-                            discount_amount: item.discount_amount || 0,
-                            discount_type: item.discount_type,
-                            total_price: item.total,
-                            hsn_code: item.hsn_code,
-                            cgst_rate: item.cgst_rate,
-                            sgst_rate: item.sgst_rate,
-                            igst_rate: item.igst_rate,
-                            tax_amount: calculateItemGST(item).total,
-                            price_type: item.price_type
-                        }))
+                        items: buildQuotationItemsForPayload(totals)
                     };
 
                     showLoading('Saving quotation...');
@@ -6271,4 +7436,459 @@ document.addEventListener('keydown', function(e) {
     window.cartItemIncrement = cartItemIncrement;
 
     console.log('POS System: Script loaded successfully');
+
+    // ==================== SHIPPING DETAILS FUNCTIONS ====================
+    let SHIPPING_DETAILS = {
+        name: '',
+        contact: '',
+        gstin: '',
+        address: '',
+        vehicle_number: '',
+        shipping_charges: 0,
+        transport_type: '',
+        transport_charge: 0
+    };
+    function initShippingModal() {
+        try {
+            const shippingBtn = document.getElementById('btnShippingDetails');
+            if (shippingBtn) {
+                shippingBtn.removeEventListener('click', showShippingModal);
+                shippingBtn.addEventListener('click', showShippingModal);
+            }
+
+            const saveShippingBtn = document.getElementById('btnSaveShipping');
+            if (saveShippingBtn) {
+                saveShippingBtn.removeEventListener('click', saveShippingDetails);
+                saveShippingBtn.addEventListener('click', saveShippingDetails);
+            }
+
+            // Initialize buttons in shipping section
+            initShippingSectionButtons();
+
+            loadShippingDetailsFromSession();
+
+            // Only create horizontal display (not the one under address)
+            createHorizontalShippingDisplay();
+
+            // Update the horizontal display
+            updateShippingDetailsHorizontal();
+
+        } catch (error) {
+            console.error('Error initializing shipping modal:', error);
+        }
+    }
+    function hasValidHsnCode(product) {
+        if (!product) return false;
+
+        const hsn = (product.hsn_code || '').toString().trim();
+        return hsn !== '' && hsn.toLowerCase() !== 'null' && hsn !== '0';
+    }
+    function saveTransportDetails() {
+        try {
+            SHIPPING_DETAILS.transport_type = (document.getElementById('transportType')?.value || '').trim();
+            SHIPPING_DETAILS.charges = parseFloat(document.getElementById('transportCharge')?.value || 0);
+
+            saveShippingDetailsToSession();
+            updateShippingDetailsHorizontal();
+            updateBillingSummary();
+
+            if (typeof showToast === 'function') {
+                showToast('Transport details saved', 'success');
+            }
+        } catch (error) {
+            console.error('Error saving transport details:', error);
+            if (typeof showToast === 'function') {
+                showToast('Error saving transport details', 'danger');
+            }
+        }
+    }
+    function getFilteredProductsByGstType(products) {
+        if (!Array.isArray(products)) return [];
+
+        if (PRODUCT_GST_FILTER === 'gst') {
+            return products.filter(product => hasValidHsnCode(product));
+        }
+
+        if (PRODUCT_GST_FILTER === 'non-gst') {
+            return products.filter(product => !hasValidHsnCode(product));
+        }
+
+        return products;
+    }
+    function initShippingSectionButtons() {
+        try {
+            const editBtn = document.getElementById('btnEditShippingFromDiscount');
+            if (editBtn) {
+                editBtn.removeEventListener('click', showShippingModal);
+                editBtn.addEventListener('click', showShippingModal);
+            }
+
+            const clearBtn = document.getElementById('btnClearShippingFromDiscount');
+            if (clearBtn) {
+                clearBtn.removeEventListener('click', clearShippingDetailsWithConfirm);
+                clearBtn.addEventListener('click', clearShippingDetailsWithConfirm);
+            }
+        } catch (error) {
+            console.error('Error initializing shipping section buttons:', error);
+        }
+    }
+
+    function showShippingModal() {
+        try {
+            document.getElementById('shipping-name').value = SHIPPING_DETAILS.name || '';
+            document.getElementById('shipping-contact').value = SHIPPING_DETAILS.contact || '';
+            document.getElementById('shipping-gstin').value = SHIPPING_DETAILS.gstin || '';
+            document.getElementById('shipping-address').value = SHIPPING_DETAILS.address || '';
+            document.getElementById('shipping-vehicle').value = SHIPPING_DETAILS.vehicle_number || '';
+
+            const transportTypeInput = document.getElementById('shipping-transport-type');
+            if (transportTypeInput) {
+                transportTypeInput.value = SHIPPING_DETAILS.transport_type || '';
+            }
+
+            document.getElementById('shipping-charges').value = SHIPPING_DETAILS.charges || 0;
+
+            const modal = new bootstrap.Modal(document.getElementById('shippingModal'));
+            modal.show();
+        } catch (error) {
+            console.error('Error showing shipping modal:', error);
+            if (typeof showToast === 'function') {
+                showToast('Error opening shipping details', 'danger');
+            }
+        }
+    }
+    function saveShippingDetails() {
+        try {
+            const shippingData = {
+                name: document.getElementById('shipping-name').value.trim(),
+                contact: document.getElementById('shipping-contact').value.trim(),
+                gstin: document.getElementById('shipping-gstin').value.trim().toUpperCase(),
+                address: document.getElementById('shipping-address').value.trim(),
+                vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
+
+                shipping_charges: parseFloat(document.getElementById('shipping-charges').value) || 0,
+
+                transport_type: document.getElementById('shipping-transport-type')
+                    ? document.getElementById('shipping-transport-type').value.trim()
+                    : '',
+
+                transport_charge: document.getElementById('transportCharge')
+                    ? (parseFloat(document.getElementById('transportCharge').value) || 0)
+                    : 0
+            };
+
+            SHIPPING_DETAILS = shippingData;
+            saveShippingDetailsToSession();
+
+            updateShippingDetailsHorizontal();
+            updateBillingSummary();
+
+            const modal = bootstrap.Modal.getInstance(document.getElementById('shippingModal'));
+            if (modal) modal.hide();
+
+            if (shippingData.charges > 0) {
+                if (typeof showToast === 'function') {
+                    showToast(`Shipping charges ₹${shippingData.charges.toFixed(2)} added`, 'info');
+                }
+            } else if (shippingData.name || shippingData.transport_type) {
+                if (typeof showToast === 'function') {
+                    showToast('Shipping details saved successfully', 'success');
+                }
+            }
+        } catch (error) {
+            console.error('Error saving shipping details:', error);
+            if (typeof showToast === 'function') {
+                showToast('Error saving shipping details', 'danger');
+            }
+        }
+    }
+
+    function saveShippingDetailsToSession() {
+        try {
+            sessionStorage.setItem('pos_shipping_details', JSON.stringify(SHIPPING_DETAILS));
+        } catch (error) {
+            console.error('Error saving shipping details to session:', error);
+        }
+    }
+
+    function loadShippingDetailsFromSession() {
+        try {
+            const saved = sessionStorage.getItem('pos_shipping_details');
+            if (saved) {
+                SHIPPING_DETAILS = JSON.parse(saved);
+                updateShippingDetailsHorizontal();
+            }
+        } catch (error) {
+            console.error('Error loading shipping details from session:', error);
+        }
+    }
+
+    function createHorizontalShippingDisplay() {
+        try {
+            // Create horizontal display container if it doesn't exist
+            let horizontalContainer = document.getElementById('shippingDetailsHorizontal');
+            if (!horizontalContainer) {
+                const shippingSection = document.getElementById('shippingInfoSection');
+                if (shippingSection) {
+                    const detailsDiv = document.createElement('div');
+                    detailsDiv.id = 'shippingDetailsHorizontal';
+                    detailsDiv.className = 'shipping-details-horizontal';
+                    shippingSection.appendChild(detailsDiv);
+                }
+            }
+        } catch (error) {
+            console.error('Error creating horizontal shipping display:', error);
+        }
+    }
+
+    function updateShippingDetailsHorizontal() {
+        try {
+            const container = document.getElementById('shippingSummaryHorizontal');
+            if (!container) return;
+
+            const hasShippingData =
+                SHIPPING_DETAILS.name ||
+                SHIPPING_DETAILS.contact ||
+                SHIPPING_DETAILS.gstin ||
+                SHIPPING_DETAILS.address ||
+                SHIPPING_DETAILS.vehicle_number ||
+                SHIPPING_DETAILS.transport_type ||
+                parseFloat(SHIPPING_DETAILS.charges || 0) > 0;
+
+            if (hasShippingData) {
+                let html = `<div class="shipping-details-group">`;
+
+                if (SHIPPING_DETAILS.name) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-user"></i>
+                        <span class="badge-value">${SHIPPING_DETAILS.name}</span>
+                    </div>
+                `;
+                }
+
+                if (SHIPPING_DETAILS.contact) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-phone"></i>
+                        <span class="badge-value">${SHIPPING_DETAILS.contact}</span>
+                    </div>
+                `;
+                }
+
+                if (SHIPPING_DETAILS.vehicle_number) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-truck"></i>
+                        <span class="badge-value">${SHIPPING_DETAILS.vehicle_number}</span>
+                    </div>
+                `;
+                }
+
+                if (SHIPPING_DETAILS.transport_type) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-route"></i>
+                        <span class="badge-value">${SHIPPING_DETAILS.transport_type}</span>
+                    </div>
+                `;
+                }
+
+                if (SHIPPING_DETAILS.gstin) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-id-card"></i>
+                        <span class="badge-value">${SHIPPING_DETAILS.gstin}</span>
+                    </div>
+                `;
+                }
+
+                if (SHIPPING_DETAILS.address) {
+                    const shortAddress = SHIPPING_DETAILS.address.length > 40
+                        ? SHIPPING_DETAILS.address.substring(0, 40) + '...'
+                        : SHIPPING_DETAILS.address;
+
+                    html += `
+                    <div class="shipping-badge-horizontal" title="${SHIPPING_DETAILS.address}">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span class="badge-value">${shortAddress}</span>
+                    </div>
+                `;
+                }
+
+                if (parseFloat(SHIPPING_DETAILS.charges || 0) > 0) {
+                    html += `
+                    <div class="shipping-badge-horizontal">
+                        <i class="fas fa-rupee-sign"></i>
+                        <span class="badge-value">₹ ${parseFloat(SHIPPING_DETAILS.charges).toFixed(2)}</span>
+                    </div>
+                `;
+                }
+
+                html += `</div>
+                <div class="shipping-actions">
+                    <button type="button" class="btn-clear-shipping" onclick="showShippingModal()">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button type="button" class="btn-clear-shipping" onclick="clearShippingDetailsWithConfirm()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>`;
+
+                container.innerHTML = html;
+                container.classList.add('show');
+            } else {
+                container.innerHTML = `
+                <div class="shipping-empty-state">
+                    <i class="fas fa-info-circle"></i> No shipping details added
+                </div>
+            `;
+                container.classList.add('show');
+            }
+        } catch (error) {
+            console.error('Error updating shipping details horizontal:', error);
+        }
+    }
+
+    function clearShippingDetailsWithConfirm() {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Clear Shipping Details?',
+                text: 'Are you sure you want to remove all shipping details?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, clear it!',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    clearShippingDetails();
+                    if (typeof showToast === 'function') {
+                        showToast('Shipping details cleared successfully', 'success');
+                    }
+                }
+            });
+        } else {
+            if (confirm('Clear all shipping details?')) {
+                clearShippingDetails();
+            }
+        }
+    }
+
+    function clearShippingDetails() {
+        try {
+            SHIPPING_DETAILS = {
+                name: '',
+                contact: '',
+                gstin: '',
+                address: '',
+                vehicle_number: '',
+                transport_type: '',
+                charges: 0
+            };
+
+            saveShippingDetailsToSession();
+            updateShippingDetailsHorizontal();
+            updateBillingSummary();
+        } catch (error) {
+            console.error('Error clearing shipping details:', error);
+        }
+    }
+
+    // Save reference to original calculateTotals
+    const originalCalculateTotals = window.calculateTotals;
+
+    // Override calculateTotals to include shipping charges
+    if (typeof originalCalculateTotals === 'function') {
+        window.calculateTotals = function () {
+            const totals = originalCalculateTotals();
+            const shippingCharges = SHIPPING_DETAILS.charges || 0;
+
+            return {
+                ...totals,
+                shippingCharges: parseFloat(shippingCharges.toFixed(2)),
+                grandTotal: parseFloat((totals.grandTotal + shippingCharges).toFixed(2))
+            };
+        };
+    }
+
+    // Save reference to original updateBillingSummary
+    const originalUpdateBillingSummary = window.updateBillingSummary;
+
+    // Override updateBillingSummary to show shipping charges
+    if (typeof originalUpdateBillingSummary === 'function') {
+        window.updateBillingSummary = function () {
+            originalUpdateBillingSummary();
+
+            const totals = window.calculateTotals();
+            const shippingCharges = totals.shippingCharges || 0;
+
+            let shippingRow = document.getElementById('shipping-charges-row');
+            const summaryBox = document.querySelector('.total-summary-box');
+
+            if (shippingCharges > 0) {
+                if (!shippingRow && summaryBox) {
+                    const grandTotalRow = document.querySelector('.total-summary-box .grand-total');
+                    if (grandTotalRow) {
+                        shippingRow = document.createElement('div');
+                        shippingRow.id = 'shipping-charges-row';
+                        shippingRow.className = 'summary-row';
+                        shippingRow.innerHTML = `
+                        <span class="summary-label"><i class="fas fa-truck me-1"></i> Shipping Charges:</span>
+                        <span class="summary-value" id="shipping-charges-display">₹ 0.00</span>
+                    `;
+                        grandTotalRow.parentNode.insertBefore(shippingRow, grandTotalRow);
+                    }
+                }
+
+                if (shippingRow) {
+                    const displaySpan = document.getElementById('shipping-charges-display');
+                    if (displaySpan) {
+                        displaySpan.textContent = `₹ ${Math.round(shippingCharges)}`;
+                    }
+                    shippingRow.style.display = '';
+                }
+            } else if (shippingRow) {
+                shippingRow.style.display = 'none';
+            }
+        };
+    }
+
+    // Save reference to original generateBill
+    const originalGenerateBill = window.generateBill;
+
+    // Override generateBill to include shipping details
+    if (typeof originalGenerateBill === 'function') {
+        window.generateBill = async function () {
+            try {
+                const result = await originalGenerateBill();
+                return result;
+            } catch (error) {
+                console.error('Error in modified generateBill:', error);
+                throw error;
+            }
+        };
+    }
+
+    // Initialize shipping on page load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(() => {
+                initShippingModal();
+            }, 500);
+        });
+    } else {
+        setTimeout(() => {
+            initShippingModal();
+        }, 500);
+    }
+
+    // Make shipping functions available globally
+    window.SHIPPING_DETAILS = SHIPPING_DETAILS;
+    window.showShippingModal = showShippingModal;
+    window.saveShippingDetails = saveShippingDetails;
+    window.clearShippingDetails = clearShippingDetails;
+    window.clearShippingDetailsWithConfirm = clearShippingDetailsWithConfirm;
+    window.updateShippingDetailsHorizontal = updateShippingDetailsHorizontal;
 </script>

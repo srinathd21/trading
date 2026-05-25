@@ -27,6 +27,62 @@ try {
     // ignore if already set 
 } 
 
+function writeActivityLog(PDO $pdo, int $business_id, int $user_id, string $action, string $description, array $details = []): void
+{
+    try {
+        $columnsStmt = $pdo->query("SHOW COLUMNS FROM activity_logs");
+        $available = [];
+        foreach ($columnsStmt->fetchAll(PDO::FETCH_ASSOC) as $col) {
+            $available[$col['Field']] = true;
+        }
+
+        $data = [];
+        $candidates = [
+            'business_id' => $business_id,
+            'user_id' => $user_id,
+            'created_by' => $user_id,
+            'action' => $action,
+            'activity_type' => $action,
+            'module' => 'collect_payment',
+            'entity_type' => 'invoice_payment',
+            'description' => $description,
+            'details' => json_encode($details, JSON_UNESCAPED_UNICODE),
+            'activity_details' => json_encode($details, JSON_UNESCAPED_UNICODE),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        foreach ($candidates as $col => $value) {
+            if (isset($available[$col])) {
+                $data[$col] = $value;
+            }
+        }
+
+        if (empty($data)) {
+            return;
+        }
+
+        $cols = array_keys($data);
+        $sql = "INSERT INTO activity_logs (`" . implode('`,`', $cols) . "`) VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ")";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(array_values($data));
+    } catch (Exception $e) {
+        error_log('Activity log failed: ' . $e->getMessage());
+    }
+}
+
+function computeInvoicePaymentStatus($total, $paid) {
+    $pending = max(0, round((float)$total - (float)$paid, 2));
+    if ($pending <= 0.01) {
+        return ['paid', 0.00];
+    }
+    if ((float)$paid > 0) {
+        return ['partial', $pending];
+    }
+    return ['pending', $pending];
+}
+
 function normalizeInvoicePaymentState(array $invoice) { 
     $total = round(max(0, (float)($invoice['total'] ?? 0)), 2); 
     $stored_paid = round(max(0, (float)($invoice['paid_amount'] ?? 0)), 2); 
@@ -74,17 +130,154 @@ if (!$invoice) {
     exit(); 
 } 
 
+// Soft delete payment and restore invoice balance
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_payment') {
+    $delete_payment_id = (int)($_POST['payment_id'] ?? 0);
+    $delete_reason = trim($_POST['delete_reason'] ?? 'Payment deleted from collect payment page');
+
+    try {
+        if ($delete_payment_id <= 0) {
+            throw new Exception("Invalid payment selected for delete.");
+        }
+
+        $pdo->beginTransaction();
+
+        $paymentStmt = $pdo->prepare("
+            SELECT * FROM customer_payments
+            WHERE id = ? AND business_id = ? AND invoice_id = ? AND is_deleted = 0
+            FOR UPDATE
+        ");
+        $paymentStmt->execute([$delete_payment_id, $business_id, $invoice_id]);
+        $paymentRow = $paymentStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$paymentRow) {
+            throw new Exception("Payment record not found or already deleted.");
+        }
+
+        $allocationStmt = $pdo->prepare("
+            SELECT * FROM customer_payment_allocations
+            WHERE payment_id = ? AND business_id = ? AND is_deleted = 0
+            ORDER BY id ASC
+            FOR UPDATE
+        ");
+        $allocationStmt->execute([$delete_payment_id, $business_id]);
+        $allocations = $allocationStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($allocations)) {
+            throw new Exception("No allocation records found. Cannot safely restore this payment.");
+        }
+
+        $restoredDetails = [];
+        foreach ($allocations as $allocation) {
+            $allocatedAmount = round((float)($allocation['allocated_amount'] ?? 0), 2);
+
+            if (($allocation['allocation_type'] ?? '') === 'invoice' && !empty($allocation['invoice_id']) && $allocatedAmount > 0) {
+                $invLock = $pdo->prepare("SELECT * FROM invoices WHERE id = ? AND business_id = ? FOR UPDATE");
+                $invLock->execute([(int)$allocation['invoice_id'], $business_id]);
+                $lockedInvoice = $invLock->fetch(PDO::FETCH_ASSOC);
+
+                if (!$lockedInvoice) {
+                    throw new Exception("Invoice not found while restoring payment allocation.");
+                }
+
+                $currentPaid = round((float)($lockedInvoice['paid_amount'] ?? 0), 2);
+                $newPaidAfterDelete = round(max(0, $currentPaid - $allocatedAmount), 2);
+                [$restoredStatus, $restoredPending] = computeInvoicePaymentStatus((float)$lockedInvoice['total'], $newPaidAfterDelete);
+
+                $method = $paymentRow['payment_method'] ?? '';
+                $cashReverse = $method === 'cash' ? $allocatedAmount : 0;
+                $upiReverse = $method === 'upi' ? $allocatedAmount : 0;
+                $bankReverse = $method === 'bank' ? $allocatedAmount : 0;
+                $chequeReverse = $method === 'cheque' ? $allocatedAmount : 0;
+                $creditReverse = $method === 'credit_card' ? $allocatedAmount : 0;
+
+                $restoreStmt = $pdo->prepare("
+                    UPDATE invoices
+                    SET paid_amount = ?,
+                        pending_amount = ?,
+                        payment_status = ?,
+                        cash_amount = GREATEST(COALESCE(cash_amount, 0) - ?, 0),
+                        upi_amount = GREATEST(COALESCE(upi_amount, 0) - ?, 0),
+                        bank_amount = GREATEST(COALESCE(bank_amount, 0) - ?, 0),
+                        cheque_amount = GREATEST(COALESCE(cheque_amount, 0) - ?, 0),
+                        credit_amount = GREATEST(COALESCE(credit_amount, 0) - ?, 0),
+                        updated_at = NOW()
+                    WHERE id = ? AND business_id = ?
+                ");
+                $restoreStmt->execute([
+                    $newPaidAfterDelete,
+                    $restoredPending,
+                    $restoredStatus,
+                    $cashReverse,
+                    $upiReverse,
+                    $bankReverse,
+                    $chequeReverse,
+                    $creditReverse,
+                    (int)$allocation['invoice_id'],
+                    $business_id
+                ]);
+
+                $restoredDetails[] = [
+                    'invoice_id' => (int)$allocation['invoice_id'],
+                    'invoice_number' => $allocation['invoice_number'] ?? $lockedInvoice['invoice_number'],
+                    'removed_amount' => $allocatedAmount,
+                    'paid_before_delete' => $currentPaid,
+                    'paid_after_delete' => $newPaidAfterDelete,
+                    'pending_after_delete' => $restoredPending,
+                    'status_after_delete' => $restoredStatus
+                ];
+            }
+        }
+
+        $softDeleteInvoicePayments = $pdo->prepare("
+            UPDATE invoice_payments
+            SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ?
+            WHERE customer_payment_id = ? AND business_id = ? AND is_deleted = 0
+        ");
+        $softDeleteInvoicePayments->execute([$user_id, $delete_reason, $delete_payment_id, $business_id]);
+
+        $softDeleteAllocations = $pdo->prepare("
+            UPDATE customer_payment_allocations
+            SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ?
+            WHERE payment_id = ? AND business_id = ? AND is_deleted = 0
+        ");
+        $softDeleteAllocations->execute([$user_id, $delete_reason, $delete_payment_id, $business_id]);
+
+        $softDeletePayment = $pdo->prepare("
+            UPDATE customer_payments
+            SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ?
+            WHERE id = ? AND business_id = ? AND is_deleted = 0
+        ");
+        $softDeletePayment->execute([$user_id, $delete_reason, $delete_payment_id, $business_id]);
+
+        writeActivityLog($pdo, $business_id, $user_id, 'invoice_payment_deleted', 'Invoice payment soft deleted and invoice balance restored', [
+            'payment_id' => $delete_payment_id,
+            'invoice_id' => $invoice_id,
+            'customer_id' => $paymentRow['customer_id'] ?? null,
+            'amount' => $paymentRow['total_amount'] ?? null,
+            'reason' => $delete_reason,
+            'restored' => $restoredDetails
+        ]);
+
+        $pdo->commit();
+        $_SESSION['success'] = "Payment deleted successfully and invoice balance restored.";
+        header("Location: collect_payment.php?invoice_id=$invoice_id");
+        exit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['error'] = "Failed to delete payment: " . $e->getMessage();
+        header("Location: collect_payment.php?invoice_id=$invoice_id");
+        exit();
+    }
+}
+
 $invoiceState = normalizeInvoicePaymentState($invoice); 
 $total_amount = $invoiceState['total']; 
 $paid_amount = $invoiceState['paid']; 
 $pending_amount = $invoiceState['pending']; 
 $balance_amount = $invoiceState['pending']; 
-
-if ($invoiceState['status'] === 'paid' || $balance_amount <= 0) { 
-    $_SESSION['error'] = "This invoice is already fully paid."; 
-    header("Location: invoice_view.php?invoice_id=$invoice_id"); 
-    exit(); 
-} 
 
 // Process payment 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') { 
@@ -179,23 +372,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $payment_method, $invoice_id, $business_id 
             ]); 
             
-            // Record payment in invoice_payments 
-            $paymentStmt = $pdo->prepare(" 
-                INSERT INTO invoice_payments (business_id, invoice_id, customer_id, payment_amount, payment_date, payment_method, reference_no, notes, created_by, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
-            "); 
-            $paymentStmt->execute([ 
-                $business_id, $invoice_id, $liveInvoice['customer_id'] ?? null, 
-                $payment_amount, $payment_date, $payment_method, 
-                $reference !== '' ? $reference : null, 
-                $notes !== '' ? $notes : null, 
-                $user_id 
-            ]); 
-            
-            // Store summary row for customer ledger 
+            // Store summary row for customer ledger first, so invoice payment and allocation can reference it
             $summaryStmt = $pdo->prepare(" 
-                INSERT INTO customer_payments (business_id, customer_id, invoice_id, total_amount, payment_method, reference_no, payment_date, notes, created_by, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
+                INSERT INTO customer_payments (business_id, customer_id, invoice_id, total_amount, payment_method, reference_no, payment_date, notes, created_by, created_at, is_deleted) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0) 
             "); 
             $summaryStmt->execute([ 
                 $business_id, $liveInvoice['customer_id'] ?? null, $invoice_id, 
@@ -203,7 +383,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $reference !== '' ? $reference : null, 
                 $payment_date, $notes !== '' ? $notes : null, 
                 $user_id 
-            ]); 
+            ]);
+            $customer_payment_id = (int)$pdo->lastInsertId();
+
+            // Record payment in invoice_payments
+            $paymentStmt = $pdo->prepare(" 
+                INSERT INTO invoice_payments (business_id, invoice_id, customer_id, customer_payment_id, payment_amount, payment_date, payment_method, reference_no, notes, created_by, created_at, is_deleted) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0) 
+            "); 
+            $paymentStmt->execute([ 
+                $business_id, $invoice_id, $liveInvoice['customer_id'] ?? null, $customer_payment_id,
+                $payment_amount, $payment_date, $payment_method, 
+                $reference !== '' ? $reference : null, 
+                $notes !== '' ? $notes : null, 
+                $user_id 
+            ]);
+            $invoice_payment_id = (int)$pdo->lastInsertId();
+
+            // Record exact allocation for delete/restore and reporting
+            $allocationStmt = $pdo->prepare("
+                INSERT INTO customer_payment_allocations (
+                    payment_id, business_id, customer_id, allocation_type, invoice_id, invoice_number, allocated_amount,
+                    invoice_paid_before, invoice_paid_after, invoice_pending_before, invoice_pending_after,
+                    description, created_by, created_at, is_deleted
+                ) VALUES (?, ?, ?, 'invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0)
+            ");
+            $allocationStmt->execute([
+                $customer_payment_id,
+                $business_id,
+                $liveInvoice['customer_id'] ?? null,
+                $invoice_id,
+                $liveInvoice['invoice_number'] ?? null,
+                $payment_amount,
+                $live_paid,
+                $new_paid,
+                $live_pending,
+                $new_pending,
+                'Payment collected directly for invoice ' . ($liveInvoice['invoice_number'] ?? ('#' . $invoice_id)),
+                $user_id
+            ]);
+
+            writeActivityLog($pdo, $business_id, $user_id, 'invoice_payment_recorded', 'Invoice payment recorded from collect payment page', [
+                'payment_id' => $customer_payment_id,
+                'invoice_payment_id' => $invoice_payment_id,
+                'invoice_id' => $invoice_id,
+                'invoice_number' => $liveInvoice['invoice_number'] ?? null,
+                'customer_id' => $liveInvoice['customer_id'] ?? null,
+                'amount' => $payment_amount,
+                'payment_method' => $payment_method,
+                'paid_before' => $live_paid,
+                'paid_after' => $new_paid,
+                'pending_before' => $live_pending,
+                'pending_after' => $new_pending,
+                'payment_status_after' => $new_status
+            ]);
             
             // Award loyalty points only once per invoice 
             $pointsBasis = round((float)($liveInvoice['subtotal'] ?? $live_total) - (float)($liveInvoice['points_discount_amount'] ?? 0), 2); 
@@ -282,15 +515,40 @@ $paid_amount = $invoiceState['paid'];
 $pending_amount = $invoiceState['pending']; 
 $balance_amount = $invoiceState['pending']; 
 
-// Payment history 
-$paymentsStmt = $pdo->prepare(" 
-    SELECT payment_amount AS amount, payment_method, reference_no AS reference, payment_date, notes, created_by, created_at 
-    FROM invoice_payments 
-    WHERE invoice_id = ? AND business_id = ? 
-    ORDER BY payment_date DESC, created_at DESC, id DESC 
-"); 
-$paymentsStmt->execute([$invoice_id, $business_id]); 
-$payments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC); 
+// Payment history
+$paymentsStmt = $pdo->prepare("
+    SELECT
+        cp.id AS payment_id,
+        cp.total_amount AS amount,
+        cp.payment_method,
+        cp.reference_no AS reference,
+        cp.payment_date,
+        cp.notes,
+        cp.created_by,
+        cp.created_at,
+        COALESCE(u.full_name, CONCAT('User #', cp.created_by)) AS collected_by,
+        cpa.invoice_number,
+        cpa.allocated_amount,
+        cpa.invoice_paid_before,
+        cpa.invoice_paid_after,
+        cpa.invoice_pending_before,
+        cpa.invoice_pending_after
+    FROM customer_payments cp
+    INNER JOIN customer_payment_allocations cpa
+        ON cpa.payment_id = cp.id
+       AND cpa.business_id = cp.business_id
+       AND cpa.invoice_id = ?
+       AND cpa.allocation_type = 'invoice'
+       AND cpa.is_deleted = 0
+    LEFT JOIN users u ON u.id = cp.created_by
+    WHERE cp.invoice_id = ?
+      AND cp.business_id = ?
+      AND cp.is_deleted = 0
+    ORDER BY cp.payment_date DESC, cp.created_at DESC, cp.id DESC
+");
+$paymentsStmt->execute([$invoice_id, $invoice_id, $business_id]);
+$payments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <!DOCTYPE html>
@@ -462,7 +720,9 @@ include 'includes/head.php'; ?>
                                                 <th>Method</th>
                                                 <th>Reference</th>
                                                 <th>Notes</th>
+                                                <th>Invoice Balance</th>
                                                 <th>Collected By</th>
+                                                <th class="text-center">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody> <?php foreach ($payments as $pay): ?>
@@ -478,7 +738,22 @@ include 'includes/head.php'; ?>
                                                     </td>
                                                     <td><?= htmlspecialchars($pay['reference'] ?: '—'); ?></td>
                                                     <td><?= htmlspecialchars($pay['notes'] ?: '—'); ?></td>
-                                                    <td><?= !empty($pay['created_by']) ? 'User #' . (int) $pay['created_by'] : '—'; ?>
+                                                    <td>
+                                                        <small class="text-muted d-block">Allocated: ₹<?= number_format((float)($pay['allocated_amount'] ?? $pay['amount']), 2); ?></small>
+                                                        <small class="text-muted d-block">Paid: ₹<?= number_format((float)($pay['invoice_paid_before'] ?? 0), 2); ?> → ₹<?= number_format((float)($pay['invoice_paid_after'] ?? 0), 2); ?></small>
+                                                        <small class="text-muted d-block">Pending: ₹<?= number_format((float)($pay['invoice_pending_before'] ?? 0), 2); ?> → ₹<?= number_format((float)($pay['invoice_pending_after'] ?? 0), 2); ?></small>
+                                                    </td>
+                                                    <td><?= htmlspecialchars($pay['collected_by'] ?? (!empty($pay['created_by']) ? 'User #' . (int) $pay['created_by'] : '—')); ?>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <form method="POST" class="delete-payment-form d-inline">
+                                                            <input type="hidden" name="action" value="delete_payment">
+                                                            <input type="hidden" name="payment_id" value="<?= (int)$pay['payment_id']; ?>">
+                                                            <input type="hidden" name="delete_reason" value="Deleted from collect payment page">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Payment">
+                                                                <i class="bx bx-trash"></i>
+                                                            </button>
+                                                        </form>
                                                     </td>
                                                 </tr> <?php endforeach; ?>
                                         </tbody>
@@ -490,7 +765,7 @@ include 'includes/head.php'; ?>
             </div> <?php include 'includes/footer.php'; ?>
         </div>
     </div>
-    <script> document.addEventListener('DOMContentLoaded', function () { const amountInput = document.getElementById('payment_amount'); const methodSelect = document.getElementById('payment_method'); const refLabel = document.getElementById('reference_label'); const payHalfBtn = document.getElementById('pay_half_btn'); const payFullBtn = document.getElementById('pay_full_btn'); const balanceAmount = <?= json_encode((float) $balance_amount); ?>; function updateReferenceLabel() { const method = methodSelect.value; if (method === 'upi') { refLabel.textContent = 'UPI Reference'; } else if (method === 'bank') { refLabel.textContent = 'Bank Reference'; } else if (method === 'cheque') { refLabel.textContent = 'Cheque Number'; } else if (method === 'credit_card') { refLabel.textContent = 'Card Reference'; } else { refLabel.textContent = 'Reference / Transaction No'; } } if (methodSelect) { methodSelect.addEventListener('change', updateReferenceLabel); updateReferenceLabel(); } if (payHalfBtn) { payHalfBtn.addEventListener('click', function () { amountInput.value = (Math.round((balanceAmount / 2) * 100) / 100).toFixed(2); }); } if (payFullBtn) { payFullBtn.addEventListener('click', function () { amountInput.value = balanceAmount.toFixed(2); }); } }); </script>
+    <script> document.addEventListener('DOMContentLoaded', function () { const amountInput = document.getElementById('payment_amount'); const methodSelect = document.getElementById('payment_method'); const refLabel = document.getElementById('reference_label'); const payHalfBtn = document.getElementById('pay_half_btn'); const payFullBtn = document.getElementById('pay_full_btn'); const balanceAmount = <?= json_encode((float) $balance_amount); ?>; function updateReferenceLabel() { const method = methodSelect.value; if (method === 'upi') { refLabel.textContent = 'UPI Reference'; } else if (method === 'bank') { refLabel.textContent = 'Bank Reference'; } else if (method === 'cheque') { refLabel.textContent = 'Cheque Number'; } else if (method === 'credit_card') { refLabel.textContent = 'Card Reference'; } else { refLabel.textContent = 'Reference / Transaction No'; } } if (methodSelect) { methodSelect.addEventListener('change', updateReferenceLabel); updateReferenceLabel(); } if (payHalfBtn) { payHalfBtn.addEventListener('click', function () { amountInput.value = (Math.round((balanceAmount / 2) * 100) / 100).toFixed(2); }); } if (payFullBtn) { payFullBtn.addEventListener('click', function () { amountInput.value = balanceAmount.toFixed(2); }); } document.querySelectorAll('.delete-payment-form').forEach(function(form) { form.addEventListener('submit', function(e) { if (!confirm('Delete this payment? Invoice paid and pending values will be restored. This is a soft delete only.')) { e.preventDefault(); } }); }); }); </script>
 </body>
 
 </html>

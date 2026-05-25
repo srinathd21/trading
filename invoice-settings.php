@@ -19,6 +19,224 @@ $business_id = $_SESSION['business_id'] ?? 1;
 $message = '';
 $message_type = '';
 
+
+// ========== BRAND LOGO TABLE ===========
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS invoice_brand_logos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        business_id INT NOT NULL,
+        shop_id INT DEFAULT NULL,
+        logo_path VARCHAR(255) NOT NULL,
+        logo_name VARCHAR(120) DEFAULT NULL,
+        width_mm DECIMAL(8,2) NOT NULL DEFAULT 24.00,
+        height_mm DECIMAL(8,2) NOT NULL DEFAULT 8.00,
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_brand_logos_scope (business_id, shop_id, is_active, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Exception $e) {
+    // Do not stop settings page if table creation fails; save action will show error.
+}
+
+
+// ========== BRAND LOGO MANAGEMENT FUNCTIONS ===========
+if (isset($_POST['add_brand_logo'])) {
+    try {
+        $shop_id = $_POST['brand_shop_id'] ?? null;
+        if ($shop_id == 0 || $shop_id === '') $shop_id = null;
+
+        $logo_name = trim($_POST['brand_logo_name'] ?? '');
+        $width_mm = (float)($_POST['brand_width_mm'] ?? 24);
+        $height_mm = (float)($_POST['brand_height_mm'] ?? 8);
+        $sort_order = (int)($_POST['brand_sort_order'] ?? 0);
+        $is_active = isset($_POST['brand_is_active']) ? 1 : 0;
+
+        if ($width_mm <= 0) $width_mm = 24;
+        if ($height_mm <= 0) $height_mm = 8;
+        if ($width_mm > 80) $width_mm = 80;
+        if ($height_mm > 25) $height_mm = 25;
+
+        if (!isset($_FILES['brand_logo_file']) || $_FILES['brand_logo_file']['error'] !== UPLOAD_ERR_OK) {
+            throw new Exception('Please select a brand logo image.');
+        }
+
+        $upload_dir = 'uploads/brand_logos/';
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
+        }
+
+        $allowed_types = ['image/jpeg', 'image/jpg', 'image/png'];
+        $file_type = $_FILES['brand_logo_file']['type'];
+        $file_info = pathinfo($_FILES['brand_logo_file']['name']);
+        $extension = strtolower($file_info['extension'] ?? '');
+
+        if (!in_array($file_type, $allowed_types, true) || !in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+            throw new Exception('Brand logo must be JPG, JPEG, or PNG for FPDF printing.');
+        }
+
+        if ((int)$_FILES['brand_logo_file']['size'] > (2 * 1024 * 1024)) {
+            throw new Exception('Brand logo file is too large. Max 2MB allowed.');
+        }
+
+        $file_name = 'brand_' . $business_id . ($shop_id ? '_shop_' . $shop_id : '') . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+        $target_path = $upload_dir . $file_name;
+
+        if (!move_uploaded_file($_FILES['brand_logo_file']['tmp_name'], $target_path)) {
+            throw new Exception('Failed to upload brand logo.');
+        }
+
+        $stmt = $pdo->prepare("INSERT INTO invoice_brand_logos
+            (business_id, shop_id, logo_path, logo_name, width_mm, height_mm, sort_order, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $business_id,
+            $shop_id,
+            $target_path,
+            $logo_name ?: null,
+            $width_mm,
+            $height_mm,
+            $sort_order,
+            $is_active
+        ]);
+
+        $message = 'Brand logo added successfully!';
+        $message_type = 'success';
+
+    } catch (Exception $e) {
+        $message = 'Error: ' . $e->getMessage();
+        $message_type = 'danger';
+    }
+}
+
+if (isset($_POST['update_brand_logo'])) {
+    try {
+        $brand_logo_id = (int)($_POST['brand_logo_id'] ?? 0);
+        $shop_id = $_POST['brand_shop_id'] ?? null;
+        if ($shop_id == 0 || $shop_id === '') $shop_id = null;
+
+        $logo_name = trim($_POST['brand_logo_name'] ?? '');
+        $width_mm = (float)($_POST['brand_width_mm'] ?? 24);
+        $height_mm = (float)($_POST['brand_height_mm'] ?? 8);
+        $sort_order = (int)($_POST['brand_sort_order'] ?? 0);
+        $is_active = isset($_POST['brand_is_active']) ? 1 : 0;
+
+        if ($width_mm <= 0) $width_mm = 24;
+        if ($height_mm <= 0) $height_mm = 8;
+        if ($width_mm > 80) $width_mm = 80;
+        if ($height_mm > 25) $height_mm = 25;
+
+        $oldStmt = $pdo->prepare("SELECT logo_path FROM invoice_brand_logos WHERE id = ? AND business_id = ? LIMIT 1");
+        $oldStmt->execute([$brand_logo_id, $business_id]);
+        $oldLogo = $oldStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$oldLogo) {
+            throw new Exception('Brand logo not found.');
+        }
+
+        $new_path = $oldLogo['logo_path'];
+        if (isset($_FILES['brand_logo_file']) && $_FILES['brand_logo_file']['error'] === UPLOAD_ERR_OK) {
+            $upload_dir = 'uploads/brand_logos/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+
+            $allowed_types = ['image/jpeg', 'image/jpg', 'image/png'];
+            $file_type = $_FILES['brand_logo_file']['type'];
+            $file_info = pathinfo($_FILES['brand_logo_file']['name']);
+            $extension = strtolower($file_info['extension'] ?? '');
+
+            if (!in_array($file_type, $allowed_types, true) || !in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+                throw new Exception('Brand logo must be JPG, JPEG, or PNG for FPDF printing.');
+            }
+
+            if ((int)$_FILES['brand_logo_file']['size'] > (2 * 1024 * 1024)) {
+                throw new Exception('Brand logo file is too large. Max 2MB allowed.');
+            }
+
+            $file_name = 'brand_' . $business_id . ($shop_id ? '_shop_' . $shop_id : '') . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+            $target_path = $upload_dir . $file_name;
+
+            if (!move_uploaded_file($_FILES['brand_logo_file']['tmp_name'], $target_path)) {
+                throw new Exception('Failed to upload brand logo.');
+            }
+
+            if (!empty($oldLogo['logo_path']) && file_exists($oldLogo['logo_path'])) {
+                @unlink($oldLogo['logo_path']);
+            }
+            $new_path = $target_path;
+        }
+
+        $stmt = $pdo->prepare("UPDATE invoice_brand_logos
+            SET shop_id = ?, logo_path = ?, logo_name = ?, width_mm = ?, height_mm = ?, sort_order = ?, is_active = ?, updated_at = NOW()
+            WHERE id = ? AND business_id = ?");
+        $stmt->execute([
+            $shop_id,
+            $new_path,
+            $logo_name ?: null,
+            $width_mm,
+            $height_mm,
+            $sort_order,
+            $is_active,
+            $brand_logo_id,
+            $business_id
+        ]);
+
+        $message = 'Brand logo updated successfully!';
+        $message_type = 'success';
+
+    } catch (Exception $e) {
+        $message = 'Error: ' . $e->getMessage();
+        $message_type = 'danger';
+    }
+}
+
+if (isset($_GET['delete_brand_logo'])) {
+    try {
+        $brand_logo_id = (int)$_GET['delete_brand_logo'];
+        $stmt = $pdo->prepare("SELECT logo_path FROM invoice_brand_logos WHERE id = ? AND business_id = ? LIMIT 1");
+        $stmt->execute([$brand_logo_id, $business_id]);
+        $logo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($logo) {
+            if (!empty($logo['logo_path']) && file_exists($logo['logo_path'])) {
+                @unlink($logo['logo_path']);
+            }
+            $del = $pdo->prepare("DELETE FROM invoice_brand_logos WHERE id = ? AND business_id = ?");
+            $del->execute([$brand_logo_id, $business_id]);
+        }
+
+        $message = 'Brand logo deleted successfully!';
+        $message_type = 'success';
+
+    } catch (Exception $e) {
+        $message = 'Error: ' . $e->getMessage();
+        $message_type = 'danger';
+    }
+}
+
+if (isset($_GET['toggle_brand_logo'])) {
+    try {
+        $brand_logo_id = (int)$_GET['toggle_brand_logo'];
+        $stmt = $pdo->prepare("SELECT is_active FROM invoice_brand_logos WHERE id = ? AND business_id = ? LIMIT 1");
+        $stmt->execute([$brand_logo_id, $business_id]);
+        $logo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($logo) {
+            $new_status = !empty($logo['is_active']) ? 0 : 1;
+            $upd = $pdo->prepare("UPDATE invoice_brand_logos SET is_active = ?, updated_at = NOW() WHERE id = ? AND business_id = ?");
+            $upd->execute([$new_status, $brand_logo_id, $business_id]);
+        }
+
+        $message = 'Brand logo status updated!';
+        $message_type = 'success';
+
+    } catch (Exception $e) {
+        $message = 'Error: ' . $e->getMessage();
+        $message_type = 'danger';
+    }
+}
+
 // ========== BANK ACCOUNT MANAGEMENT FUNCTIONS ==========
 
 // Add new bank account
@@ -177,7 +395,7 @@ if (isset($_GET['toggle_account'])) {
 // ========== EXISTING INVOICE SETTINGS FUNCTIONS ==========
 
 // Handle form submission for invoice settings
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) && !isset($_POST['update_bank_account'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) && !isset($_POST['update_bank_account']) && !isset($_POST['add_brand_logo']) && !isset($_POST['update_brand_logo'])) {
     try {
         $company_name = $_POST['company_name'] ?? '';
         $company_address = $_POST['company_address'] ?? '';
@@ -451,6 +669,23 @@ if ($selected_shop_id) {
     $bank_accounts_stmt->execute([$business_id]);
 }
 $bank_accounts = $bank_accounts_stmt->fetchAll();
+
+
+// Fetch brand logos for current shop/business footer
+try {
+    if ($selected_shop_id) {
+        $brand_logos_sql = "SELECT * FROM invoice_brand_logos WHERE business_id = ? AND shop_id = ? ORDER BY sort_order ASC, id ASC";
+        $brand_logos_stmt = $pdo->prepare($brand_logos_sql);
+        $brand_logos_stmt->execute([$business_id, $selected_shop_id]);
+    } else {
+        $brand_logos_sql = "SELECT * FROM invoice_brand_logos WHERE business_id = ? AND shop_id IS NULL ORDER BY sort_order ASC, id ASC";
+        $brand_logos_stmt = $pdo->prepare($brand_logos_sql);
+        $brand_logos_stmt->execute([$business_id]);
+    }
+    $brand_logos = $brand_logos_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $brand_logos = [];
+}
 
 // If no settings found, use default values
 if (empty($settings)) {
@@ -763,6 +998,35 @@ if (isset($_GET['msg'])) {
             color: #6c757d;
         }
         
+
+        .brand-logo-card {
+            border-left: 4px solid #6f42c1;
+            transition: all 0.25s ease;
+            border-radius: 8px;
+        }
+        .brand-logo-card.inactive {
+            opacity: .65;
+            border-left-color: #dc3545;
+        }
+        .brand-logo-preview-box {
+            min-height: 70px;
+            border: 1px dashed #ced4da;
+            border-radius: 8px;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+        }
+        .brand-logo-preview-box img {
+            max-width: 100%;
+            max-height: 60px;
+            object-fit: contain;
+        }
+        .brand-logo-meta {
+            font-size: .8rem;
+            color: #6c757d;
+        }
         .preview-container .delete-btn {
             position: absolute;
             top: 8px;
@@ -1045,6 +1309,89 @@ if (isset($_GET['msg'])) {
                         </div>
                     </div>
 
+
+                    <!-- Brand Logos Footer Management -->
+                    <div class="row mb-4" id="brand-logos">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title mb-4">
+                                        <i class="fas fa-images me-2"></i>
+                                        Footer Brand Logos
+                                        <button type="button" class="btn btn-primary btn-sm float-end" data-bs-toggle="modal" data-bs-target="#addBrandLogoModal">
+                                            <i class="fas fa-plus"></i> Add Brand Logo
+                                        </button>
+                                    </h5>
+
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        These logos will print in the bottom footer of the invoice. Use manual width and height in <strong>mm</strong>. For FPDF, use JPG/JPEG/PNG images.
+                                    </div>
+
+                                    <?php if (empty($brand_logos)): ?>
+                                        <div class="alert alert-warning mb-0">
+                                            <i class="fas fa-exclamation-circle me-2"></i>
+                                            No brand logos added yet. Add logos to show them at the invoice bottom footer.
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="row">
+                                            <?php foreach ($brand_logos as $logo): ?>
+                                                <div class="col-md-4 col-lg-3 mb-3">
+                                                    <div class="card brand-logo-card h-100 <?php echo empty($logo['is_active']) ? 'inactive' : ''; ?>">
+                                                        <div class="card-body">
+                                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                                <strong><?php echo htmlspecialchars($logo['logo_name'] ?: 'Brand Logo'); ?></strong>
+                                                                <?php if (!empty($logo['is_active'])): ?>
+                                                                    <span class="badge bg-success">Active</span>
+                                                                <?php else: ?>
+                                                                    <span class="badge bg-danger">Inactive</span>
+                                                                <?php endif; ?>
+                                                            </div>
+
+                                                            <div class="brand-logo-preview-box mb-2">
+                                                                <?php if (!empty($logo['logo_path']) && file_exists($logo['logo_path'])): ?>
+                                                                    <img src="<?php echo htmlspecialchars($logo['logo_path']); ?>" alt="Brand Logo">
+                                                                <?php else: ?>
+                                                                    <span class="text-muted">File missing</span>
+                                                                <?php endif; ?>
+                                                            </div>
+
+                                                            <div class="brand-logo-meta mb-2">
+                                                                Width: <strong><?php echo htmlspecialchars($logo['width_mm']); ?> mm</strong><br>
+                                                                Height: <strong><?php echo htmlspecialchars($logo['height_mm']); ?> mm</strong><br>
+                                                                Sort: <strong><?php echo (int)$logo['sort_order']; ?></strong>
+                                                            </div>
+
+                                                            <div class="d-flex gap-1 flex-wrap">
+                                                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                                                        data-bs-toggle="modal" data-bs-target="#editBrandLogoModal"
+                                                                        onclick="editBrandLogo(<?php echo (int)$logo['id']; ?>)">
+                                                                    <i class="fas fa-edit"></i> Edit
+                                                                </button>
+
+                                                                <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&toggle_brand_logo=<?php echo (int)$logo['id']; ?>"
+                                                                   class="btn btn-sm btn-outline-<?php echo !empty($logo['is_active']) ? 'warning' : 'success'; ?>">
+                                                                    <i class="fas fa-power-off"></i>
+                                                                    <?php echo !empty($logo['is_active']) ? 'Hide' : 'Show'; ?>
+                                                                </a>
+
+                                                                <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&delete_brand_logo=<?php echo (int)$logo['id']; ?>"
+                                                                   class="btn btn-sm btn-outline-danger"
+                                                                   onclick="return confirm('Are you sure you want to delete this brand logo?')">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Bank Details (Modified for Multiple Accounts) -->
                     <div class="row mb-4" id="bank-details">
                         <div class="col-12">
@@ -1280,6 +1627,112 @@ if (isset($_GET['msg'])) {
     </div><!-- end main content-->
 </div><!-- END layout-wrapper -->
 
+
+<!-- Add Brand Logo Modal -->
+<div class="modal fade" id="addBrandLogoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> Add Footer Brand Logo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="brand_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                    <div class="mb-3">
+                        <label class="form-label">Logo Name</label>
+                        <input type="text" name="brand_logo_name" class="form-control" placeholder="Example: SKF, Fenner, Oxford">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Logo Image <span class="text-danger">*</span></label>
+                        <input type="file" name="brand_logo_file" class="form-control" accept="image/jpeg,image/jpg,image/png" required>
+                        <small class="text-muted">Only JPG/JPEG/PNG supported for FPDF printing.</small>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Width (mm)</label>
+                            <input type="number" name="brand_width_mm" class="form-control" value="24" min="1" max="80" step="0.1">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Height (mm)</label>
+                            <input type="number" name="brand_height_mm" class="form-control" value="8" min="1" max="25" step="0.1">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Sort Order</label>
+                            <input type="number" name="brand_sort_order" class="form-control" value="0">
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="brandAddActive" name="brand_is_active" checked>
+                        <label class="form-check-label" for="brandAddActive">Show on invoice footer</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="add_brand_logo" class="btn btn-primary">Add Brand Logo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Brand Logo Modal -->
+<div class="modal fade" id="editBrandLogoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i> Edit Footer Brand Logo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="brand_logo_id" id="edit_brand_logo_id">
+                    <input type="hidden" name="brand_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                    <div class="mb-3">
+                        <label class="form-label">Logo Name</label>
+                        <input type="text" name="brand_logo_name" id="edit_brand_logo_name" class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Replace Logo Image</label>
+                        <input type="file" name="brand_logo_file" class="form-control" accept="image/jpeg,image/jpg,image/png">
+                        <small class="text-muted">Leave empty to keep current logo.</small>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Width (mm)</label>
+                            <input type="number" name="brand_width_mm" id="edit_brand_width_mm" class="form-control" min="1" max="80" step="0.1">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Height (mm)</label>
+                            <input type="number" name="brand_height_mm" id="edit_brand_height_mm" class="form-control" min="1" max="25" step="0.1">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Sort Order</label>
+                            <input type="number" name="brand_sort_order" id="edit_brand_sort_order" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="edit_brand_is_active" name="brand_is_active">
+                        <label class="form-check-label" for="edit_brand_is_active">Show on invoice footer</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="update_brand_logo" class="btn btn-primary">Update Brand Logo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Add Bank Account Modal -->
 <div class="modal fade" id="addBankAccountModal" tabindex="-1" aria-labelledby="addBankAccountModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -1445,6 +1898,21 @@ if (isset($_GET['msg'])) {
         if (confirm('Are you sure you want to reset the form? All unsaved changes will be lost.')) {
             location.reload();
         }
+    }
+
+
+    const brandLogos = <?php echo json_encode($brand_logos ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+
+    function editBrandLogo(id) {
+        const logo = brandLogos.find(function(item) { return parseInt(item.id) === parseInt(id); });
+        if (!logo) return;
+
+        document.getElementById('edit_brand_logo_id').value = logo.id || '';
+        document.getElementById('edit_brand_logo_name').value = logo.logo_name || '';
+        document.getElementById('edit_brand_width_mm').value = logo.width_mm || 24;
+        document.getElementById('edit_brand_height_mm').value = logo.height_mm || 8;
+        document.getElementById('edit_brand_sort_order').value = logo.sort_order || 0;
+        document.getElementById('edit_brand_is_active').checked = parseInt(logo.is_active) === 1;
     }
 
     // Function to edit bank account

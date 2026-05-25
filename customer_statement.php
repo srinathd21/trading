@@ -44,10 +44,10 @@ if (!$customer) {
     exit();
 }
 
-// Get all transactions for statement - ORDERED BY DATE DESC, TIME DESC (most recent on top)
-// FIX: Use CONVERT or CAST to ensure consistent collation
+// Get all transactions for statement - using invoices + customer_payments + customer_payment_allocations only
+// IMPORTANT: invoice_payments table is not used here.
 $transactions_sql = "
-    SELECT 
+    SELECT
         CAST('invoice' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
         i.id as reference_id,
         CONVERT(COALESCE(i.invoice_number, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
@@ -60,35 +60,86 @@ $transactions_sql = "
         CONVERT(COALESCE(i.payment_status, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as payment_status,
         CONVERT(COALESCE(i.notes, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as notes,
         i.created_at,
-        CONVERT(CONCAT('Invoice - ', COALESCE(i.invoice_type, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci as description
+        CONVERT(CONCAT('Invoice - ', COALESCE(i.invoice_type, 'Sale')) USING utf8mb4) COLLATE utf8mb4_unicode_ci as description
     FROM invoices i
-    WHERE i.customer_id = ? AND i.business_id = ?
-    AND DATE(i.created_at) BETWEEN ? AND ?
+    WHERE i.customer_id = ?
+      AND i.business_id = ?
+      AND DATE(i.created_at) BETWEEN ? AND ?
 
     UNION ALL
 
-    SELECT 
+    SELECT
         CAST('payment' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
-        ip.id as reference_id,
-        CONVERT(COALESCE(ip.reference_no, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
-        ip.created_at as transaction_datetime,
-        DATE(ip.payment_date) as transaction_date,
-        TIME(ip.created_at) as transaction_time,
+        cp.id as reference_id,
+        CONVERT(
+            CASE
+                WHEN COALESCE(cp.reference_no, '') <> '' THEN cp.reference_no
+                ELSE CONCAT('PAY-', cp.id)
+            END USING utf8mb4
+        ) COLLATE utf8mb4_unicode_ci as reference_no,
+        cp.created_at as transaction_datetime,
+        DATE(cp.payment_date) as transaction_date,
+        TIME(cp.created_at) as transaction_time,
         0 as debit,
-        ip.payment_amount as credit,
+        COALESCE(SUM(cpa.allocated_amount), 0) as credit,
         NULL as paid_amount,
-        CAST('payment' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as payment_status,
-        CONVERT(COALESCE(ip.notes, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as notes,
-        ip.created_at,
-        CONVERT(CONCAT('Payment (', COALESCE(ip.payment_method, ''), ') - Invoice #', COALESCE(i.invoice_number, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci as description
-    FROM invoice_payments ip
-    JOIN invoices i ON ip.invoice_id = i.id
-    WHERE i.customer_id = ? AND i.business_id = ?
-    AND DATE(ip.payment_date) BETWEEN ? AND ?
+        CONVERT(COALESCE(cp.payment_type, 'payment') USING utf8mb4) COLLATE utf8mb4_unicode_ci as payment_status,
+        CONVERT(COALESCE(cp.notes, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as notes,
+        cp.created_at,
+        CONVERT(
+            CONCAT(
+                CASE
+                    WHEN COALESCE(cp.payment_type, '') = 'outstanding' THEN 'Outstanding Collection'
+                    WHEN COALESCE(cp.payment_mode, '') = 'invoice_wise' THEN 'Invoice-wise Payment'
+                    WHEN COALESCE(cp.payment_mode, '') = 'bulk' THEN 'Overall Collection'
+                    ELSE 'Payment'
+                END,
+                ' (', COALESCE(cp.payment_method, ''), ')',
+                CASE
+                    WHEN GROUP_CONCAT(
+                        CONCAT(
+                            CASE
+                                WHEN cpa.allocation_type = 'invoice' THEN COALESCE(cpa.invoice_number, CONCAT('Invoice #', cpa.invoice_id))
+                                WHEN cpa.allocation_type = 'manual_credit' THEN 'Manual Outstanding'
+                                WHEN cpa.allocation_type = 'advance' THEN 'Advance'
+                                ELSE cpa.allocation_type
+                            END,
+                            ': ₹', FORMAT(cpa.allocated_amount, 2)
+                        )
+                        ORDER BY cpa.id ASC SEPARATOR ', '
+                    ) IS NOT NULL
+                    THEN CONCAT(' - ', GROUP_CONCAT(
+                        CONCAT(
+                            CASE
+                                WHEN cpa.allocation_type = 'invoice' THEN COALESCE(cpa.invoice_number, CONCAT('Invoice #', cpa.invoice_id))
+                                WHEN cpa.allocation_type = 'manual_credit' THEN 'Manual Outstanding'
+                                WHEN cpa.allocation_type = 'advance' THEN 'Advance'
+                                ELSE cpa.allocation_type
+                            END,
+                            ': ₹', FORMAT(cpa.allocated_amount, 2)
+                        )
+                        ORDER BY cpa.id ASC SEPARATOR ', '
+                    ))
+                    ELSE ''
+                END
+            ) USING utf8mb4
+        ) COLLATE utf8mb4_unicode_ci as description
+    FROM customer_payments cp
+    LEFT JOIN customer_payment_allocations cpa
+           ON cpa.payment_id = cp.id
+          AND cpa.business_id = cp.business_id
+          AND cpa.customer_id = cp.customer_id
+          AND COALESCE(cpa.is_deleted, 0) = 0
+    WHERE cp.customer_id = ?
+      AND cp.business_id = ?
+      AND COALESCE(cp.is_deleted, 0) = 0
+      AND DATE(cp.payment_date) BETWEEN ? AND ?
+    GROUP BY cp.id, cp.business_id, cp.customer_id, cp.reference_no, cp.created_at, cp.payment_date,
+             cp.payment_type, cp.payment_mode, cp.payment_method, cp.notes
 
     UNION ALL
 
-    SELECT 
+    SELECT
         CAST('adjustment' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci as transaction_type,
         ca.id as reference_id,
         CONVERT(COALESCE(ca.description, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci as reference_no,
@@ -103,8 +154,9 @@ $transactions_sql = "
         ca.created_at,
         CONVERT(CONCAT('Credit Adjustment (', COALESCE(ca.adjustment_type, ''), ')') USING utf8mb4) COLLATE utf8mb4_unicode_ci as description
     FROM customer_credit_adjustments ca
-    WHERE ca.customer_id = ? AND ca.business_id = ?
-    AND DATE(ca.adjustment_date) BETWEEN ? AND ?
+    WHERE ca.customer_id = ?
+      AND ca.business_id = ?
+      AND DATE(ca.adjustment_date) BETWEEN ? AND ?
 
     ORDER BY transaction_datetime DESC, created_at DESC
 ";
@@ -117,31 +169,54 @@ $stmt->execute([
 ]);
 $transactions = $stmt->fetchAll();
 
+// Live manual outstanding balance from customers table.
+// This is displayed as the first row of the statement when present.
+$manual_outstanding_balance = (($customer['outstanding_type'] ?? 'credit') === 'credit')
+    ? (float)($customer['outstanding_amount'] ?? 0)
+    : -(float)($customer['outstanding_amount'] ?? 0);
+
+$invoice_outstanding_stmt = $pdo->prepare("SELECT COALESCE(SUM(GREATEST(total - paid_amount, 0)), 0) FROM invoices WHERE customer_id = ? AND business_id = ?");
+$invoice_outstanding_stmt->execute([$customer_id, $business_id]);
+$invoice_outstanding_balance = (float)$invoice_outstanding_stmt->fetchColumn();
+$live_balance = $invoice_outstanding_balance + $manual_outstanding_balance;
+
 // Calculate opening balance (all transactions before from_date)
+// Payments are calculated from customer_payment_allocations, not invoice_payments.
 $opening_sql = "
-    SELECT 
+    SELECT
         COALESCE((
-            SELECT SUM(total) FROM invoices 
-            WHERE customer_id = ? AND business_id = ? 
-            AND DATE(created_at) < ?
+            SELECT SUM(total)
+            FROM invoices
+            WHERE customer_id = ?
+              AND business_id = ?
+              AND DATE(created_at) < ?
         ), 0) as total_invoices_before,
-        
+
         COALESCE((
-            SELECT SUM(ip.payment_amount) FROM invoice_payments ip
-            JOIN invoices i ON ip.invoice_id = i.id
-            WHERE i.customer_id = ? AND i.business_id = ?
-            AND DATE(ip.payment_date) < ?
+            SELECT SUM(cpa.allocated_amount)
+            FROM customer_payments cp
+            INNER JOIN customer_payment_allocations cpa
+                    ON cpa.payment_id = cp.id
+                   AND cpa.business_id = cp.business_id
+                   AND cpa.customer_id = cp.customer_id
+                   AND COALESCE(cpa.is_deleted, 0) = 0
+            WHERE cp.customer_id = ?
+              AND cp.business_id = ?
+              AND COALESCE(cp.is_deleted, 0) = 0
+              AND DATE(cp.payment_date) < ?
         ), 0) as total_payments_before,
-        
+
         COALESCE((
-            SELECT 
-                SUM(CASE 
-                    WHEN adjustment_type = 'debit' THEN amount 
-                    WHEN adjustment_type = 'credit' THEN -amount 
-                    ELSE 0 
-                END) 
-            FROM customer_credit_adjustments 
-            WHERE customer_id = ? AND business_id = ? AND DATE(adjustment_date) < ?
+            SELECT
+                SUM(CASE
+                    WHEN adjustment_type = 'debit' THEN amount
+                    WHEN adjustment_type = 'credit' THEN -amount
+                    ELSE 0
+                END)
+            FROM customer_credit_adjustments
+            WHERE customer_id = ?
+              AND business_id = ?
+              AND DATE(adjustment_date) < ?
         ), 0) as adjustment_balance_before
 ";
 
@@ -174,13 +249,16 @@ foreach ($transactions as $t) {
     }
 }
 
-// Calculate running balance from oldest to newest (for correct balance calculation)
+// Calculate running balance from oldest to newest for the selected period.
 $transactions_reverse = array_reverse($transactions);
 $running_balance = $opening_balance;
 foreach ($transactions_reverse as $t) {
     $running_balance += $t['debit'] - $t['credit'];
 }
-$closing_balance = $running_balance;
+$period_closing_balance = $running_balance;
+
+// Current balance should reflect live invoice pending + live manual outstanding/debit balance.
+$closing_balance = $live_balance;
 
 // Get credit limit status
 $credit_limit = $customer['credit_limit'];
@@ -195,139 +273,72 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
 
 <!-- Statement specific styles -->
 <style>
+    .card-hover { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+    .card-hover:hover { transform: translateY(-5px); box-shadow: 0 5px 20px rgba(0,0,0,0.15) !important; }
+    .border-start { border-left-width: 4px !important; }
+    .avatar-sm { width: 48px; height: 48px; }
     .statement-header {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-    }
-    .company-info {
-        border-right: 2px solid rgba(255,255,255,0.2);
-    }
-    .balance-card {
-        background: white;
-        border-radius: 10px;
+        background: #ffffff;
+        border-left: 4px solid #0d6efd;
+        border-radius: 0.25rem;
         padding: 1.5rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+        box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+    }
+    .company-info { border-right: 1px solid #e9ecef; }
+    .balance-card {
+        background: #ffffff;
+        border-radius: 0.25rem;
+        padding: 1.25rem;
+        box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
         margin-bottom: 1rem;
     }
-    .balance-card h3 {
-        margin: 0;
-        font-size: 1.8rem;
-        font-weight: 600;
-    }
-    .balance-card.positive {
-        border-left: 4px solid #dc3545;
-    }
-    .balance-card.negative {
-        border-left: 4px solid #28a745;
-    }
-    .balance-card.warning {
-        border-left: 4px solid #ffc107;
-    }
+    .balance-card h3 { margin: 0; font-size: 1.8rem; font-weight: 600; }
+    .balance-card.positive { border-left: 4px solid #dc3545; }
+    .balance-card.negative { border-left: 4px solid #198754; }
+    .balance-card.warning { border-left: 4px solid #ffc107; }
     .summary-card {
-        background: #f8f9fa;
-        border-radius: 8px;
-        padding: 1rem;
-        text-align: center;
+        background: #ffffff;
+        border-left: 4px solid #0d6efd;
+        border-radius: 0.25rem;
+        padding: 1.25rem;
+        text-align: left;
+        box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+        height: 100%;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
-    .summary-card .label {
-        font-size: 0.85rem;
-        color: #6c757d;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .summary-card .value {
-        font-size: 1.4rem;
-        font-weight: 600;
-        margin-top: 0.5rem;
-    }
-    .transaction-row.invoice {
-        background-color: #fff3e0;
-    }
-    .transaction-row.payment {
-        background-color: #e8f5e8;
-    }
-    .transaction-row.adjustment {
-        background-color: #e3f2fd;
-    }
-    .badge-transaction {
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
-    .badge-invoice {
-        background-color: #ff9800;
-        color: white;
-    }
-    .badge-payment {
-        background-color: #4caf50;
-        color: white;
-    }
-    .badge-adjustment {
-        background-color: #2196f3;
-        color: white;
-    }
-    .badge-debit {
-        background-color: #dc3545;
-        color: white;
-    }
-    .badge-credit {
-        background-color: #28a745;
-        color: white;
-    }
-    .amount-positive {
-        color: #dc3545;
-        font-weight: 600;
-    }
-    .amount-negative {
-        color: #28a745;
-        font-weight: 600;
-    }
-    .running-balance {
-        font-weight: 600;
-        font-size: 1.1rem;
-    }
+    .summary-card:hover { transform: translateY(-3px); box-shadow: 0 5px 20px rgba(0,0,0,0.12) !important; }
+    .summary-card .label { font-size: 0.85rem; color: #6c757d; font-weight: 600; }
+    .summary-card .value { font-size: 1.4rem; font-weight: 700; margin-top: 0.35rem; }
+    .transaction-row.invoice { background-color: #fff8ed; }
+    .transaction-row.payment { background-color: #f1fff4; }
+    .transaction-row.adjustment { background-color: #f3f8ff; }
+    .transaction-row.manual-balance { background-color: #fff5f5; border-left: 4px solid #dc3545; }
+    .badge-transaction { padding: 0.4rem 0.8rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+    .badge-invoice { background-color: #ff9800; color: white; }
+    .badge-payment { background-color: #4caf50; color: white; }
+    .badge-adjustment { background-color: #2196f3; color: white; }
+    .badge-debit { background-color: #dc3545; color: white; }
+    .badge-credit { background-color: #28a745; color: white; }
+    .badge-outstanding { background-color: #dc3545; color: white; }
+    .amount-positive { color: #dc3545; font-weight: 600; }
+    .amount-negative { color: #198754; font-weight: 600; }
     .filter-section {
-        background: white;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        background: #ffffff;
+        border-radius: 0.25rem;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
     }
-    .credit-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-    }
-    .credit-card.warning {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    }
-    .credit-card .value {
-        font-size: 2rem;
-        font-weight: bold;
+    .credit-card { background: #ffffff; color: inherit; border-left: 4px solid #0d6efd; }
+    .credit-card.warning { border-left-color: #dc3545; }
+    .credit-card .value { font-size: 1.6rem; font-weight: bold; }
+    @media (max-width: 768px) {
+        .company-info { border-right: 0; border-bottom: 1px solid #e9ecef; padding-bottom: 1rem; margin-bottom: 1rem; }
     }
     @media print {
-        .no-print {
-            display: none !important;
-        }
-        .statement-header {
-            background: #f8f9fa !important;
-            color: black !important;
-        }
-        .company-info {
-            border-right: 2px solid #dee2e6 !important;
-        }
-        .balance-card {
-            border: 1px solid #dee2e6 !important;
-            box-shadow: none !important;
-        }
-        .credit-card {
-            background: #f8f9fa !important;
-            color: black !important;
-            border: 1px solid #dee2e6;
-        }
+        .no-print { display: none !important; }
+        .statement-header, .balance-card, .summary-card, .credit-card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
     }
 </style>
 
@@ -376,15 +387,15 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                     <div class="row align-items-center">
                         <div class="col-md-6 company-info">
                             <h2 class="mb-1"><?= htmlspecialchars($_SESSION['business_name'] ?? 'Your Business') ?></h2>
-                            <p class="mb-0 opacity-75">GSTIN: <?= htmlspecialchars($_SESSION['business_gst'] ?? 'Not Available') ?></p>
-                            <p class="mb-0 opacity-75"><?= htmlspecialchars($_SESSION['business_address'] ?? '') ?></p>
+                            <p class="mb-0 text-muted">GSTIN: <?= htmlspecialchars($_SESSION['business_gst'] ?? 'Not Available') ?></p>
+                            <p class="mb-0 text-muted"><?= htmlspecialchars($_SESSION['business_address'] ?? '') ?></p>
                         </div>
                         <div class="col-md-6 text-md-end">
                             <h3 class="mb-1">Customer Statement</h3>
-                            <p class="mb-0 opacity-75">
+                            <p class="mb-0 text-muted">
                                 Period: <?= date('d M Y', strtotime($from_date)) ?> - <?= date('d M Y', strtotime($to_date)) ?>
                             </p>
-                            <p class="mb-0 opacity-75">Generated on: <?= date('d M Y h:i A') ?></p>
+                            <p class="mb-0 text-muted">Generated on: <?= date('d M Y h:i A') ?></p>
                         </div>
                     </div>
                 </div>
@@ -463,8 +474,8 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h5 class="mb-1">Credit Limit Information</h5>
-                                    <p class="mb-0 opacity-75">Credit Limit: ₹<?= number_format($credit_limit, 2) ?></p>
-                                    <p class="mb-0 opacity-75">Credit Used: ₹<?= number_format($credit_used, 2) ?></p>
+                                    <p class="mb-0 text-muted">Credit Limit: ₹<?= number_format($credit_limit, 2) ?></p>
+                                    <p class="mb-0 text-muted">Credit Used: ₹<?= number_format($credit_used, 2) ?></p>
                                 </div>
                                 <div class="text-end">
                                     <div class="value">
@@ -531,7 +542,7 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                 <div class="card shadow-sm">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
-                            <i class="bx bx-list-ul me-2"></i> Transaction Statement (Most Recent First)
+                            <i class="bx bx-list-ul me-2"></i> Transaction Statement
                         </h5>
                     </div>
                     <div class="card-body p-0">
@@ -551,6 +562,32 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                     <?php 
                                     $has_transactions = false;
                                     ?>
+
+                                    <?php if (abs($manual_outstanding_balance) > 0.01):
+                                        $has_transactions = true;
+                                        $manual_balance_is_receivable = $manual_outstanding_balance > 0;
+                                    ?>
+                                    <tr class="transaction-row manual-balance">
+                                        <td>
+                                            <strong>Current</strong><br>
+                                            <small class="text-muted">Manual Balance</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge-transaction badge-outstanding">OUTSTANDING</span>
+                                        </td>
+                                        <td><strong>Opening/Manual</strong></td>
+                                        <td>
+                                            Manual outstanding balance from customer master.
+                                            <br><small class="text-muted">Shown first for clarity. Payments below are calculated from customer_payments and customer_payment_allocations.</small>
+                                        </td>
+                                        <td class="text-end amount-positive">
+                                            <?= $manual_balance_is_receivable ? '₹' . number_format(abs($manual_outstanding_balance), 2) : '—' ?>
+                                        </td>
+                                        <td class="text-end amount-negative">
+                                            <?= !$manual_balance_is_receivable ? '₹' . number_format(abs($manual_outstanding_balance), 2) : '—' ?>
+                                        </td>
+                                    </tr>
+                                    <?php endif; ?>
                                     
                                     <?php foreach ($transactions as $t): 
                                         $has_transactions = true;
@@ -647,7 +684,7 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                                     <span class="mx-2"></span>
                                     <span class="badge-payment badge-transaction">PAYMENT</span> - Payments Received
                                     <span class="mx-2"></span>
-                                    <span class="badge-adjustment badge-transaction">ADJUSTMENT</span> - Credit/Debit Notes
+                                    <span class="badge-adjustment badge-transaction">ADJUSTMENT</span> - Credit/Debit Notes <span class="mx-2"></span><span class="badge-outstanding badge-transaction">OUTSTANDING</span> - Manual Balance
                                 </small>
                             </div>
                             <div class="col-md-6 text-end">
@@ -675,10 +712,11 @@ $is_over_limit = $credit_limit && $credit_used > $credit_limit;
                             foreach ($transactions as $t) {
                                 if ($t['transaction_type'] == 'payment' && $t['credit'] > 0) {
                                     $method = 'Unknown';
-                                    if (strpos($t['description'], 'cash') !== false) $method = 'Cash';
-                                    elseif (strpos($t['description'], 'upi') !== false) $method = 'UPI';
-                                    elseif (strpos($t['description'], 'bank') !== false) $method = 'Bank Transfer';
-                                    elseif (strpos($t['description'], 'cheque') !== false) $method = 'Cheque';
+                                    $desc = strtolower($t['description']);
+                                    if (strpos($desc, 'cash') !== false) $method = 'Cash';
+                                    elseif (strpos($desc, 'upi') !== false) $method = 'UPI';
+                                    elseif (strpos($desc, 'bank') !== false) $method = 'Bank Transfer';
+                                    elseif (strpos($desc, 'cheque') !== false) $method = 'Cheque';
                                     else $method = 'Other';
                                     
                                     if (!isset($payment_methods[$method])) {

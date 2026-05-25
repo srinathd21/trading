@@ -27,10 +27,14 @@ $stmt = $pdo->prepare("
     SELECT i.*,
            c.name as customer_name, c.phone as customer_phone, c.gstin as customer_gstin,
            c.address as customer_address,
+           c.district as customer_district,
+           c.state as customer_state,
+           c.pincode as customer_pincode,
            u.full_name as seller_name,
            s.shop_name, s.address as shop_address, s.phone as shop_phone, s.gstin as shop_gstin,
            s.id as shop_id,
            i.shipping_name, i.shipping_contact, i.shipping_gstin, i.shipping_address,
+           i.shipping_district, i.shipping_state, i.shipping_pincode,
            i.shipping_vehicle_number, i.shipping_transport_type,
            i.shipping_charges, i.transport_charge
     FROM invoices i
@@ -51,6 +55,17 @@ $shipping_name = $invoice['shipping_name'] ?? '';
 $shipping_contact = $invoice['shipping_contact'] ?? '';
 $shipping_gstin = $invoice['shipping_gstin'] ?? '';
 $shipping_address = $invoice['shipping_address'] ?? '';
+$shipping_district = $invoice['shipping_district'] ?? '';
+$shipping_state = $invoice['shipping_state'] ?? '';
+$shipping_pincode = $invoice['shipping_pincode'] ?? '';
+
+$shipping_full_address = trim(implode(', ', array_filter([
+    $shipping_address,
+    $shipping_district,
+    $shipping_state,
+    $shipping_pincode
+])));
+
 $shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
 $shipping_transport_type = $invoice['shipping_transport_type'] ?? '';
 $shipping_charges = (float) ($invoice['shipping_charges'] ?? 0);
@@ -130,38 +145,120 @@ if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])) {
     }
 }
 
-// ========== Fetch default active bank accounts ==========
-if ($shop_id) {
-    $bank_account_sql = "SELECT * FROM bank_accounts 
-                        WHERE business_id = ? AND shop_id = ? AND is_active = 1
-                        ORDER BY is_default DESC, id ASC
-                        LIMIT 2";
+// ========== Fetch all active bank accounts ==========
+// Priority:
+// 1) If the invoice belongs to a branch/shop, show ALL active bank accounts for that shop.
+// 2) If that shop has no bank accounts, fallback to ALL active business-default bank accounts.
+// 3) If no shop_id exists, show ALL active business-default bank accounts.
+$bank_accounts = [];
+
+if (!empty($shop_id)) {
+    $bank_account_sql = "SELECT *
+                         FROM bank_accounts
+                         WHERE business_id = ?
+                           AND shop_id = ?
+                           AND is_active = 1
+                         ORDER BY is_default DESC, id ASC";
     $bank_account_stmt = $pdo->prepare($bank_account_sql);
     $bank_account_stmt->execute([$business_id, $shop_id]);
-} else {
-    $bank_account_sql = "SELECT * FROM bank_accounts 
-                        WHERE business_id = ? AND shop_id IS NULL AND is_active = 1
-                        ORDER BY is_default DESC, id ASC
-                        LIMIT 2";
+    $bank_accounts = $bank_account_stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+if (empty($bank_accounts)) {
+    $bank_account_sql = "SELECT *
+                         FROM bank_accounts
+                         WHERE business_id = ?
+                           AND shop_id IS NULL
+                           AND is_active = 1
+                         ORDER BY is_default DESC, id ASC";
     $bank_account_stmt = $pdo->prepare($bank_account_sql);
     $bank_account_stmt->execute([$business_id]);
+    $bank_accounts = $bank_account_stmt->fetchAll(PDO::FETCH_ASSOC);
 }
-$bank_accounts = $bank_account_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+// ========== Fetch active footer brand logos ===========
+// Priority:
+// 1) If invoice belongs to a branch/shop, show ALL active brand logos for that shop.
+// 2) If no shop logos, fallback to ALL active business-default brand logos.
+// 3) Manual width_mm and height_mm are used while printing.
+$brand_logos = [];
+try {
+    if (!empty($shop_id)) {
+        $brand_logo_sql = "SELECT *
+                           FROM invoice_brand_logos
+                           WHERE business_id = ?
+                             AND shop_id = ?
+                             AND is_active = 1
+                           ORDER BY sort_order ASC, id ASC";
+        $brand_logo_stmt = $pdo->prepare($brand_logo_sql);
+        $brand_logo_stmt->execute([$business_id, $shop_id]);
+        $brand_logos = $brand_logo_stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (empty($brand_logos)) {
+        $brand_logo_sql = "SELECT *
+                           FROM invoice_brand_logos
+                           WHERE business_id = ?
+                             AND shop_id IS NULL
+                             AND is_active = 1
+                           ORDER BY sort_order ASC, id ASC";
+        $brand_logo_stmt = $pdo->prepare($brand_logo_sql);
+        $brand_logo_stmt->execute([$business_id]);
+        $brand_logos = $brand_logo_stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {
+    $brand_logos = [];
+}
 
 // ========== Fetch invoice items ==========
+// Manual seller sale items do not exist in products table.
+// So use LEFT JOIN and always prefer invoice_items.product_name_snapshot.
 $items_stmt = $pdo->prepare("
-    SELECT ii.*, 
-           p.product_name, p.product_code, p.hsn_code, p.mrp, p.gst_id,
-           g.cgst_rate, g.sgst_rate, g.igst_rate,
-           ii.unit as product_unit
+    SELECT
+        ii.id,
+        ii.invoice_id,
+        ii.product_id,
+        ii.product_name_snapshot,
+        ii.is_manual_item,
+        ii.sale_type,
+        ii.quantity,
+        ii.unit_price,
+        ii.original_price,
+        ii.total_price,
+        ii.discount_rate,
+        ii.discount_amount,
+        ii.hsn_code AS item_hsn_code,
+        ii.cgst_rate AS item_cgst_rate,
+        ii.sgst_rate AS item_sgst_rate,
+        ii.igst_rate AS item_igst_rate,
+        ii.cgst_amount,
+        ii.sgst_amount,
+        ii.igst_amount,
+        ii.total_with_gst,
+        ii.taxable_value,
+        ii.profit,
+        ii.gst_inclusive,
+        ii.referral_commission,
+        ii.unit AS item_unit,
+
+        COALESCE(NULLIF(ii.product_name_snapshot, ''), p.product_name, 'Manual Sale Item') AS product_name,
+        CASE WHEN COALESCE(ii.is_manual_item, 0) = 1 THEN '' ELSE COALESCE(p.product_code, '') END AS product_code,
+        COALESCE(NULLIF(ii.hsn_code, ''), p.hsn_code, '') AS hsn_code,
+        p.mrp,
+        p.gst_id,
+        COALESCE(ii.cgst_rate, g.cgst_rate, 0) AS cgst_rate,
+        COALESCE(ii.sgst_rate, g.sgst_rate, 0) AS sgst_rate,
+        COALESCE(ii.igst_rate, g.igst_rate, 0) AS igst_rate,
+        COALESCE(NULLIF(ii.unit, ''), p.unit_of_measure, 'pcs') AS product_unit
     FROM invoice_items ii
-    JOIN products p ON ii.product_id = p.id
+    LEFT JOIN products p ON ii.product_id = p.id
     LEFT JOIN gst_rates g ON p.gst_id = g.id
     WHERE ii.invoice_id = ?
     ORDER BY ii.id
 ");
 $items_stmt->execute([$invoice_id]);
-$items = $items_stmt->fetchAll();
+$items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // ========== Calculate totals ==========
 $subtotal = $total_discount = $total_profit = 0;
@@ -188,7 +285,7 @@ foreach ($items as $item) {
     $total_igst += $igst;
 
     // Group by GST rate for totals box
-    $gst_rate = ($item['cgst_rate'] ?? 0) + ($item['sgst_rate'] ?? 0) + ($item['igst_rate'] ?? 0);
+    $gst_rate = (float)($item['cgst_rate'] ?? 0) + (float)($item['sgst_rate'] ?? 0) + (float)($item['igst_rate'] ?? 0);
     if ($gst_rate > 0) {
         if (!isset($taxable_by_rate[$gst_rate])) {
             $taxable_by_rate[$gst_rate] = ['taxable' => 0, 'cgst' => 0, 'sgst' => 0, 'igst' => 0];
@@ -218,6 +315,17 @@ $place_of_supply = 'Tamil Nadu (33)';
 $customer_name = $invoice['customer_name'] ?? 'Walk-in Customer';
 $customer_phone = $invoice['customer_phone'] ?? '';
 $customer_address = $invoice['customer_address'] ?? '';
+$customer_district = $invoice['customer_district'] ?? '';
+$customer_state = $invoice['customer_state'] ?? '';
+$customer_pincode = $invoice['customer_pincode'] ?? '';
+
+$customer_full_address = trim(implode(', ', array_filter([
+    $customer_address,
+    $customer_district,
+    $customer_state,
+    $customer_pincode
+])));
+
 $customer_gstin = $invoice['customer_gstin'] ?? '';
 
 // Transport and waybill details (from shipping)
@@ -230,6 +338,53 @@ $waybill_no = $invoice['shipping_waybill_no'] ?? '';
 require_once 'libs/fpdf.php';
 
 // ========== Helper functions ==========
+
+function item_display_name(array $item): string
+{
+    $name = trim((string)($item['product_name_snapshot'] ?? ''));
+
+    if ($name === '') {
+        $name = trim((string)($item['product_name'] ?? ''));
+    }
+
+    if ($name === '') {
+        $name = 'Manual Sale Item';
+    }
+
+    return $name;
+}
+
+function item_display_code(array $item): string
+{
+    if (!empty($item['is_manual_item']) || empty($item['product_id'])) {
+        return '';
+    }
+
+    return trim((string)($item['product_code'] ?? ''));
+}
+
+function item_display_hsn(array $item): string
+{
+    $hsn = trim((string)($item['item_hsn_code'] ?? ''));
+
+    if ($hsn === '') {
+        $hsn = trim((string)($item['hsn_code'] ?? ''));
+    }
+
+    return $hsn;
+}
+
+function item_display_unit(array $item): string
+{
+    $unit = trim((string)($item['item_unit'] ?? ''));
+
+    if ($unit === '') {
+        $unit = trim((string)($item['product_unit'] ?? ''));
+    }
+
+    return $unit !== '' ? $unit : 'pcs';
+}
+
 function money($v)
 {
     return number_format((float) $v, 2, '.', ',');
@@ -345,7 +500,11 @@ function convert_number_to_words($num, $words)
 
 if ($business_id == 28) {
     // ========== NEW TEMPLATE DESIGN (for business_id = 28) ==========
-
+    
+    // Set default logo path for business_id 28
+    $defaultLogoPath = __DIR__ . '/assets/logo.png';
+    $logoPath = (!empty($company_logo) && file_exists($company_logo)) ? $company_logo : $defaultLogoPath;
+    
     // ========== PDF Class - New Template Design ==========
     class InvoicePDF extends FPDF
     {
@@ -356,678 +515,660 @@ if ($business_id == 28) {
         public $totals = [];
         public $taxable_by_rate = [];
         public $account = [];
+        public $accounts = [];
+        public $brandLogos = [];
         public $items = [];
         public $transport = '';
         public $waybill_no = '';
+        public $logoPath = '';
         public $headerEndY = 0;
-
-        // function ChargesBox()
-        // {
-        //     $shippingCharges = (float) ($this->shipping['shipping_charges'] ?? 0);
-        //     $transportCharge = (float) ($this->shipping['transport_charge'] ?? 0);
-        //     $transportType = $this->shipping['transport_type'] ?? '';
-        //     $totalExtra = (float) ($this->shipping['total_extra'] ?? 0);
-
-        //     if ($shippingCharges <= 0 && $transportCharge <= 0 && empty($transportType)) {
-        //         return;
-        //     }
-
-        //     $this->Ln(2);
-        //     $this->SetFont('Arial', 'B', 9);
-        //     $this->SetX(5);
-        //     $this->Cell(200, 7, 'Additional Charges', 1, 1, 'C');
-
-        //     $this->SetFont('Arial', '', 9);
-
-        //     if ($shippingCharges > 0) {
-        //         $this->SetX(5);
-        //         $this->Cell(100, 7, 'Shipping Charges', 1, 0, 'L');
-        //         $this->Cell(100, 7, money($shippingCharges), 1, 1, 'R');
-        //     }
-
-        //     if (!empty($transportType) || $transportCharge > 0) {
-        //         $label = 'Transport Charge';
-        //         if (!empty($transportType)) {
-        //             $label .= ' (' . pdf_text_simple($transportType) . ')';
-        //         }
-
-        //         $this->SetX(5);
-        //         $this->Cell(100, 7, $label, 1, 0, 'L');
-        //         $this->Cell(100, 7, money($transportCharge), 1, 1, 'R');
-        //     }
-
-        //     if ($totalExtra > 0) {
-        //         $this->SetFont('Arial', 'B', 9);
-        //         $this->SetX(5);
-        //         $this->Cell(100, 7, 'Total Extra Charges', 1, 0, 'L');
-        //         $this->Cell(100, 7, money($totalExtra), 1, 1, 'R');
-        //         $this->SetFont('Arial', '', 9);
-        //     }
-        // }
 
         function Header()
         {
+            $this->SetDrawColor(0, 0, 0);
+            $this->SetLineWidth(0.2);
+            
             // Outer border
             $this->Rect(5, 5, 200, 287);
-
+            
             // Title - TAX INVOICE
             $this->SetFont('Arial', 'B', 10);
-            $this->SetXY(5, 4);
+            $this->SetXY(5, 6);
             $title = $this->invoice['is_tax_invoice'] ? 'TAX INVOICE' : 'INVOICE';
-            $this->Cell(200, 8, $title, 0, 1, 'C');
-
-            // ========== ADD SHOP ADDRESS UNDER TITLE ==========
-            $this->SetY(12);
-            $this->SetX(5);
-
-            // Logo for business_id 28 (supported formats only)
-            if (
-                !empty($this->company['logo']) &&
-                file_exists($this->company['logo']) &&
-                in_array(strtolower(pathinfo($this->company['logo'], PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png'])
-            ) {
-                try {
-                    $this->Image($this->company['logo'], 10, 8, 20, 20);
-                } catch (Exception $e) {
-                    // keep layout without breaking PDF
-                } catch (Error $e) {
-                    // keep layout without breaking PDF
-                }
+            $this->Cell(200, 4, $title, 0, 1, 'C');
+            
+            // Logo
+            if (file_exists($this->logoPath)) {
+                $this->Image($this->logoPath, 10, 13, 38, 18);
             }
+            
+            // Company Name (Bold, larger font, custom color)
+            $this->SetFont('Arial', 'B', 22);
+            $this->SetTextColor(32, 61, 135);
+            $this->SetXY(52, 12);
+            $companyName = pdf_text_simple($this->company['name']);
+$this->Cell(115, 8, $companyName, 0, 1, 'C');
 
-            // Shop/Business Name - Bold
-            $this->SetFont('Arial', 'B', 18);
-            $this->Cell(200, 4, pdf_text_simple($this->company['name']), 0, 1, 'C');
-
-            // Shop Address - Normal
-            $this->SetFont('Arial', '', 8);
-            $this->SetX(5);
-            $this->SetY(18);
-            $this->MultiCell(200, 4, pdf_text_simple($this->company['address']), 0, 'C');
-
-            // Phone (if available)
-            if (!empty($this->company['phone'])) {
-                $this->SetX(5);
-                $this->MultiCell(200, 4, pdf_text_simple("Phone: " . $this->company['phone']), 0, 'C');
-            }
-
-            // GSTIN (if available)
-            if (!empty($this->company['gstin'])) {
-                $this->SetX(5);
-                $this->MultiCell(200, 4, pdf_text_simple("GSTIN: " . $this->company['gstin']), 0, 'C');
-            }
-
-            // IRN and Ack details (if available)
-            $this->SetFont('Arial', '', 7);
-
-            if (!empty($this->invoice['irn_no'])) {
-                $irnText = "IRN No.: " . $this->invoice['irn_no'];
-                $this->SetY($this->GetY() + 2);
-                $this->SetX(5);
-                $this->MultiCell(200, 4, $irnText, 0, 'C');
-            }
-
-            if (!empty($this->invoice['ack_no']) && !empty($this->invoice['ack_date'])) {
-                $this->SetFont('Arial', '', 7);
-                $this->SetY($this->GetY() + 1);
-                $this->SetX(5);
-                $this->Cell(200, 4, 'Ack No.: ' . $this->invoice['ack_no'] . ' | Ack Date: ' . $this->invoice['ack_date'], 0, 1, 'C');
-            }
-
-            $this->headerEndY = $this->GetY();
-        }
-
-        function LabelValue($label, $value, $totalWidth = 100)
-        {
-            // Bold label
-            $this->SetFont('Arial', 'B', 9);
-            $labelWidth = $this->GetStringWidth($label);
-
-            $this->Cell($labelWidth, 5, pdf_text_simple($label), 0, 0);
-
-            // Normal value (tight join)
+/* Company Slogan */
+$slogan = pdf_text_simple($this->company['slogan'] ?? "Quality is not classy...it's priceless");
+$this->SetFont('Arial', 'I', 10);
+$this->SetTextColor(80, 80, 80);
+$this->SetX(52);
+$this->Cell(115, 4, $slogan, 0, 1, 'C');
+            
+            // Reset text color
+            $this->SetTextColor(0, 0, 0);
             $this->SetFont('Arial', '', 9);
-            $this->Cell($totalWidth - $labelWidth, 5, pdf_text_simple($value), 0, 0);
+            
+            // Company Address
+            $this->SetXY(48, 25);
+            $address = pdf_text_simple($this->company['address']);
+            $this->MultiCell(120, 3.5, $address, 0, 'C');
+            
+            // Contact and Email
+            $this->SetXY(48, 30);
+            $contactText = 'Contact: ' . pdf_text_simple($this->company['phone']);
+            if (!empty($this->company['email'])) {
+                $contactText .= ', Email: ' . pdf_text_simple($this->company['email']);
+            }
+            $this->Cell(120, 3.5, $contactText, 0, 1, 'C');
+            
+            // GSTIN
+            $this->SetFont('Arial', '', 9);
+            $this->SetXY(48, 35);
+            $this->Cell(120, 4, 'GSTIN: ' . pdf_text_simple($this->company['gstin']), 0, 1, 'C');
+            
+            // Divider line
+            $this->Line(5, 43, 205, 43);
         }
-
+        
+        function Footer()
+        {
+            // Only add page number on pages beyond first
+            if ($this->PageNo() > 1) {
+                $this->SetY(-12);
+                $this->SetFont('Arial', '', 9);
+                $this->Cell(200, 5, 'Page ' . $this->PageNo() . ' / {nb}', 0, 0, 'C');
+            }
+        }
+        
+        function labelValue($x, $y, $label, $value)
+        {
+            $this->SetFont('Arial', '', 9);
+            $this->SetXY($x, $y);
+            $this->Cell(42, 4.5, $label, 0, 0, 'L');
+            $this->Cell(4, 4.5, ':', 0, 0, 'C');
+            $this->Cell(55, 4.5, pdf_text_simple($value), 0, 1, 'L');
+        }
+        
         function TopSection()
         {
-            $this->SetFont('Arial', '', 9);
-
-            // Start below header dynamically
-            $this->SetY($this->headerEndY + 3);
-
-            $startY = $this->GetY();
-            $midX = 105;
-
-            // -------- ROW 1 --------
-            $this->SetX(5);
-            $this->LabelValue('Invoice #: ', $this->invoice['number']);
-            $this->LabelValue('Date: ', $this->invoice['date']);
-            $this->Ln();
-
-            // -------- ROW 2 --------
-            $this->SetX(5);
-            $this->LabelValue('Transport: ', $this->transport);
-            $this->LabelValue('Waybill No.: ', $this->waybill_no);
-            $this->Ln();
-
-            // -------- ROW 3 --------
-            $this->SetX(5);
-            $this->LabelValue('Cust. Name: ', $this->customer['name']);
-            $this->LabelValue('Cust. Number: ', $this->customer['phone']);
-            $this->Ln();
-
-            // -------- ROW 4 --------
-            $this->SetX(5);
-            $buyerOrderNo = $this->invoice['buyer_order_no'] ?? 'By Phone | ' . date('d/m/y', strtotime($this->invoice['date']));
-            $this->LabelValue("Buyer's Order No.: ", $buyerOrderNo);
-            $this->LabelValue('Date of Supply: ', $this->invoice['date']);
-            $this->Ln();
-
-            // -------- ROW 5 --------
-            $this->SetX(5);
-            $this->LabelValue('Terms of Payment: ', $this->invoice['payment_terms'] ?? 'Immediate');
-            $this->LabelValue('Due Date: ', $this->invoice['due_date'] ?? $this->invoice['date']);
-            $this->Ln();
-
-            // -------- ROW 6 --------
-            $this->SetX(5);
-            $this->LabelValue('Destination: ', $this->invoice['destination'] ?? '');
-            $this->LabelValue('State / Code: ', $this->invoice['place_of_supply']);
-            $this->Ln();
-
-            // -------- ROW 7 --------
-            $this->SetX(5);
-            $documentContact = !empty($this->company['email']) ? $this->company['name'] . '; ' . $this->company['email'] : $this->company['name'];
-            $this->LabelValue('Document Contact: ', $documentContact);
-            $this->Ln();
-
-            // End Y
-            $endY = $this->GetY();
-
-            // -------- BORDERS --------
-            $this->Rect(5, $startY, 200, $endY - $startY);
-            $this->Line($midX, $startY, $midX, $endY);
-
-            // Move cursor below section
-            $this->SetY($endY + 2);
+            // Draw vertical divider line
+            $this->Line(105, 43, 105, 77);
+            $this->Line(5, 77, 205, 77);
+            
+            $leftY = 45;
+            
+            // Left column
+            $this->labelValue(8, $leftY, 'Invoice No', $this->invoice['number']);
+            $this->labelValue(8, $leftY + 5, 'Transport Name & NO', $this->transport);
+            $this->labelValue(8, $leftY + 10, 'Customer Name', $this->customer['name']);
+            $this->labelValue(8, $leftY + 15, "Buyer's Order No", $this->invoice['buyer_order_no'] ?? 'By Phone');
+            $this->labelValue(8, $leftY + 20, 'Terms Of Payment', $this->invoice['payment_terms'] ?? 'Immediate');
+           
+            
+            // Right column
+            $this->labelValue(108, $leftY, 'Date', $this->invoice['date']);
+            $this->labelValue(108, $leftY + 5, 'Way Bill No', $this->waybill_no);
+            $this->labelValue(108, $leftY + 10, 'Customer NO', $this->customer['phone']);
+            $this->labelValue(108, $leftY + 15, 'Date Of Supply', $this->invoice['date']);
+            $this->labelValue(108, $leftY + 20, 'Due Date', $this->invoice['due_date'] ?? $this->invoice['date']);
+            $this->labelValue(108, $leftY + 25, 'State / Code', $this->invoice['place_of_supply']);
         }
-
+        
         function PartyBoxes()
         {
-            $this->Ln(2);
-
-            $this->SetFont('Arial', 'B', 9);
-
-            // Header row
-            $this->SetX(5);
-            $this->Cell(100, 6, 'Details of Receiver (Billed to)', 1, 0, 'C');
-            $this->Cell(100, 6, 'Details of Consignee (Shipped to)', 1, 1, 'C');
-
-            $this->SetFont('Arial', '', 9);
-
-            $leftX = 5;
-            $rightX = 105;
-            $y = $this->GetY();
-
-            // ================= LEFT BOX =================
-            $this->SetXY($leftX, $y);
-
-            // Address - customer name bold, address normal
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetX($leftX);
-            $this->Cell(100, 5, pdf_text_simple($this->customer['name']), 0, 1, 'L');
-
-            $this->SetFont('Arial', '', 9);
-            $this->SetX($leftX);
-            $this->MultiCell(100, 5, pdf_text_simple($this->customer['address']), 0);
-
-            // GSTIN (JOINED)
-            $this->SetX($leftX);
-
-            $this->SetFont('Arial', 'B', 9);
-            $label = 'GSTIN: ';
-            $labelWidth = $this->GetStringWidth($label);
-
-            $this->Cell($labelWidth, 5, $label, 0, 0);
-
-            $this->SetFont('Arial', '', 9);
-            $gstinValue = !empty($this->customer['gstin']) ? $this->customer['gstin'] : 'Not Registered';
-            $this->Cell(100 - $labelWidth, 5, pdf_text_simple($gstinValue), 0, 1);
-
-            $leftFinalY = $this->GetY();
-
-            // ================= RIGHT BOX =================
-            $this->SetXY($rightX, $y);
-
-            // Address - shipping/customer name bold, address normal
-            $hasShipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
-
-            if ($hasShipping) {
-                $shipName = $this->shipping['name'];
-                $shipAddr = $this->shipping['address'];
-            } else {
-                $shipName = $this->customer['name'];
-                $shipAddr = $this->customer['address'];
-            }
-
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetX($rightX);
-            $this->Cell(100, 5, pdf_text_simple($shipName), 0, 1, 'L');
-
-            $this->SetFont('Arial', '', 9);
-            $this->SetX($rightX);
-            $this->MultiCell(100, 5, pdf_text_simple($shipAddr), 0);
-
-            // GSTIN (JOINED)
-            $this->SetX($rightX);
-
-            $this->SetFont('Arial', 'B', 9);
-            $label = 'GSTIN: ';
-            $labelWidth = $this->GetStringWidth($label);
-
-            $this->Cell($labelWidth, 5, $label, 0, 0);
-
-            $this->SetFont('Arial', '', 9);
-            if ($hasShipping && !empty($this->shipping['gstin'])) {
-                $shipGstin = $this->shipping['gstin'];
-            } else {
-                $shipGstin = !empty($this->customer['gstin']) ? $this->customer['gstin'] : 'Not Registered';
-            }
-            $this->Cell(100 - $labelWidth, 5, pdf_text_simple($shipGstin), 0, 1);
-
-            $rightFinalY = $this->GetY();
-
-            // ================= HEIGHT SYNC =================
-            $boxEndY = max($leftFinalY, $rightFinalY);
-
-            // Draw borders AFTER content
-            $this->Rect($leftX, $y, 100, $boxEndY - $y);
-            $this->Rect($rightX, $y, 100, $boxEndY - $y);
-
-            // Move cursor below
-            $this->SetY($boxEndY);
-        }
-
-        function TableHeader()
-        {
+            // Header row with background
+            $this->SetFillColor(190, 205, 230);
             $this->SetFont('Arial', 'B', 8);
-
-            // Header with borders
+            
+            $this->SetXY(5, 77);
+            $this->Cell(100, 5, 'Details Of Receiver (Billed to)', 1, 0, 'C', true);
+            $this->Cell(100, 5, 'Details Of Consignee (Shipped to)', 1, 1, 'C', true);
+            
+            $this->SetFont('Arial', '', 9);
+            
+            // Left box content - Billed to
+            $this->SetXY(7, 84);
+            $billToText = pdf_text_simple($this->customer['name']) . "\n" . pdf_text_simple($this->customer['address']);
+            $this->MultiCell(96, 4, $billToText, 0);
+            
+            // Right box content - Shipped to
+            $hasShipping = !empty($this->shipping['name']) || !empty($this->shipping['address']);
+            $shipName = $hasShipping ? $this->shipping['name'] : $this->customer['name'];
+            $shipAddr = $hasShipping ? $this->shipping['address'] : $this->customer['address'];
+            
+            $this->SetXY(107, 84);
+            $shipToText = pdf_text_simple($shipName) . "\n" . pdf_text_simple($shipAddr);
+            $this->MultiCell(96, 4, $shipToText, 0);
+            
+            // GSTIN and State Code row
+            $this->SetXY(7, 101);
+            $billGstin = !empty($this->customer['gstin']) ? $this->customer['gstin'] : 'Not Registered';
+            $this->Cell(70, 4, 'GSTIN NO: ' . pdf_text_simple($billGstin), 0, 0);
+            $this->Cell(26, 4, 'State Code : 33', 0, 0);
+            
+            $shipGstin = ($hasShipping && !empty($this->shipping['gstin'])) ? $this->shipping['gstin'] : $billGstin;
+            $this->SetXY(107, 101);
+            $this->Cell(70, 4, 'GSTIN NO: ' . pdf_text_simple($shipGstin), 0, 0);
+            $this->Cell(26, 4, 'State Code : 33', 0, 1);
+            
+            // Bottom borders for the party boxes
+            $this->Line(105, 77, 105, 106);
+            $this->Line(5, 106, 205, 106);
+        }
+        
+        function ItemsHeader()
+        {
+            $this->SetFillColor(190, 205, 230);
+            $this->SetFont('Arial', 'B', 8);
+            
             $this->SetX(5);
-            $this->Cell(10, 7, 'Sl.', 1, 0, 'C');
-            $this->Cell(60, 7, 'Description of Goods', 1, 0, 'C');
-            $this->Cell(20, 7, 'HSN / SAC', 1, 0, 'C');
-            $this->Cell(12, 7, 'Qty', 1, 0, 'C');
-            $this->Cell(18, 7, 'Rate', 1, 0, 'C');
-            $this->Cell(15, 7, 'Disc%', 1, 0, 'C');
-            $this->Cell(25, 7, 'Taxable Amt.', 1, 0, 'C');
-            $this->Cell(18, 7, 'GST %', 1, 0, 'C');
-            $this->Cell(22, 7, 'Amount', 1, 1, 'C');
+            $this->Cell(12, 5, 'S.No', 1, 0, 'C', true);
+            $this->Cell(70, 5, 'Description Of Goods', 1, 0, 'C', true);
+            $this->Cell(22, 5, 'HSN/SAC', 1, 0, 'C', true);
+            $this->Cell(18, 5, 'Qty', 1, 0, 'C', true);
+            $this->Cell(24, 5, 'Rate', 1, 0, 'C', true);
+            $this->Cell(16, 5, 'CGST', 1, 0, 'C', true);
+            $this->Cell(16, 5, 'SGST', 1, 0, 'C', true);
+            $this->Cell(22, 5, 'Amount', 1, 1, 'C', true);
+        }
+        
+        function itemRow($row)
+        {
+            $this->SetFont('Arial', '', 9);
+            $this->SetX(5);
+
+            // Border only LEFT + RIGHT.
+            // This removes bottom border from every item row.
+            $border = 'LR';
+
+            $this->Cell(12, 4.5, $row[0], $border, 0, 'C');
+            $this->Cell(70, 4.5, pdf_text_simple($row[1]), $border, 0, 'L');
+            $this->Cell(22, 4.5, $row[2], $border, 0, 'C');
+            $this->Cell(18, 4.5, $row[3], $border, 0, 'C');
+            $this->Cell(24, 4.5, $row[4], $border, 0, 'C');
+            $this->Cell(16, 4.5, $row[5], $border, 0, 'C');
+            $this->Cell(16, 4.5, $row[6], $border, 0, 'C');
+            $this->Cell(22, 4.5, $row[7], $border, 1, 'C');
         }
 
-       function TableRows()
-{
-    $this->SetFont('Arial', '', 8);
-
-    $sn = 1;
-    $totalQty = 0;
-    $totalTaxableAmount = 0;
-    $totalAmount = 0;
-
-    $rowH = 5.2;   // reduce product row height
-    $totalRowH = 7;
-
-    foreach ($this->items as $index => $item) {
-        $unit_price = $item['unit_price'] ?? 0;
-        $quantity = $item['quantity'] ?? 0;
-        $discount_amount = $item['discount_amount'] ?? 0;
-        $discount_rate = $item['discount_rate'] ?? 0;
-
-        $cgst_rate = $item['cgst_rate'] ?? 0;
-        $sgst_rate = $item['sgst_rate'] ?? 0;
-        $igst_rate = $item['igst_rate'] ?? 0;
-        $total_gst_rate = $cgst_rate + $sgst_rate + $igst_rate;
-
-        $line_total = $unit_price * $quantity;
-        $net_total = $line_total - $discount_amount;
-        $taxable_value = $item['taxable_value'] ?? $net_total;
-
-        $totalQty += $quantity;
-        $totalTaxableAmount += $taxable_value;
-        $totalAmount += $net_total;
-
-        $productDesc = (!empty($item['product_code']) ? $item['product_code'] . ' ' : '') . $item['product_name'];
-
-        $rowBorder = ($index === 0) ? 'LTR' : 'LR';
-
-        $this->SetX(5);
-        $this->Cell(10, $rowH, $sn, $rowBorder, 0, 'C');
-
-        $this->SetFont('Arial', 'B', 8);
-        $this->Cell(60, $rowH, pdf_text_simple($productDesc), $rowBorder, 0, 'L');
-        $this->SetFont('Arial', '', 8);
-
-        $this->Cell(20, $rowH, pdf_text_simple($item['hsn_code'] ?? ''), $rowBorder, 0, 'C');
-        $this->Cell(12, $rowH, format_quantity($quantity), $rowBorder, 0, 'C');
-        $this->Cell(18, $rowH, money($unit_price), $rowBorder, 0, 'R');
-        $this->Cell(15, $rowH, $discount_rate > 0 ? $discount_rate . '%' : '', $rowBorder, 0, 'R');
-        $this->Cell(25, $rowH, money($taxable_value), $rowBorder, 0, 'R');
-        $this->Cell(18, $rowH, $total_gst_rate > 0 ? number_format($total_gst_rate, 1) . '%' : '0%', $rowBorder, 0, 'C');
-        $this->Cell(22, $rowH, money($net_total), $rowBorder, 1, 'R');
-
-        $sn++;
-    }
-
-    $this->SetFont('Arial', 'B', 8);
-    $this->SetX(5);
-    $this->Cell(10, $totalRowH, '', 1, 0);
-    $this->Cell(60, $totalRowH, 'Total:', 1, 0, 'R');
-    $this->Cell(20, $totalRowH, '', 1, 0);
-    $this->Cell(12, $totalRowH, format_quantity($totalQty), 1, 0, 'C');
-    $this->Cell(18, $totalRowH, '', 1, 0);
-    $this->Cell(15, $totalRowH, '', 1, 0);
-    $this->Cell(25, $totalRowH, money($totalTaxableAmount), 1, 0, 'R');
-    $this->Cell(18, $totalRowH, '', 1, 0);
-    $this->Cell(22, $totalRowH, money($totalAmount), 1, 1, 'R');
-}
-        function FooterSection()
+        function TotalsBoxHeight()
         {
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetX(5);
-            $amountInWords = number_to_words($this->totals['grand_total']);
-            $this->Cell(200, 8, 'In Words: ' . $amountInWords, 0, 1);
+            $rows = 0;
+
+            // Total Amount row below item blank area
+            $rows++;
+
+            // In Words row
+            $rows++;
+
+            // GST summary header
+            $rows++;
+
+            // GST rate rows. Keep at least one blank row when GST data is empty.
+            $rows += !empty($this->taxable_by_rate) ? count($this->taxable_by_rate) : 1;
+
+            // CGST and SGST rows
+            $rows += 2;
+
+            // Extra charges rows
+            if ((float)($this->totals['shipping_charges'] ?? 0) > 0) {
+                $rows++;
+            }
+            if ((float)($this->totals['transport_charge'] ?? 0) > 0) {
+                $rows++;
+            }
+
+            // IGST row when applicable
+            $totalIgst = 0;
+            if (!empty($this->taxable_by_rate)) {
+                foreach ($this->taxable_by_rate as $rate => $data) {
+                    $totalIgst += (float)($data['igst'] ?? 0);
+                }
+            }
+            if ($totalIgst > 0) {
+                $rows++;
+            }
+
+            // Final payable total row
+            $rows++;
+
+            return $rows * 5;
         }
 
-        function TotalsBox()
+        function DrawBlankItemArea($endY)
         {
-            $this->SetFont('Arial', 'B', 9);
+            $startY = $this->GetY();
+            if ($endY <= $startY) {
+                return;
+            }
 
-            // First row: Header
+            // Draw only vertical column lines in the blank item area.
+            // This keeps the empty space clean while preserving the table columns.
+            $x = 5;
+            $widths = [12, 70, 22, 18, 24, 16, 16, 22];
+
+            $this->SetDrawColor(0, 0, 0);
+            $this->SetLineWidth(0.2);
+
+            $this->Line($x, $startY, $x, $endY);
+            foreach ($widths as $w) {
+                $x += $w;
+                $this->Line($x, $startY, $x, $endY);
+            }
+
+            // Bottom line exactly before Total Amount row.
+            $this->Line(5, $endY, 205, $endY);
+            $this->SetY($endY);
+        }
+
+        function TotalsBox($totalQty = 0, $totalAmount = 0)
+        {
+            $this->SetFont('Arial', '', 9);
+
+            // Total row must be at bottom, not immediately after the last item.
+            $this->SetFillColor(190, 205, 230);
+            $this->SetFont('Arial', 'B', 8);
             $this->SetX(5);
-            $this->Cell(30, 7, 'GST Rate', 1, 0, 'C');
-            $this->Cell(40, 7, 'Taxable Values', 1, 0, 'C');
-            $this->Cell(15, 7, 'CGST %', 1, 0, 'C');
-            $this->Cell(20, 7, 'CGST Amt', 1, 0, 'C');
-            $this->Cell(15, 7, 'SGST %', 1, 0, 'C');
-            $this->Cell(20, 7, 'SGST Amt', 1, 0, 'C');
-            $this->Cell(30, 7, 'Subtotal', 1, 0, 'C');
-            $this->Cell(30, 7, money($this->totals['subtotal']), 1, 1, 'R');
+            $this->Cell(104, 5, 'Total Amount', 1, 0, 'R', true);
+            $this->Cell(18, 5, format_quantity($totalQty) . ' nos', 1, 0, 'C');
+            $this->Cell(56, 5, '', 1, 0);
+            $this->Cell(22, 5, money($totalAmount), 1, 1, 'C');
 
             $this->SetFont('Arial', '', 9);
+
+            // In Words row
+            $this->SetX(5);
+            $this->SetFillColor(190, 205, 230);
+            $this->Cell(35, 5, 'In Words', 1, 0, 'C', true);
+            $amountInWords = number_to_words($this->totals['grand_total']);
+            $this->Cell(165, 5, pdf_text_simple($amountInWords), 1, 1);
+
+            // GST Summary Header
+            $this->SetX(5);
+            $this->Cell(35, 5, 'GST Rate', 1, 0, 'C', true);
+            $this->Cell(38, 5, 'Taxable Values', 1, 0, 'C', true);
+            $this->Cell(38, 5, 'CGST Tax', 1, 0, 'C', true);
+            $this->Cell(38, 5, 'SGST Tax', 1, 0, 'C', true);
+            $this->Cell(33, 5, 'Sub Total', 1, 0, 'C', true);
+            $this->Cell(18, 5, money($this->totals['subtotal']), 1, 1, 'C', true);
 
             $totalCgst = 0;
             $totalSgst = 0;
             $totalIgst = 0;
 
-            // Display rows for each GST rate
+            // Display rows for each GST rate. If no GST data, leave one blank row.
             if (!empty($this->taxable_by_rate)) {
                 foreach ($this->taxable_by_rate as $rate => $data) {
-                    $cgstRate = $rate / 2;
-                    $sgstRate = $rate / 2;
-
                     $this->SetX(5);
-                    $this->Cell(30, 7, number_format($rate, 1) . '% GST', 1, 0, 'C');
-                    $this->Cell(40, 7, money($data['taxable']), 1, 0, 'R');
-                    $this->Cell(15, 7, number_format($cgstRate, 1) . '%', 1, 0, 'C');
-                    $this->Cell(20, 7, money($data['cgst']), 1, 0, 'R');
-                    $this->Cell(15, 7, number_format($sgstRate, 1) . '%', 1, 0, 'C');
-                    $this->Cell(20, 7, money($data['sgst']), 1, 0, 'R');
-                    $this->Cell(30, 7, '', 1, 0);
-                    $this->Cell(30, 7, '', 1, 1);
+                    $this->Cell(35, 5, number_format($rate, 1) . '%', 1, 0, 'C');
+                    $this->Cell(38, 5, money($data['taxable']), 1, 0, 'R');
+                    $this->Cell(38, 5, money($data['cgst']), 1, 0, 'R');
+                    $this->Cell(38, 5, money($data['sgst']), 1, 0, 'R');
+                    $this->Cell(33, 5, '', 1, 0);
+                    $this->Cell(18, 5, '', 1, 1);
 
-                    $totalCgst += $data['cgst'];
-                    $totalSgst += $data['sgst'];
-                    $totalIgst += $data['igst'];
+                    $totalCgst += (float)($data['cgst'] ?? 0);
+                    $totalSgst += (float)($data['sgst'] ?? 0);
+                    $totalIgst += (float)($data['igst'] ?? 0);
                 }
+            } else {
+                $this->SetX(5);
+                $this->Cell(35, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(33, 5, '', 1, 0);
+                $this->Cell(18, 5, '', 1, 1);
             }
 
-            // Add: CGST row
+            // CGST row
             $this->SetX(5);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(40, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(30, 7, 'Add: CGST', 1, 0, 'L');
+            $this->Cell(35, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->SetFont('Arial', 'B', 8);
+            $this->Cell(33, 5, 'Add CGST', 1, 0, 'C');
             $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 7, money($totalCgst), 1, 1, 'R');
+            $this->Cell(18, 5, money($totalCgst), 1, 1, 'R');
 
-            // Add: SGST row
+            // SGST row
             $this->SetX(5);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(40, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(30, 7, 'Add: SGST', 1, 0, 'L');
+            $this->Cell(35, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->Cell(38, 5, '', 1, 0);
+            $this->SetFont('Arial', 'B', 8);
+            $this->Cell(33, 5, 'Add SGST', 1, 0, 'C');
             $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 7, money($totalSgst), 1, 1, 'R');
+            $this->Cell(18, 5, money($totalSgst), 1, 1, 'R');
 
             // Extra charges rows
-            $shippingCharges = (float) ($this->totals['shipping_charges'] ?? 0);
-            $transportCharge = (float) ($this->totals['transport_charge'] ?? 0);
-            $totalExtraCharges = (float) ($this->totals['total_extra_charges'] ?? 0);
+            $shippingCharges = (float)($this->totals['shipping_charges'] ?? 0);
+            $transportCharge = (float)($this->totals['transport_charge'] ?? 0);
 
             if ($shippingCharges > 0) {
                 $this->SetX(5);
-                $this->Cell(30, 7, '', 1, 0);
-                $this->Cell(40, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->SetFont('Arial', 'B', 9);
-                $this->Cell(30, 7, 'Shipping', 1, 0, 'L');
+                $this->Cell(35, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->SetFont('Arial', 'B', 8);
+                $this->Cell(33, 5, 'Shipping', 1, 0, 'C');
                 $this->SetFont('Arial', '', 9);
-                $this->Cell(30, 7, money($shippingCharges), 1, 1, 'R');
+                $this->Cell(18, 5, money($shippingCharges), 1, 1, 'R');
             }
 
             if ($transportCharge > 0) {
                 $this->SetX(5);
-                $this->Cell(30, 7, '', 1, 0);
-                $this->Cell(40, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->SetFont('Arial', 'B', 9);
-                $this->Cell(30, 7, 'Transport', 1, 0, 'L');
+                $this->Cell(35, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->Cell(38, 5, '', 1, 0);
+                $this->SetFont('Arial', 'B', 8);
+                $this->Cell(33, 5, 'Transport', 1, 0, 'C');
                 $this->SetFont('Arial', '', 9);
-                $this->Cell(30, 7, money($transportCharge), 1, 1, 'R');
+                $this->Cell(18, 5, money($transportCharge), 1, 1, 'R');
             }
 
-            if ($totalExtraCharges > 0) {
-                $this->SetX(5);
-                $this->Cell(30, 7, '', 1, 0);
-                $this->Cell(40, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->Cell(35, 7, '', 1, 0);
-                $this->SetFont('Arial', 'B', 9);
-                $this->Cell(30, 7, 'Extra Total', 1, 0, 'L');
-                $this->Cell(30, 7, money($totalExtraCharges), 1, 1, 'R');
+            if ($totalIgst > 0) {
+                $this->SetX(154);
+                $this->SetFont('Arial', 'B', 8);
+                $this->Cell(33, 5, 'Add IGST', 1, 0, 'C');
                 $this->SetFont('Arial', '', 9);
+                $this->Cell(18, 5, money($totalIgst), 1, 1, 'R');
             }
 
-            // Empty row
-            $this->SetX(5);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(40, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(30, 7, '', 1, 1);
+            // Final payable amount row
+            $this->SetX(154);
+            $this->SetFillColor(190, 205, 230);
+            $this->SetFont('Arial', 'B', 8);
+            $this->Cell(33, 5, 'Total Amount', 1, 0, 'C', true);
+            $this->Cell(18, 5, money($this->totals['grand_total']), 1, 1, 'R', true);
+        }
 
-            // Add: IGST row
-            $this->SetX(5);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(40, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(30, 7, 'Add: IGST', 1, 0, 'L');
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 7, money($totalIgst), 1, 1, 'R');
+        function BankDetailsHeight()
+        {
+            $accounts = !empty($this->accounts) ? $this->accounts : [];
+            if (empty($accounts) && !empty($this->account)) {
+                $accounts = [$this->account];
+            }
 
-            // Rounded Off row
-            $calculatedTotal = $this->totals['taxable'] + $totalCgst + $totalSgst + $totalIgst + $shippingCharges + $transportCharge;
-            $roundOff = round($this->totals['grand_total'] - $calculatedTotal, 2);
-            $this->SetX(5);
-            $this->Cell(30, 7, '', 1, 0);
-            $this->Cell(40, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->Cell(35, 7, '', 1, 0);
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(30, 7, 'Rounded Off', 1, 0, 'L');
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 7, money($roundOff), 1, 1, 'R');
+            if (empty($accounts)) {
+                return 29;
+            }
 
-            // Eighth row: Final totals
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetX(5);
-            $this->Cell(30, 8, 'Total in INR', 1, 0, 'C');
-            $this->Cell(40, 8, money($this->totals['subtotal']), 1, 0, 'R');
-            $this->Cell(35, 8, money($totalCgst), 1, 0, 'R');
-            $this->Cell(35, 8, money($totalSgst), 1, 0, 'R');
-            $this->Cell(30, 8, 'Total Amount', 1, 0, 'C');
-            $this->Cell(30, 8, money($this->totals['grand_total']), 1, 1, 'R');
+            $cols = count($accounts) > 1 ? 2 : 1;
+            $rows = (int)ceil(count($accounts) / $cols);
+            $rowH = 22;
 
-            $this->SetY($this->GetY());
+            return 5 + ($rows * $rowH);
+        }
+
+        function BrandLogosHeight()
+        {
+            if (empty($this->brandLogos)) {
+                return 0;
+            }
+
+            $maxH = 0;
+            foreach ($this->brandLogos as $logo) {
+                $h = (float)($logo['height_mm'] ?? 8);
+                if ($h > $maxH) {
+                    $maxH = $h;
+                }
+            }
+
+            if ($maxH <= 0) {
+                $maxH = 8;
+            }
+
+            // Keep footer strip safe inside A4 border.
+            if ($maxH > 14) {
+                $maxH = 14;
+            }
+
+            return $maxH + 2;
+        }
+
+        function FooterBoxTopY()
+        {
+            // Outer border ends at Y=292. Footer signature area remains 27mm.
+            return 292 - $this->BrandLogosHeight() - 27;
+        }
+
+        function BankTopY()
+        {
+            return $this->FooterBoxTopY() - $this->BankDetailsHeight();
+        }
+
+        function DrawBrandLogosFooter($topY)
+        {
+            if (empty($this->brandLogos)) {
+                return;
+            }
+
+            $stripH = $this->BrandLogosHeight();
+            $this->SetDrawColor(0, 0, 0);
+            $this->Rect(5, $topY, 200, $stripH);
+
+            $logos = [];
+            $totalW = 0;
+            $gap = 2;
+
+            foreach ($this->brandLogos as $logo) {
+                $path = $logo['logo_path'] ?? '';
+                if (empty($path) || !file_exists($path)) {
+                    continue;
+                }
+
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+                    continue;
+                }
+
+                $w = (float)($logo['width_mm'] ?? 24);
+                $h = (float)($logo['height_mm'] ?? 8);
+                if ($w <= 0) $w = 24;
+                if ($h <= 0) $h = 8;
+                if ($w > 80) $w = 80;
+                if ($h > ($stripH - 2)) $h = $stripH - 2;
+
+                $logos[] = ['path' => $path, 'w' => $w, 'h' => $h];
+                $totalW += $w;
+            }
+
+            if (empty($logos)) {
+                return;
+            }
+
+            $totalW += $gap * (count($logos) - 1);
+            $availableW = 196;
+
+            // If all manual widths do not fit, scale them proportionally.
+            $scale = $totalW > $availableW ? ($availableW / $totalW) : 1;
+            $drawTotalW = 0;
+            foreach ($logos as $i => $logo) {
+                $logos[$i]['dw'] = $logo['w'] * $scale;
+                $logos[$i]['dh'] = $logo['h'] * $scale;
+                if ($logos[$i]['dh'] > ($stripH - 2)) {
+                    $ratio = ($stripH - 2) / $logos[$i]['dh'];
+                    $logos[$i]['dh'] *= $ratio;
+                    $logos[$i]['dw'] *= $ratio;
+                }
+                $drawTotalW += $logos[$i]['dw'];
+            }
+            $drawTotalW += $gap * (count($logos) - 1);
+
+            $x = 5 + ((200 - $drawTotalW) / 2);
+            foreach ($logos as $logo) {
+                $y = $topY + (($stripH - $logo['dh']) / 2);
+                $this->Image($logo['path'], $x, $y, $logo['dw'], $logo['dh']);
+                $x += $logo['dw'] + $gap;
+            }
+        }
+
+        function drawSingleBank($x, $y, $w, $h, $account, $index)
+        {
+            $this->Rect($x, $y, $w, $h);
+
+            $accountName   = !empty($account['account_name']) ? $account['account_name'] : $this->company['name'];
+            $bankName      = $account['bank_name'] ?? '';
+            $accountNumber = $account['account_number'] ?? '';
+            $ifsc          = $account['ifsc'] ?? '';
+            $branch        = $account['branch'] ?? '';
+            $upi           = $account['upi'] ?? '';
+
+            $labelW = 16;
+            $colonW = 3;
+            $lineH = 3.25;
+            $textW = $w - $labelW - $colonW - 6;
+
+            $this->SetFont('Arial', 'B', 7.5);
+            $this->SetXY($x + 2, $y + 1.2);
+            $this->Cell($w - 4, 3.2, 'Bank Account ' . $index, 0, 1, 'L');
+
+            $this->SetFont('Arial', '', 7.2);
+            $lineY = $y + 4.7;
+
+            $rows = [
+                ['Name', $accountName],
+                ['Bank', $bankName],
+                ['AC.NO', $accountNumber],
+                ['IFSC', $ifsc],
+                ['Branch', $branch],
+            ];
+
+            if (!empty($upi)) {
+                $rows[] = ['UPI', $upi];
+            }
+
+            foreach ($rows as $r) {
+                if ($lineY + $lineH > $y + $h - 0.8) {
+                    break;
+                }
+                $this->SetXY($x + 2, $lineY);
+                $this->Cell($labelW, $lineH, pdf_text_simple($r[0]), 0, 0, 'L');
+                $this->Cell($colonW, $lineH, ':', 0, 0, 'C');
+                $this->Cell($textW, $lineH, pdf_text_simple($r[1]), 0, 1, 'L');
+                $lineY += $lineH;
+            }
         }
 
         function BankDetailsSection()
         {
-            if ($this->GetY() > 250) {
+            $accounts = !empty($this->accounts) ? $this->accounts : [];
+            if (empty($accounts) && !empty($this->account)) {
+                $accounts = [$this->account];
+            }
+
+            $bankTopY = $this->BankTopY();
+
+            // If content already reached bank area, move bank/footer to next page safely.
+            if ($this->GetY() > $bankTopY) {
                 $this->AddPage();
+                $bankTopY = $this->BankTopY();
             }
 
+            $this->SetXY(5, $bankTopY);
+
+            // Bank Details Header
+            $this->SetFillColor(190, 205, 230);
+            $this->SetFont('Arial', 'B', 8);
+            $this->Cell(200, 5, 'Bank Details', 1, 1, 'C', true);
+
             $startY = $this->GetY();
+            $totalH = $this->BankDetailsHeight() - 5;
 
-            // Title
-            $this->SetFont('Arial', 'B', 10);
-            $this->SetX(4);
-            $this->Cell(200, 8, 'Bank Details', 0, 1, 'C');
+            if (empty($accounts)) {
+                $this->Rect(5, $startY, 200, $totalH);
+                $this->SetY($startY + $totalH);
+                return;
+            }
 
-            $this->SetFont('Arial', '', 9);
+            $cols = count($accounts) > 1 ? 2 : 1;
+            $cellW = 200 / $cols;
+            $rowH = 22;
 
-            $this->SetX(5);
+            foreach ($accounts as $idx => $account) {
+                $col = $idx % $cols;
+                $row = (int)floor($idx / $cols);
+                $x = 5 + ($col * $cellW);
+                $y = $startY + ($row * $rowH);
+                $this->drawSingleBank($x, $y, $cellW, $rowH, $account, $idx + 1);
+            }
 
-            // -------- ROW 1 --------
-            // Name
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(25, 6, 'Name', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $bankName = !empty($this->account['account_name']) ? $this->account['account_name'] : $this->company['name'];
-            $this->Cell(75, 6, ': ' . pdf_text_simple($bankName), 0, 0);
-
-            // Bank
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(20, 6, 'Bank', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['bank_name'] ?? ''), 0, 0);
-
-            // Branch
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(20, 6, 'Branch', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['branch'] ?? ''), 0, 1);
-
-            // -------- ROW 2 --------
-            $this->SetX(5);
-
-            // A/c No.
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(25, 6, 'A/c No.', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(75, 6, ': ' . pdf_text_simple($this->account['account_number'] ?? ''), 0, 0);
-
-            // IFSC Code
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(20, 6, 'IFSC Code', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 6, ': ' . pdf_text_simple($this->account['ifsc'] ?? ''), 0, 0);
-
-            // Account Type
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(20, 6, 'Account', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(30, 6, ': Current', 0, 1);
-
-            $endY = $this->GetY();
-
-            // Border
-            $this->Rect(5, $startY, 200, ($endY - $startY));
+            $this->SetY($bankTopY + $this->BankDetailsHeight());
         }
-
-        function FinalFooterSection()
+        function FooterBox()
         {
-            $startY = $this->GetY();
-            $boxHeight = 32;
+            $footerTop = $this->FooterBoxTopY();
+            $logoTop = 292 - $this->BrandLogosHeight();
+            $footerH = $logoTop - $footerTop;
+            if ($footerH <= 0) {
+                $footerH = 27;
+                $footerTop = 255;
+                $logoTop = 292;
+            }
 
-            // Outer border
-            $this->Rect(5, $startY, 200, $boxHeight);
-
-            // Columns
-            $col1 = 50;
-            $col2 = 90;
-            $col3 = 60;
-
-            // Vertical lines
-            $this->Line(5 + $col1, $startY, 5 + $col1, $startY + $boxHeight);
-            $this->Line(5 + $col1 + $col2, $startY, 5 + $col1 + $col2, $startY + $boxHeight);
-
-            // =========================
-            // COLUMN 1 → RECEIVER
-            // =========================
-            $this->SetFont('Arial', '', 8);
-            $this->SetXY(5, $startY + 24);
-            $this->Cell($col1, 5, 'Receivers Signature', 0, 0, 'C');
-
-            // =========================
-            // COLUMN 2 → TERMS FROM SETTINGS
-            // =========================
-            $centerX = 5 + $col1;
-
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetXY($centerX, $startY + 2);
-            $this->Cell($col2, 4, 'TERMS AND CONDITIONS', 0, 1, 'C');
-
+            $this->SetXY(5, $footerTop);
+            
+            $this->SetFont('Arial', '', 9);
+            $this->Cell(48, $footerH, 'Receivers Signature', 1, 0, 'L');
+            
+            $this->SetXY(53, $footerTop);
+            $this->Cell(88, $footerH, '', 1, 0);
+            
+            // Terms and Conditions
             $terms = trim((string) ($this->company['invoice_terms'] ?? ''));
-
             if ($terms === '') {
-                $terms = "Goods once sold will not be taken back or exchanged.\nThank you for your business.";
+                $terms = "Terms/Declaration\n1) Goods Once Delivered Will Not Be Taken Back,\n2) Interest @ 24% Will Be Charged, If Not Paid Fully\nWithin Due Date.\n3) Cheque Accepted Subject To Realization.";
             }
-
-            $this->SetFont('Arial', '', 7);
-            $this->SetXY($centerX + 2, $startY + 8);
-            $this->MultiCell($col2 - 4, 3.8, pdf_text_simple($terms), 0, 'L');
-
-            // =========================
-            // COLUMN 3 → COMPANY
-            // =========================
-            $rightX = 5 + $col1 + $col2;
-
+            
+            $this->SetXY(55, $footerTop + 2);
+            $this->SetFont('Arial', '', 6.5);
+            $this->MultiCell(83, 3.2, pdf_text_simple($terms));
+            
+            $this->SetXY(141, $footerTop);
+            $this->Cell(64, $footerH, '', 1, 0);
+            
+            $this->SetXY(141, $footerTop + 2);
             $this->SetFont('Arial', '', 9);
-            $this->SetXY($rightX, $startY + 6);
-            $this->Cell($col3, 5, 'For ' . pdf_text_simple($this->company['name']), 0, 0, 'C');
-
-            $this->SetXY($rightX, $startY + 24);
-            $this->Cell($col3, 5, 'Authorised Signatory', 0, 0, 'C');
-        }
-
-        // Add custom footer to close the outer border properly
-        function Footer()
-        {
-            // The outer border is already drawn in Header
-            if ($this->PageNo() > 1) {
-                $this->SetY(-15);
-                $this->SetFont('Arial', 'I', 8);
-                $this->Cell(0, 10, 'Page ' . $this->PageNo(), 0, 0, 'C');
+            $this->Cell(64, 5, 'For ' . pdf_text_simple($this->company['name']), 0, 1, 'C');
+            
+            // Logo in footer (if exists)
+            if (file_exists($this->logoPath)) {
+                $this->Image($this->logoPath, 163, $footerTop + 11, 25, min(14, max(8, $footerH - 10)));
             }
+            
+            $this->SetXY(141, $logoTop - 5);
+            $this->SetFont('Arial', '', 9);
+            $this->Cell(64, 4, 'Seal & Authorised Signatory', 0, 1, 'C');
+
+            $this->DrawBrandLogosFooter($logoTop);
         }
     }
-
+    
     // ========== Create PDF with NEW template ==========
-    $pdf = new InvoicePDF();
+    $pdf = new InvoicePDF('P', 'mm', 'A4');
     $pdf->AliasNbPages();
-
+    $pdf->SetAutoPageBreak(false);
+    
+    // Set logo path
+    $pdf->logoPath = $logoPath;
+    
     // Set company info
     $pdf->company = [
         'name' => $company_name,
@@ -1039,7 +1180,7 @@ if ($business_id == 28) {
         'logo' => $company_logo,
         'invoice_terms' => $settings['invoice_terms'] ?? ''
     ];
-
+    
     // Set invoice info
     $pdf->invoice = [
         'number' => $invoice['invoice_number'],
@@ -1052,32 +1193,36 @@ if ($business_id == 28) {
         'irn_no' => $invoice['irn_no'] ?? '',
         'ack_no' => $invoice['ack_no'] ?? '',
         'ack_date' => $invoice['ack_date'] ?? '',
-        'destination' => $shipping_address ? substr($shipping_address, 0, 50) : 'Chennai',
+        'destination' => $shipping_full_address ? substr($shipping_full_address, 0, 50) : 'Chennai',
         'payment_terms' => 'Immediate',
-        'due_date' => $invoice_date
+        'due_date' => $invoice_date,
+        'buyer_order_no' => $invoice['buyer_order_no'] ?? 'By Phone | ' . $invoice_date
     ];
-
+    
     // Set customer info
     $pdf->customer = [
         'name' => $customer_name,
         'phone' => $customer_phone,
         'gstin' => $customer_gstin,
-        'address' => $customer_address
+        'address' => $customer_full_address
     ];
-
+    
     // Set shipping info
     $pdf->shipping = [
         'name' => $shipping_name,
         'contact' => $shipping_contact,
         'gstin' => $shipping_gstin,
-        'address' => $shipping_address,
+        'address' => $shipping_full_address,
+        'district' => $shipping_district,
+        'state' => $shipping_state,
+        'pincode' => $shipping_pincode,
         'vehicle_number' => $shipping_vehicle_number,
         'transport_type' => $shipping_transport_type,
         'shipping_charges' => $shipping_charges,
         'transport_charge' => $transport_charge,
         'total_extra' => $total_extra_charges
     ];
-
+    
     $pdf->totals = [
         'subtotal' => $subtotal,
         'discount' => $total_discount + $overall_discount,
@@ -1091,47 +1236,136 @@ if ($business_id == 28) {
         'total_extra_charges' => $total_extra_charges,
         'grand_total' => $grand_total
     ];
-
+    
     // Set taxable by rate for totals box
     $pdf->taxable_by_rate = $taxable_by_rate;
-
-    // Set account details from first bank account
+    
+    // Set all active bank account details for this branch/business
+    $pdf->accounts = [];
     if (!empty($bank_accounts)) {
-        $bank = $bank_accounts[0];
-        $pdf->account = [
-            'account_name' => $bank['account_holder_name'] ?? '',
-            'bank_name' => $bank['bank_name'],
-            'account_number' => $bank['account_number'],
-            'ifsc' => $bank['ifsc_code'] ?? '',
-            'branch' => $bank['branch_name'] ?? '',
-            'upi' => $bank['upi_id'] ?? ''
-        ];
+        foreach ($bank_accounts as $bank) {
+            $pdf->accounts[] = [
+                'account_name' => $bank['account_holder_name'] ?? '',
+                'bank_name' => $bank['bank_name'] ?? '',
+                'account_number' => $bank['account_number'] ?? '',
+                'ifsc' => $bank['ifsc_code'] ?? '',
+                'branch' => $bank['branch_name'] ?? '',
+                'upi' => $bank['upi_id'] ?? ''
+            ];
+        }
+        $pdf->account = $pdf->accounts[0];
     } else {
         $pdf->account = [];
+        $pdf->accounts = [];
     }
-
+    
     // Set items
-    $pdf->items = $items;
+    $pdf->brandLogos = $brand_logos;
 
+    $pdf->brandLogos = $brand_logos;
+
+    $pdf->items = $items;
+    
     // Set transport and waybill
     $pdf->transport = $transport;
-    $pdf->waybill_no = $invoice['shipping_waybill_no'] ?? '';
-
+    $pdf->waybill_no = $waybill_no;
+    
     // ========== Generate PDF ==========
     $pdf->AddPage();
     $pdf->TopSection();
     $pdf->PartyBoxes();
-    $pdf->TableHeader();
-    $pdf->TableRows();
-    //$pdf->ChargesBox();
-    $pdf->FooterSection();
-    $pdf->TotalsBox();
-    $pdf->BankDetailsSection();
-    $pdf->FinalFooterSection();
+    
+    // Items table
+    $pdf->SetY(106);
+    $pdf->ItemsHeader();
+    
+    $itemCount = 0;
+    foreach ($items as $item) {
+        $itemCount++;
+        
+        // Check if need new page
+        if ($itemCount == 19) {
+            $pdf->AddPage();
+            $pdf->SetY(46);
+            $pdf->ItemsHeader();
+        }
+        
+        if ($itemCount > 18 && $pdf->GetY() > 240) {
+            $pdf->AddPage();
+            $pdf->SetY(46);
+            $pdf->ItemsHeader();
+        }
+        
+        $unit_price = $item['unit_price'] ?? 0;
+        $quantity = $item['quantity'] ?? 0;
+        $discount_amount = $item['discount_amount'] ?? 0;
+        
+        $cgst_rate = $item['cgst_rate'] ?? 0;
+        $sgst_rate = $item['sgst_rate'] ?? 0;
+        $igst_rate = $item['igst_rate'] ?? 0;
+        
+        // Calculate rate without GST
+        $total_gst_rate = $cgst_rate + $sgst_rate + $igst_rate;
+        if ($total_gst_rate > 0) {
+            $gst_multiplier = 1 + ($total_gst_rate / 100);
+            $rate_without_gst = $unit_price / $gst_multiplier;
+        } else {
+            $rate_without_gst = $unit_price;
+        }
+        
+        $line_total = $unit_price * $quantity;
+        $net_total = $line_total - $discount_amount;
+        
+        $displayName = item_display_name($item);
+        $displayCode = item_display_code($item);
+        $productDesc = (!empty($displayCode) ? $displayCode . ' ' : '') . $displayName;
+        $qtyDisplay = format_quantity($quantity) . ' ' . item_display_unit($item);
+        
+        $row = [
+            $itemCount,
+            $productDesc,
+            item_display_hsn($item),
+            $qtyDisplay,
+            money($rate_without_gst),  // Rate without GST
+            $cgst_rate > 0 ? number_format($cgst_rate, 1) . '%' : '',
+            $sgst_rate > 0 ? number_format($sgst_rate, 1) . '%' : '',
+            money($net_total)
+        ];
+        
+        $pdf->itemRow($row);
+    }
+    
+    // Total row
+    $totalQty = 0;
+    $totalAmount = 0;
+    foreach ($items as $item) {
+        $totalQty += $item['quantity'] ?? 0;
+        $unit_price = $item['unit_price'] ?? 0;
+        $quantity = $item['quantity'] ?? 0;
+        $discount_amount = $item['discount_amount'] ?? 0;
+        $totalAmount += ($unit_price * $quantity) - $discount_amount;
+    }
+    
+    // Move Total row + GST summary to the bottom area above Bank Details.
+    // Blank item space keeps vertical column lines only.
+    $summaryHeight = $pdf->TotalsBoxHeight();
+    $bankTopY = $pdf->BankTopY();
+    $summaryStartY = $bankTopY - $summaryHeight;
 
+    if ($pdf->GetY() > $summaryStartY) {
+        $pdf->AddPage();
+        $pdf->SetY(46);
+        $pdf->ItemsHeader();
+    }
+
+    $pdf->DrawBlankItemArea($summaryStartY);
+    $pdf->TotalsBox($totalQty, $totalAmount);
+    $pdf->BankDetailsSection();
+    $pdf->FooterBox();
+    
 } else {
     // ========== OLD TEMPLATE DESIGN (for all other business_ids) ==========
-
+    
     // ========== PDF Class (modified for non-GST invoices) ==========
     class InvoicePDF extends FPDF
     {
@@ -1141,6 +1375,8 @@ if ($business_id == 28) {
         public $shipping = [];
         public $totals = [];
         public $account = [];
+        public $accounts = [];
+        public $brandLogos = [];
         public $col_w = [];
         public $col_headers = [];
         public $lm = 8;
@@ -1151,7 +1387,7 @@ if ($business_id == 28) {
         public $is_gst_invoice = true; // Flag for GST/non-GST invoice
 
         // Column width proportions - original for GST invoice
-        private $col_props_gst = [0.05, 0.27, 0.08, 0.09, 0.11, 0.06, 0.10, 0.10, 0.14];
+        private $col_props_gst = [0.05, 0.25, 0.08, 0.09, 0.11, 0.07, 0.10, 0.10, 0.15];
         // Column width proportions for non-GST invoice (HSN, GST%, GST Amt columns removed)
         private $col_props_non_gst = [0.05, 0.35, 0.14, 0.08, 0.16, 0.22]; // SN, Item, Rate, Qty, Disc, Total
 
@@ -1374,12 +1610,65 @@ if ($business_id == 28) {
                 $this->Cell($this->col_w[$i], 8, pdf_text_simple($h), 1, 0, 'C');
             }
             $this->Ln();
-            $this->SetFont('Arial', '', 6.8);
+            $this->SetFont('Arial', '', 8);
+        }
+
+
+        function DrawBrandLogosFooter()
+        {
+            if (empty($this->brandLogos)) {
+                return;
+            }
+
+            $stripH = 10;
+            $topY = $this->GetPageHeight() - 11;
+            $xLeft = $this->lm;
+            $availableW = $this->GetPageWidth() - ($this->lm + $this->rm);
+            $gap = 2;
+            $logos = [];
+            $totalW = 0;
+
+            foreach ($this->brandLogos as $logo) {
+                $path = $logo['logo_path'] ?? '';
+                if (empty($path) || !file_exists($path)) continue;
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'], true)) continue;
+
+                $w = (float)($logo['width_mm'] ?? 24);
+                $h = (float)($logo['height_mm'] ?? 8);
+                if ($w <= 0) $w = 24;
+                if ($h <= 0) $h = 8;
+                if ($w > 80) $w = 80;
+                if ($h > ($stripH - 1)) $h = $stripH - 1;
+
+                $logos[] = ['path' => $path, 'w' => $w, 'h' => $h];
+                $totalW += $w;
+            }
+
+            if (empty($logos)) return;
+
+            $totalW += $gap * (count($logos) - 1);
+            $scale = $totalW > $availableW ? ($availableW / $totalW) : 1;
+            $drawTotalW = 0;
+            foreach ($logos as $i => $logo) {
+                $logos[$i]['dw'] = $logo['w'] * $scale;
+                $logos[$i]['dh'] = $logo['h'] * $scale;
+                $drawTotalW += $logos[$i]['dw'];
+            }
+            $drawTotalW += $gap * (count($logos) - 1);
+
+            $x = $xLeft + (($availableW - $drawTotalW) / 2);
+            foreach ($logos as $logo) {
+                $y = $topY + (($stripH - $logo['dh']) / 2);
+                $this->Image($logo['path'], $x, $y, $logo['dw'], $logo['dh']);
+                $x += $logo['dw'] + $gap;
+            }
         }
 
         function Footer()
         {
-            $this->SetY($this->GetPageHeight() - 20);
+            $this->DrawBrandLogosFooter();
+            $this->SetY($this->GetPageHeight() - 22);
             $this->SetFont('Arial', 'I', 8);
             $this->Cell(0, 4.5, pdf_text_simple('This is a computer generated invoice.'), 0, 1, 'L');
 
@@ -1481,7 +1770,7 @@ if ($business_id == 28) {
             // After discount total
             $line_total_after_discount = $line_total_before_discount - $discount_amount;
 
-            $unit = !empty($item['product_unit']) ? $item['product_unit'] : (empty($item['unit']) ? 'PCS' : $item['unit']);
+            $unit = item_display_unit($item);
 
             if ($this->is_gst_invoice) {
                 // GST INVOICE - Show rate without GST
@@ -1513,13 +1802,13 @@ if ($business_id == 28) {
                 $this->Cell($this->col_w[0], $cellH, (string) $sn, 0, 0, 'C');
 
                 // Item Description
-                $item_text = (!empty($item['product_code']) ? $item['product_code'] . " - " : "") . $item['product_name'];
+                $item_text = (!empty(item_display_code($item)) ? item_display_code($item) . " - " : "") . item_display_name($item);
                 $this->BoxText($x1, $y, $this->col_w[1], $cellH, $item_text, 'L', 'M', 1.2, 1.0, 5.4);
 
                 // HSN
                 $this->Rect($x2, $y, $this->col_w[2], $cellH);
                 $this->SetXY($x2, $y);
-                $this->Cell($this->col_w[2], $cellH, pdf_text_simple($item['hsn_code'] ?? ''), 0, 0, 'C');
+                $this->Cell($this->col_w[2], $cellH, pdf_text_simple(item_display_hsn($item)), 0, 0, 'C');
 
                 // GST(%) 
                 $gst_text = $total_gst_rate > 0 ? number_format($total_gst_rate, 1) . '%' : '0%';
@@ -1537,13 +1826,22 @@ if ($business_id == 28) {
                 $this->SetXY($x5, $y);
                 $this->Cell($this->col_w[5], $cellH, pdf_text_simple($qty_text), 0, 0, 'C');
 
-                // Discount 
+                // Discount
+                // Show percentage only when item discount percentage is actually available.
+                // For proportional overall discount, discount_rate can be 0.00; printing it
+                // as a second line was pushing text outside the discount column.
                 if ($discount_amount > 0) {
-                    $disc_text = 'Rs. ' . money($discount_amount) . "\n(" . $discount_rate . "%)";
+                    $discount_rate_float = (float) $discount_rate;
+                    $disc_text = 'Rs. ' . money($discount_amount);
+
+                    if ($discount_rate_float > 0) {
+                        $discount_rate_text = rtrim(rtrim(number_format($discount_rate_float, 2, '.', ''), '0'), '.');
+                        $disc_text .= "\n(" . $discount_rate_text . "%)";
+                    }
                 } else {
                     $disc_text = '-';
                 }
-                $this->BoxText($x6, $y, $this->col_w[6], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 5.4);
+                $this->BoxText($x6, $y, $this->col_w[6], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 4.8);
 
                 // GST Amt - Show calculated GST amount
                 if ($total_gst_amount > 0) {
@@ -1576,7 +1874,7 @@ if ($business_id == 28) {
                 $this->Cell($this->col_w[0], $cellH, (string) $sn, 0, 0, 'C');
 
                 // Item Description (with code)
-                $item_text = (!empty($item['product_code']) ? $item['product_code'] . " - " : "") . $item['product_name'];
+                $item_text = (!empty(item_display_code($item)) ? item_display_code($item) . " - " : "") . item_display_name($item);
                 $this->BoxText($x1, $y, $this->col_w[1], $cellH, $item_text, 'L', 'M', 1.2, 1.0, 5.4);
 
                 // Rate (WITH GST - full price for non-GST)
@@ -1591,13 +1889,22 @@ if ($business_id == 28) {
                 $this->SetXY($x3, $y);
                 $this->Cell($this->col_w[3], $cellH, pdf_text_simple($qty_text), 0, 0, 'C');
 
-                // Discount 
+                // Discount
+                // Show percentage only when item discount percentage is actually available.
+                // For proportional overall discount, discount_rate can be 0.00; printing it
+                // as a second line was pushing text outside the discount column.
                 if ($discount_amount > 0) {
-                    $disc_text = 'Rs. ' . money($discount_amount) . "\n(" . $discount_rate . "%)";
+                    $discount_rate_float = (float) $discount_rate;
+                    $disc_text = 'Rs. ' . money($discount_amount);
+
+                    if ($discount_rate_float > 0) {
+                        $discount_rate_text = rtrim(rtrim(number_format($discount_rate_float, 2, '.', ''), '0'), '.');
+                        $disc_text .= "\n(" . $discount_rate_text . "%)";
+                    }
                 } else {
                     $disc_text = '-';
                 }
-                $this->BoxText($x4, $y, $this->col_w[4], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 5.4);
+                $this->BoxText($x4, $y, $this->col_w[4], $cellH, $disc_text, 'C', 'M', 1.0, 1.0, 4.8);
 
                 // Total (After discount)
                 $total_text = 'Rs. ' . money($line_total_after_discount);
@@ -1740,58 +2047,66 @@ if ($business_id == 28) {
 
         function DrawAccountDetails()
         {
-            $a = $this->account;
-
-            $hasAny = false;
-            foreach (['account_name', 'bank_name', 'account_number', 'ifsc', 'branch', 'upi'] as $k) {
-                if (!empty($a[$k])) {
-                    $hasAny = true;
-                    break;
-                }
+            $accounts = !empty($this->accounts) ? $this->accounts : [];
+            if (empty($accounts) && !empty($this->account)) {
+                $accounts = [$this->account];
             }
-            if (!$hasAny)
+
+            if (empty($accounts)) {
                 return;
-
-            // Only add account details if there's space on current page
-            if ($this->GetY() + 28 > ($this->GetPageHeight() - $this->bm)) {
-                return; // Don't add new page, just skip
             }
-
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(0, 6, pdf_text_simple('Account Details'), 0, 1, 'L');
-
-            $this->SetFont('Arial', '', 8);
-            $lines = [];
-            if (!empty($a['account_name']))
-                $lines[] = 'A/C Name : ' . $a['account_name'];
-            if (!empty($a['bank_name']))
-                $lines[] = 'Bank : ' . $a['bank_name'];
-            if (!empty($a['account_number']))
-                $lines[] = 'A/C No : ' . $a['account_number'];
-            if (!empty($a['ifsc']))
-                $lines[] = 'IFSC : ' . $a['ifsc'];
-            if (!empty($a['branch']))
-                $lines[] = 'Branch : ' . $a['branch'];
-            if (!empty($a['upi']))
-                $lines[] = 'UPI : ' . $a['upi'];
 
             $x = $this->lm;
             $w = $this->GetPageWidth() - ($this->lm + $this->rm);
+            $cols = count($accounts) > 1 ? 2 : 1;
+            $cellW = $w / $cols;
+            $rowH = 28;
+            $headerH = 6;
+            $totalH = $headerH + (ceil(count($accounts) / $cols) * $rowH);
+
+            // Only add account details if there's space on current page.
+            if ($this->GetY() + $totalH > ($this->GetPageHeight() - $this->bm)) {
+                return;
+            }
+
+            $this->SetFont('Arial', 'B', 10);
+            $this->Cell(0, $headerH, pdf_text_simple('Account Details'), 0, 1, 'L');
+
             $yStart = $this->GetY();
-            $h = max(18, count($lines) * 4.5 + 4);
+            $this->SetFont('Arial', '', 7.2);
 
-            // Check if we have space for account details
-            if ($yStart + $h > ($this->GetPageHeight() - $this->bm)) {
-                return; // Skip if no space
+            foreach ($accounts as $idx => $a) {
+                $col = $idx % $cols;
+                $row = (int)floor($idx / $cols);
+                $cx = $x + ($col * $cellW);
+                $cy = $yStart + ($row * $rowH);
+
+                $this->Rect($cx, $cy, $cellW, $rowH);
+                $this->SetFont('Arial', 'B', 7.2);
+                $this->SetXY($cx + 2, $cy + 1.5);
+                $this->Cell($cellW - 4, 4, pdf_text_simple('Bank Account ' . ($idx + 1)), 0, 1, 'L');
+
+                $this->SetFont('Arial', '', 7.2);
+                $lines = [];
+                if (!empty($a['account_name'])) $lines[] = 'A/C Name : ' . $a['account_name'];
+                if (!empty($a['bank_name'])) $lines[] = 'Bank : ' . $a['bank_name'];
+                if (!empty($a['account_number'])) $lines[] = 'A/C No : ' . $a['account_number'];
+                if (!empty($a['ifsc'])) $lines[] = 'IFSC : ' . $a['ifsc'];
+                if (!empty($a['branch'])) $lines[] = 'Branch : ' . $a['branch'];
+                if (!empty($a['upi'])) $lines[] = 'UPI : ' . $a['upi'];
+
+                $ly = $cy + 5.8;
+                foreach ($lines as $ln) {
+                    if ($ly + 3.5 > $cy + $rowH - 1) {
+                        break;
+                    }
+                    $this->SetXY($cx + 2, $ly);
+                    $this->Cell($cellW - 4, 3.5, pdf_text_simple($ln), 0, 1, 'L');
+                    $ly += 3.5;
+                }
             }
 
-            $this->Rect($x, $yStart, $w, $h);
-            $this->SetXY($x + 2, $yStart + 2);
-
-            foreach ($lines as $ln) {
-                $this->Cell($w - 4, 4.5, pdf_text_simple($ln), 0, 1, 'L');
-            }
-            $this->Ln(2);
+            $this->SetY($yStart + (ceil(count($accounts) / $cols) * $rowH) + 2);
         }
 
         // Helper method to initialize column widths based on invoice type
@@ -1876,7 +2191,7 @@ if ($business_id == 28) {
         'name' => $customer_name,
         'phone' => $customer_phone,
         'gstin' => $customer_gstin,
-        'address' => $customer_address
+        'address' => $customer_full_address
     ];
 
     // Set shipping info
@@ -1884,7 +2199,10 @@ if ($business_id == 28) {
         'name' => $shipping_name,
         'contact' => $shipping_contact,
         'gstin' => $shipping_gstin,
-        'address' => $shipping_address,
+        'address' => $shipping_full_address,
+        'district' => $shipping_district,
+        'state' => $shipping_state,
+        'pincode' => $shipping_pincode,
         'vehicle_number' => $shipping_vehicle_number,
         'transport_type' => $shipping_transport_type,
         'shipping_charges' => $shipping_charges,
@@ -1907,19 +2225,23 @@ if ($business_id == 28) {
         'grand_total' => $grand_total
     ];
 
-    // Set account details from first bank account
+    // Set all active bank account details for this branch/business
+    $pdf->accounts = [];
     if (!empty($bank_accounts)) {
-        $bank = $bank_accounts[0];
-        $pdf->account = [
-            'account_name' => $bank['account_holder_name'] ?? '',
-            'bank_name' => $bank['bank_name'],
-            'account_number' => $bank['account_number'],
-            'ifsc' => $bank['ifsc_code'] ?? '',
-            'branch' => $bank['branch_name'] ?? '',
-            'upi' => $bank['upi_id'] ?? ''
-        ];
+        foreach ($bank_accounts as $bank) {
+            $pdf->accounts[] = [
+                'account_name' => $bank['account_holder_name'] ?? '',
+                'bank_name' => $bank['bank_name'] ?? '',
+                'account_number' => $bank['account_number'] ?? '',
+                'ifsc' => $bank['ifsc_code'] ?? '',
+                'branch' => $bank['branch_name'] ?? '',
+                'upi' => $bank['upi_id'] ?? ''
+            ];
+        }
+        $pdf->account = $pdf->accounts[0];
     } else {
         $pdf->account = [];
+        $pdf->accounts = [];
     }
 
     // Set verified by (seller)
@@ -1927,22 +2249,22 @@ if ($business_id == 28) {
 
     // ========== Generate PDF ==========
     $pdf->AddPage();
-    $pdf->SetFont('Arial', '', 6.8);
-    $lineH = 5.6;
+    $pdf->SetFont('Arial', '', 8);
+    $lineH = 6.2;
     $minLines = 1;
     $sn = 1;
 
-    // Add items only if we have items
+    // Add items only if we have items. Manual seller sale items are fetched from invoice_items snapshot.
     if (!empty($items)) {
         foreach ($items as $item) {
-            $name = $item['product_name'] ?? '';
-            $code = $item['product_code'] ?? '';
+            $name = item_display_name($item);
+            $code = item_display_code($item);
             $itemText = (!empty($code) ? $code . " - " : "") . $name;
 
             // Calculate required height
             $itemLines = max($minLines, $pdf->NbLines(max(1, $pdf->col_w[1] - 3), $itemText));
             $maxLines = max($itemLines, 1);
-            $cellH = ($maxLines * $lineH) + 2;
+            $cellH = ($maxLines * $lineH) + 3;
 
             // Check if need new page - with stricter conditions to prevent extra pages
             $currentY = $pdf->GetY();
@@ -1952,7 +2274,7 @@ if ($business_id == 28) {
             // Calculate if we have enough space for this item AND the summary section
             if ($currentY + $cellH + 80 > ($pageHeight - $bottomMargin)) {
                 $pdf->AddPage();
-                $pdf->SetFont('Arial', '', 6.8);
+                $pdf->SetFont('Arial', '', 8);
                 $pdf->TableHeader();
             }
 
@@ -1976,9 +2298,9 @@ if ($business_id == 28) {
     if ($notes !== '') {
         // Check if we have space for notes
         if ($pdf->GetY() + 20 < ($pdf->GetPageHeight() - $pdf->bm)) {
-            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetFont('Arial', 'B', 10);
             $pdf->Cell(0, 6, pdf_text_simple('Notes:'), 0, 1, 'L');
-            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetFont('Arial', '', 9);
             $pdf->MultiCell(0, 4, pdf_text_simple($notes), 0, 'L');
         }
     }
@@ -1988,10 +2310,10 @@ if ($business_id == 28) {
     if ($terms !== '') {
         // Check if we have space for terms
         if ($pdf->GetY() + 30 < ($pdf->GetPageHeight() - $pdf->bm)) {
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->Cell(0, 6, pdf_text_simple('Terms & Conditions:'), 0, 1, 'L');
-            $pdf->SetFont('Arial', '', 8);
-            $pdf->MultiCell(0, 4, pdf_text_simple($terms), 0, 'L');
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->Cell(0, 5, pdf_text_simple('Terms & Conditions:'), 0, 1, 'L');
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->MultiCell(0, 3.5, pdf_text_simple($terms), 0, 'L');
         }
     }
 
@@ -1999,7 +2321,7 @@ if ($business_id == 28) {
     // Make sure we have space for signature
     if ($pdf->GetY() + 25 < ($pdf->GetPageHeight() - $pdf->bm)) {
         $pdf->Ln(10);
-        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetFont('Arial', 'B', 10);
         $pdf->Cell(0, 6, pdf_text_simple('For ' . $company_name), 0, 1, 'R');
         $pdf->SetFont('Arial', '', 9);
         $pdf->Cell(0, 15, pdf_text_simple('Authorized Signatory'), 0, 1, 'R');

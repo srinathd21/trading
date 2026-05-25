@@ -43,6 +43,8 @@ $items_stmt = $pdo->prepare("
     SELECT 
         ii.id as item_id,
         ii.product_id,
+        ii.product_name_snapshot,
+        ii.is_manual_item,
         ii.quantity,
         ii.return_qty,
         ii.unit_price,
@@ -110,7 +112,10 @@ foreach ($items as &$item) {
     $processed_items[] = [
         'item_id' => $item['item_id'],
         'product_id' => $item['product_id'],
-        'product_name' => $item['product_name'] ?? 'Unknown Product',
+        'product_name' => !empty($item['product_name_snapshot'])
+            ? $item['product_name_snapshot']
+            : ($item['product_name'] ?? 'Manual Sale Item'),
+        'is_manual_item' => (int)($item['is_manual_item'] ?? 0),
         'product_code' => $item['product_code'] ?? '',
         'hsn_code' => $hsn_code,
         'sale_type' => $item['sale_type'],
@@ -161,6 +166,9 @@ $shipping_name = $invoice['shipping_name'] ?? '';
 $shipping_contact = $invoice['shipping_contact'] ?? '';
 $shipping_gstin = $invoice['shipping_gstin'] ?? '';
 $shipping_address = $invoice['shipping_address'] ?? '';
+$shipping_district = $invoice['shipping_district'] ?? '';
+$shipping_state = $invoice['shipping_state'] ?? '';
+$shipping_pincode = $invoice['shipping_pincode'] ?? '';
 $shipping_vehicle_number = $invoice['shipping_vehicle_number'] ?? '';
 $shipping_transport_type = $invoice['shipping_transport_type'] ?? '';
 $shipping_charges = (float)($invoice['shipping_charges'] ?? 0);
@@ -228,6 +236,11 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="alert alert-info border-0 shadow-sm mb-4">
+                    <i class="bx bx-info-circle me-2"></i>
+                    Manual seller sale items are supported. Product names are shown from <code>invoice_items.product_name_snapshot</code> when the item is not available in the products table.
                 </div>
 
                 <?php if (isset($_SESSION['success'])): ?>
@@ -301,7 +314,7 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                     </div>
                 </div>
 
-                <?php if (!empty($shipping_name) || !empty($shipping_contact) || !empty($shipping_address) || !empty($shipping_vehicle_number) || !empty($shipping_transport_type) || $shipping_charges > 0 || $transport_charge > 0): ?>
+                <?php if (!empty($shipping_name) || !empty($shipping_contact) || !empty($shipping_address) || !empty($shipping_district) || !empty($shipping_state) || !empty($shipping_pincode) || !empty($shipping_vehicle_number) || !empty($shipping_transport_type) || $shipping_charges > 0 || $transport_charge > 0): ?>
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-info bg-opacity-10 border-bottom border-info">
                         <h5 class="mb-0">
@@ -378,6 +391,42 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                                     <div class="flex-grow-1">
                                         <small class="text-muted d-block">Shipping Address</small>
                                         <strong><?= nl2br(htmlspecialchars($shipping_address)) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if (!empty($shipping_district)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-map-pin fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">District</small>
+                                        <strong><?= htmlspecialchars($shipping_district) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if (!empty($shipping_state)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-map-alt fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">State</small>
+                                        <strong><?= htmlspecialchars($shipping_state) ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if (!empty($shipping_pincode)): ?>
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex align-items-start gap-2 p-2 bg-light rounded">
+                                    <i class="bx bx-current-location fs-4 text-info"></i>
+                                    <div>
+                                        <small class="text-muted d-block">Pincode</small>
+                                        <strong><?= htmlspecialchars($shipping_pincode) ?></strong>
                                     </div>
                                 </div>
                             </div>
@@ -634,7 +683,7 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                 <div class="card shadow-sm">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
-                            <i class="bx bx-list-ul me-2"></i> Invoice Items (GST Inclusive in MRP)
+                            <i class="bx bx-list-ul me-2"></i> Invoice Items
                             <span class="badge bg-primary ms-2"><?= count($processed_items) ?> items</span>
                         </h5>
                     </div>
@@ -673,13 +722,20 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                                             <?php if (!empty($item['hsn_code'])): ?>
                                             <small class="text-muted">HSN: <?= htmlspecialchars($item['hsn_code']) ?></small>
                                             <?php endif; ?>
+                                            <?php if (!empty($item['is_manual_item'])): ?>
+                                            <br><small class="badge bg-warning bg-opacity-25 text-dark">Manual Seller Sale</small>
+                                            <?php endif; ?>
                                             <?php if ($item['sale_type'] == 'wholesale'): ?>
                                             <br><small class="badge bg-info bg-opacity-10 text-info">Wholesale</small>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
                                             <small class="text-muted">#<?= $item['item_id'] ?></small><br>
-                                            <small class="text-muted">PID: <?= $item['product_id'] ?></small>
+                                            <?php if (!empty($item['is_manual_item']) || empty($item['product_id'])): ?>
+                                            <small class="badge bg-warning bg-opacity-25 text-dark">Manual Item</small>
+                                            <?php else: ?>
+                                            <small class="text-muted">PID: <?= htmlspecialchars($item['product_id']) ?></small>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="text-center">
                                             <span class="fw-bold"><?= $item['sold_qty'] ?></span><br>
@@ -745,7 +801,7 @@ $total_extra_charges = $shipping_charges + $transport_charge;
                             </table>
                         </div>
                         <div class="text-center text-muted mt-3">
-                            <small><i class="bx bx-info-circle me-1"></i> All prices are inclusive of GST (as per MRP)</small>
+                            <small><i class="bx bx-info-circle me-1"></i> Manual seller sale items are displayed from invoice_items, not products table.</small>
                         </div>
                     </div>
                 </div>

@@ -309,7 +309,6 @@ try {
         $paymentSelect = "COALESCE(pay.total_payment_received, 0) AS total_payment_received, pay.last_payment_date";
     }
 
-    // SAFE SELECT PARTS: no hardcoded c.name
     if ($nameColInOrder) {
         $customerNameSelect = "COALESCE(NULLIF(o.`$nameColInOrder`, ''), '-')";
         if ($customerJoined && $customerNameCol) {
@@ -418,6 +417,33 @@ try {
 
 } catch (Exception $e) {
     $error = $e->getMessage();
+}
+
+// Handle quick status update via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_update_status'])) {
+    $order_id = (int)($_POST['order_id'] ?? 0);
+    $new_status = $_POST['order_status'] ?? '';
+    $valid_statuses = ['pending', 'confirmed', 'processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed', 'cancelled', 'returned'];
+    
+    if ($order_id > 0 && in_array($new_status, $valid_statuses)) {
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE online_store_orders 
+                SET order_status = :status, updated_at = NOW() 
+                WHERE id = :id AND business_id = :business_id
+            ");
+            $stmt->execute([
+                ':status' => $new_status,
+                ':id' => $order_id,
+                ':business_id' => $business_id
+            ]);
+            $_SESSION['flash_success'] = "Order status updated successfully";
+        } catch (Exception $e) {
+            $_SESSION['flash_error'] = "Failed to update order status";
+        }
+    }
+    header('Location: online_store_orders.php');
+    exit();
 }
 ?>
 <!doctype html>
@@ -687,13 +713,13 @@ try {
                                                 <?php else: ?>
                                                     <span class="text-muted">-</span>
                                                 <?php endif; ?>
-                                            </td>
+                                             </td>
                                             <td>
                                                 <div class="fw-semibold"><?= h($row['customer_name_display'] ?: '-') ?></div>
                                                 <?php if (!empty($row['customer_phone_display'])): ?>
                                                     <small class="text-muted"><?= h($row['customer_phone_display']) ?></small>
                                                 <?php endif; ?>
-                                            </td>
+                                             </td>
                                             <td class="address-col"><?= h($row['address_display'] ?: '-') ?></td>
                                             <td class="text-end fw-semibold">₹<?= format_money($row['total_amount'] ?? 0) ?></td>
                                             <td class="text-end text-success fw-semibold">₹<?= format_money($row['paid_amount'] ?? 0) ?></td>
@@ -701,22 +727,21 @@ try {
                                             <td><span class="badge bg-<?= h($statusClass) ?>"><?= h($statusLabel) ?></span></td>
                                             <td><span class="badge bg-<?= h($paymentClass) ?>"><?= h($paymentLabel) ?></span></td>
                                             <td class="text-center">
-                                                <button type="button"
-                                                        class="btn btn-sm btn-primary view-order-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#orderViewModal"
-                                                        data-order-number="<?= h($row['order_number']) ?>"
-                                                        data-order-date="<?= h(!empty($row['order_date']) ? date('d-m-Y h:i A', strtotime($row['order_date'])) : '-') ?>"
-                                                        data-customer="<?= h($row['customer_name_display'] ?: '-') ?>"
-                                                        data-phone="<?= h($row['customer_phone_display'] ?: '-') ?>"
-                                                        data-address="<?= h($row['address_display'] ?: '-') ?>"
-                                                        data-total="<?= h(format_money($row['total_amount'] ?? 0)) ?>"
-                                                        data-paid="<?= h(format_money($row['paid_amount'] ?? 0)) ?>"
-                                                        data-pending="<?= h(format_money($row['pending_amount'] ?? 0)) ?>"
-                                                        data-status="<?= h($statusLabel) ?>"
-                                                        data-payment="<?= h($paymentLabel) ?>">
-                                                    <i class="bx bx-show"></i>
-                                                </button>
+                                                <div class="btn-group" role="group">
+                                                    <a href="online_store_order_details.php?id=<?= (int)($row['order_id'] ?? 0) ?>" 
+                                                       class="btn btn-sm btn-primary">
+                                                        <i class="bx bx-show"></i> View
+                                                    </a>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-warning update-status-btn"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#updateStatusModal"
+                                                            data-order-id="<?= (int)($row['order_id'] ?? 0) ?>"
+                                                            data-order-number="<?= h($row['order_number']) ?>"
+                                                            data-current-status="<?= h($row['order_status'] ?? 'pending') ?>">
+                                                        <i class="bx bx-edit"></i> Status
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -778,30 +803,43 @@ try {
     </div>
 </div>
 
-<div class="modal fade" id="orderViewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+<!-- Update Status Modal -->
+<div class="modal fade" id="updateStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-light">
-                <h5 class="modal-title"><i class="bx bx-receipt me-2"></i>Order Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-md-6"><div class="info-box"><div class="label">Order Number</div><div class="value" id="modal_order_number">-</div></div></div>
-                    <div class="col-md-6"><div class="info-box"><div class="label">Order Date</div><div class="value" id="modal_order_date">-</div></div></div>
-                    <div class="col-md-6"><div class="info-box"><div class="label">Customer</div><div class="value" id="modal_customer">-</div></div></div>
-                    <div class="col-md-6"><div class="info-box"><div class="label">Phone</div><div class="value" id="modal_phone">-</div></div></div>
-                    <div class="col-12"><div class="info-box"><div class="label">Address</div><div class="value" id="modal_address">-</div></div></div>
-                    <div class="col-md-4"><div class="info-box"><div class="label">Total Amount</div><div class="value text-primary">₹<span id="modal_total">0.00</span></div></div></div>
-                    <div class="col-md-4"><div class="info-box"><div class="label">Paid Amount</div><div class="value text-success">₹<span id="modal_paid">0.00</span></div></div></div>
-                    <div class="col-md-4"><div class="info-box"><div class="label">Pending Amount</div><div class="value text-danger">₹<span id="modal_pending">0.00</span></div></div></div>
-                    <div class="col-md-6"><div class="info-box"><div class="label">Order Status</div><div class="value" id="modal_status">-</div></div></div>
-                    <div class="col-md-6"><div class="info-box"><div class="label">Payment Status</div><div class="value" id="modal_payment">-</div></div></div>
+            <form method="POST" action="">
+                <input type="hidden" name="order_id" id="update_order_id">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title"><i class="bx bx-edit me-2"></i>Update Order Status</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
-            </div>
+                <div class="modal-body">
+                    <p>Order #: <strong id="update_order_number"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Current Status</label>
+                        <div><span class="badge bg-secondary" id="update_current_status"></span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Change Status To</label>
+                        <select name="order_status" class="form-select" required>
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="processing">Processing</option>
+                            <option value="packed">Packed</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="returned">Returned</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="quick_update_status" class="btn btn-primary">Update Status</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -816,18 +854,36 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }, 5000);
 
-    document.querySelectorAll('.view-order-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            document.getElementById('modal_order_number').textContent = this.getAttribute('data-order-number') || '-';
-            document.getElementById('modal_order_date').textContent   = this.getAttribute('data-order-date') || '-';
-            document.getElementById('modal_customer').textContent     = this.getAttribute('data-customer') || '-';
-            document.getElementById('modal_phone').textContent        = this.getAttribute('data-phone') || '-';
-            document.getElementById('modal_address').textContent      = this.getAttribute('data-address') || '-';
-            document.getElementById('modal_total').textContent        = this.getAttribute('data-total') || '0.00';
-            document.getElementById('modal_paid').textContent         = this.getAttribute('data-paid') || '0.00';
-            document.getElementById('modal_pending').textContent      = this.getAttribute('data-pending') || '0.00';
-            document.getElementById('modal_status').textContent       = this.getAttribute('data-status') || '-';
-            document.getElementById('modal_payment').textContent      = this.getAttribute('data-payment') || '-';
+    // Handle update status modal
+    document.querySelectorAll('.update-status-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var orderId = this.getAttribute('data-order-id');
+            var orderNumber = this.getAttribute('data-order-number');
+            var currentStatus = this.getAttribute('data-current-status');
+            
+            document.getElementById('update_order_id').value = orderId;
+            document.getElementById('update_order_number').textContent = orderNumber;
+            
+            var statusMap = {
+                'pending': 'Pending',
+                'confirmed': 'Confirmed',
+                'processing': 'Processing',
+                'packed': 'Packed',
+                'shipped': 'Shipped',
+                'out_for_delivery': 'Out for Delivery',
+                'delivered': 'Delivered',
+                'completed': 'Completed',
+                'cancelled': 'Cancelled',
+                'returned': 'Returned'
+            };
+            
+            document.getElementById('update_current_status').textContent = statusMap[currentStatus] || currentStatus;
+            
+            // Set the select value to current status
+            var select = document.querySelector('#updateStatusModal select[name="order_status"]');
+            if (select) {
+                select.value = currentStatus;
+            }
         });
     });
 });

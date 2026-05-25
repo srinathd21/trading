@@ -573,30 +573,8 @@ if (file_exists($mobileNavFile)) {
   </div>
 </section>
 
-<section class="section-block" id="why-choose-us">
-  <div class="container-fluid px-lg-5 px-3">
-    <div class="section-heading">
-      <h2>Why Customers Choose <?php echo sf_h($displayName); ?></h2>
-      <p>
-        A landing page should sell trust and clarity, not just dump products. These are the reasons customers buy instead of leaving in ten seconds.
-      </p>
-    </div>
 
-    <div class="row g-4">
-      <?php foreach ($staticFeatures as $feature): ?>
-      <div class="col-md-6 col-lg-3">
-        <div class="value-card">
-          <div class="value-icon"><i class="bi <?php echo sf_h($feature['icon']); ?>"></i></div>
-          <h4><?php echo sf_h($feature['title']); ?></h4>
-          <p><?php echo sf_h($feature['text']); ?></p>
-        </div>
-      </div>
-      <?php endforeach; ?>
-    </div>
-  </div>
-</section>
-
-<section class="section-block pt-0">
+<section class="section-block pt-0 mt-3">
   <div class="container-fluid px-lg-5 px-3">
     <div class="section-heading">
       <h2><?php echo sf_h($featuredCategoriesTitle); ?></h2>
@@ -606,7 +584,7 @@ if (file_exists($mobileNavFile)) {
     <div class="row g-4">
       <?php if (!empty($categories)): ?>
         <?php foreach ($categories as $category): ?>
-          <div class="col-md-6 col-lg-4">
+          <div class="col-md-6 col-lg-3">
             <a href="<?php echo sf_h($categoryOpenBase . '&id=' . (int)$category['id']); ?>" class="category-landing-card">
               <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80" alt="<?php echo sf_h($category['category_name']); ?>" style="object-fit:contain;">
               <div class="category-landing-overlay">
@@ -625,43 +603,7 @@ if (file_exists($mobileNavFile)) {
   </div>
 </section>
 
-<section class="section-block why-strip">
-  <div class="container-fluid px-lg-5 px-3">
-    <div class="row g-4">
-      <div class="col-md-6 col-lg-3">
-        <div class="why-item">
-          <i class="bi bi-lightning-charge"></i>
-          <h5>Energy Efficient</h5>
-          <p>Products selected for long-term efficiency and practical daily performance.</p>
-        </div>
-      </div>
 
-      <div class="col-md-6 col-lg-3">
-        <div class="why-item">
-          <i class="bi bi-arrow-repeat"></i>
-          <h5>Easy Replacement</h5>
-          <p>Simple support for eligible products to reduce customer hesitation before buying.</p>
-        </div>
-      </div>
-
-      <div class="col-md-6 col-lg-3">
-        <div class="why-item">
-          <i class="bi bi-wallet2"></i>
-          <h5>Fair Pricing</h5>
-          <p>Competitive pricing without forcing low-quality junk into the catalog.</p>
-        </div>
-      </div>
-
-      <div class="col-md-6 col-lg-3">
-        <div class="why-item">
-          <i class="bi bi-clipboard-check"></i>
-          <h5>Trusted Selection</h5>
-          <p>Curated products that customers actually need instead of random catalog clutter.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <section class="section-block" id="featured-products">
   <div class="container-fluid px-lg-5 px-3">
@@ -706,44 +648,7 @@ if (file_exists($mobileNavFile)) {
   </div>
 </section>
 
-<section class="section-block bg-light">
-  <div class="container-fluid px-lg-5 px-3">
-    <div class="section-heading">
-      <h2>Numbers That Build Trust</h2>
-      <p>These trust signals matter more than decorative filler content.</p>
-    </div>
 
-    <div class="row g-4">
-      <div class="col-6 col-md-3">
-        <div class="trust-box">
-          <h3><?php echo $totalProducts; ?>+</h3>
-          <p>Active Products</p>
-        </div>
-      </div>
-
-      <div class="col-6 col-md-3">
-        <div class="trust-box">
-          <h3><?php echo $totalCategories; ?>+</h3>
-          <p>Product Categories</p>
-        </div>
-      </div>
-
-      <div class="col-6 col-md-3">
-        <div class="trust-box">
-          <h3><?php echo $enableCOD === 1 ? 'COD' : 'Fast'; ?></h3>
-          <p>Checkout Support</p>
-        </div>
-      </div>
-
-      <div class="col-6 col-md-3">
-        <div class="trust-box">
-          <h3><?php echo $supportPhone !== '' ? '7 Days' : 'Email'; ?></h3>
-          <p>Support Window</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <section class="cta-section">
   <div class="container-fluid px-lg-5 px-3">

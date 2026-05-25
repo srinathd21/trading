@@ -185,7 +185,7 @@
                 if (transportRow) {
                     const displaySpan = document.getElementById('transport-charges-display');
                     if (displaySpan) {
-                        displaySpan.textContent = `₹ ${Math.round(transportCharge)}`;
+                        displaySpan.textContent = `₹ ${Number(transportCharge).toFixed(2)}`;
                     }
                     transportRow.style.display = '';
                 }
@@ -697,8 +697,9 @@
             }
 
             // Set today's date
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date').value = today;
+            const now = new Date();
+now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+document.getElementById('date').value = now.toISOString().slice(0, 16);
 
             // Set quotation valid until (15 days from now)
             const quotationDate = new Date();
@@ -926,11 +927,10 @@
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({
-                    prefix: GST_TYPE === 'gst' ? 'INV' : 'INVNG',
-                    year_month: new Date().toISOString().substring(0, 7).replace('-', ''),
-                    invoice_type: GST_TYPE
-                }),
+body: JSON.stringify({
+    invoice_type: GST_TYPE,
+    invoice_date: document.getElementById('date')?.value || ''
+}),
                 timeout: 5000
             });
 
@@ -1139,7 +1139,7 @@
                         font-weight: 600;
                         display: inline-block;
                         margin: 2px 0;
-                    ">📦 Old: ${Math.round(oldQty)} ${product.unit_of_measure}</span>`;
+                    ">📦 Old: ${Number(oldQty).toFixed(2)} ${product.unit_of_measure}</span>`;
                     }
 
                     if (newStockQty > 0) {
@@ -1152,7 +1152,7 @@
                         font-weight: 600;
                         display: inline-block;
                         margin: 2px 0;
-                    ">🆕: ${Math.round(newStockQty)} ${product.unit_of_measure}</span>`;
+                    ">🆕: ${Number(newStockQty).toFixed(2)} ${product.unit_of_measure}</span>`;
                     }
 
                     if (product.secondary_unit && product.sec_unit_conversion) {
@@ -1167,7 +1167,7 @@
                             border-radius: 12px;
                             font-size: 0.85em;
                             margin: 2px 0;
-                        ">↳ Old: ${Math.round(oldSecondary)} ${product.secondary_unit}</span>`;
+                        ">↳ Old: ${Number(oldSecondary).toFixed(2)} ${product.secondary_unit}</span>`;
                         }
 
                         if (newSecondary > 0) {
@@ -1178,7 +1178,7 @@
                             border-radius: 12px;
                             font-size: 0.85em;
                             margin: 2px 0;
-                        ">↳ New: ${Math.round(newSecondary)} ${product.secondary_unit}</span>`;
+                        ">↳ New: ${Number(newSecondary).toFixed(2)} ${product.secondary_unit}</span>`;
                         }
                     }
                 } else {
@@ -1203,7 +1203,7 @@
                 background-color: #e8f5e9;
                 padding: 2px 8px;
                 border-radius: 12px;
-            ">₹${Math.round(price)}</span>`;
+            ">₹${Number(price).toFixed(2)}</span>`;
 
                 option.innerHTML = displayText;
 
@@ -1300,6 +1300,12 @@
     // ==================== EVENT LISTENERS SETUP ====================
     function setupEventListeners() {
         console.log('POS System: Setting up event listeners...');
+        const invoiceDateInput = document.getElementById('date');
+if (invoiceDateInput) {
+    invoiceDateInput.addEventListener('change', function () {
+        checkAndGenerateInvoiceNumber(true);
+    });
+}
 
         try {
             const btnSaveTransport = document.getElementById('btnSaveTransport');
@@ -1705,8 +1711,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             }
 
             // Set form values
-            document.getElementById('mrp').value = Math.round(parseFloat(product.mrp) || 0);
-            document.getElementById('selling-price').value = Math.round(sellingPrice);
+            document.getElementById('mrp').value = Number(parseFloat(product.mrp) || 0).toFixed(2);
+            document.getElementById('selling-price').value = Number(sellingPrice).toFixed(2);
             document.getElementById('qty-unit').textContent = product.unit_of_measure || 'PCS';
             document.getElementById('qty-input').value = '1';
 
@@ -1832,7 +1838,12 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     // ==================== UPDATE THE EVENT LISTENER SETUP ====================
     function setupEventListeners() {
         console.log('POS System: Setting up event listeners...');
-
+        const invoiceDateInput = document.getElementById('date');
+if (invoiceDateInput) {
+    invoiceDateInput.addEventListener('change', function () {
+        checkAndGenerateInvoiceNumber(true);
+    });
+}
         try {
             // Product selection - USE A DIFFERENT APPROACH TO AVOID RECURSION
             $('#search-product').on('change.select2', function (e) {
@@ -2138,12 +2149,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             const unit = document.getElementById('qty-unit').textContent;
             const isSecondaryUnit = CURRENT_UNIT_IS_SECONDARY;
 
-            // For secondary units, round price to 2 decimal places
-            if (isSecondaryUnit) {
-                sellingPrice = parseFloat(sellingPrice.toFixed(2));
-            } else {
-                sellingPrice = Math.round(sellingPrice);
-            }
+            // Keep price as a number with 2 decimals for all units.
+            sellingPrice = parseFloat(Number(sellingPrice).toFixed(2));
 
             // Calculate price with discount
             let finalPrice = sellingPrice;
@@ -2163,12 +2170,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 return;
             }
 
-            // Round final price appropriately
-            if (isSecondaryUnit) {
-                finalPrice = parseFloat(finalPrice.toFixed(2));
-            } else {
-                finalPrice = Math.round(finalPrice);
-            }
+            // Keep original item price with 2 decimals. Do not round cart prices.
+            finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
             // Create cart item ID with all relevant info
             const cartItemId = `${product.id}-${unit}-${finalPrice.toFixed(2)}-${discountType}-${isSecondaryUnit}-${isFromOldStock ? 'old' : 'new'}`;
@@ -2495,11 +2498,11 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                     </div>
                 </td>
                 <td class="text-end">
-                    ₹${item.price.toFixed(item.is_secondary_unit ? 2 : 0)}<br>
+                    ₹${Number(item.price).toFixed(2)}<br>
                     <small class="text-muted">Per ${item.unit}</small>
                 </td>
                 <td class="text-end">${((item.cgst_rate || 0) + (item.sgst_rate || 0) + (item.igst_rate || 0)).toFixed(2)}%</td>
-                <td class="text-end">₹${item.is_secondary_unit ? itemTotal.toFixed(2) : Math.round(itemTotal)}</td>
+                <td class="text-end">₹${Number(itemTotal).toFixed(2)}</td>
                 <td>
                     <div class="cart-actions">
                         <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${index})" title="Remove item">
@@ -2626,7 +2629,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                     }
                     sellingPrice = parseFloat(sellingPrice.toFixed(2));
                 } else {
-                    sellingPrice = Math.round(basePrice);
+                    sellingPrice = parseFloat(Number(basePrice).toFixed(2));
                 }
 
                 sellingPriceInput.value = sellingPrice;
@@ -2656,7 +2659,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             if (CURRENT_UNIT_IS_SECONDARY) {
                 finalPrice = parseFloat(finalPrice.toFixed(2));
             } else {
-                finalPrice = Math.round(finalPrice);
+                finalPrice = parseFloat(Number(finalPrice).toFixed(2));
             }
 
             console.log('Calculated final price:', finalPrice);
@@ -2738,7 +2741,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 // Get original price based on price type
                 const originalPrice = GLOBAL_PRICE_TYPE === 'wholesale' ?
                     (parseFloat(product.wholesale_price) || 0) : (parseFloat(product.retail_price) || 0);
-                sellingPriceInput.value = Math.round(originalPrice);
+                sellingPriceInput.value = Number(originalPrice).toFixed(2);
 
                 showToast(`Converted to ${product.unit_of_measure}`, 'info');
             }
@@ -2948,12 +2951,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             const unit = document.getElementById('qty-unit').textContent;
             const isSecondaryUnit = CURRENT_UNIT_IS_SECONDARY;
 
-            // For secondary units, round price to 2 decimal places
-            if (isSecondaryUnit) {
-                sellingPrice = parseFloat(sellingPrice.toFixed(2));
-            } else {
-                sellingPrice = Math.round(sellingPrice);
-            }
+            // Keep price as a number with 2 decimals for all units.
+            sellingPrice = parseFloat(Number(sellingPrice).toFixed(2));
 
             // Calculate price with discount
             let finalPrice = sellingPrice;
@@ -2973,12 +2972,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 return;
             }
 
-            // Round final price appropriately
-            if (isSecondaryUnit) {
-                finalPrice = parseFloat(finalPrice.toFixed(2));
-            } else {
-                finalPrice = Math.round(finalPrice);
-            }
+            // Keep original item price with 2 decimals. Do not round cart prices.
+            finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
             // Calculate quantity in primary units for stock tracking
             let quantityForStock = qty;
@@ -3207,11 +3202,11 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                         </div>
                     </td>
                     <td class="text-end">
-                        ₹${item.price.toFixed(item.is_secondary_unit ? 2 : 0)}<br>
+                        ₹${Number(item.price).toFixed(2)}<br>
                         <small class="text-muted">Per ${item.unit}</small>
                     </td>
                     <td class="text-end">${((item.cgst_rate || 0) + (item.sgst_rate || 0) + (item.igst_rate || 0)).toFixed(2)}%</td>
-                    <td class="text-end">₹${item.is_secondary_unit ? itemTotal.toFixed(2) : Math.round(itemTotal)}</td>
+                    <td class="text-end">₹${Number(itemTotal).toFixed(2)}</td>
                     <td>
                         <div class="cart-actions">
                             <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${index})" title="Remove item">
@@ -3319,12 +3314,12 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                     const itemTotal = item.price * newQty;
 
                     // Update the displayed total
-                    totalCell.innerHTML = `₹${Math.round(itemTotal)}`;
+                    totalCell.innerHTML = `₹${Number(itemTotal).toFixed(2)}`;
 
                     // Update price display if needed
                     const priceCell = row.querySelector('td:nth-child(7)');
                     if (priceCell) {
-                        priceCell.innerHTML = `₹${item.price.toFixed(0)}<br><small class="text-muted">Ex-GST: ₹${Math.round(priceWithoutGST)}</small>`;
+                        priceCell.innerHTML = `₹${Number(item.price).toFixed(2)}<br><small class="text-muted">Ex-GST: ₹${Number(priceWithoutGST).toFixed(2)}</small>`;
                     }
                 }
             }
@@ -3366,7 +3361,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             }
 
             if (finalPrice < 0) finalPrice = 0;
-            finalPrice = Math.round(finalPrice);
+            finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
             // Update display
             const row = document.querySelector(`#cart-row-${index}`);
@@ -3377,12 +3372,12 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 if (priceCell) {
                     const gstRate = item.cgst_rate + item.sgst_rate + item.igst_rate;
                     const priceWithoutGST = finalPrice / (1 + (gstRate / 100));
-                    priceCell.innerHTML = `₹${finalPrice}<br><small class="text-muted">Ex-GST: ₹${Math.round(priceWithoutGST)}</small>`;
+                    priceCell.innerHTML = `₹${Number(finalPrice).toFixed(2)}<br><small class="text-muted">Ex-GST: ₹${Number(priceWithoutGST).toFixed(2)}</small>`;
                 }
 
                 if (totalCell) {
                     const total = finalPrice * item.quantity;
-                    totalCell.textContent = `₹${Math.round(total)}`;
+                    totalCell.textContent = `₹${Number(total).toFixed(2)}`;
                 }
             }
 
@@ -3605,7 +3600,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 finalPrice = 0;
             }
 
-            finalPrice = Math.round(finalPrice);
+            finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
             // Update the item
             CART[index].price_type = priceType;
@@ -3727,7 +3722,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 finalPrice = 0;
             }
 
-            finalPrice = Math.round(finalPrice);
+            finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
             // Update item
             item.base_price = basePrice;
@@ -3742,11 +3737,11 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             if (priceCell) {
                 const gstRate = item.cgst_rate + item.sgst_rate + item.igst_rate;
                 const priceWithoutGST = finalPrice / (1 + (gstRate / 100));
-                priceCell.innerHTML = `₹${finalPrice}<br><small class="text-muted">Ex-GST: ₹${Math.round(priceWithoutGST)}</small>`;
+                priceCell.innerHTML = `₹${Number(finalPrice).toFixed(2)}<br><small class="text-muted">Ex-GST: ₹${Number(priceWithoutGST).toFixed(2)}</small>`;
             }
 
             if (totalCell) {
-                totalCell.textContent = `₹${Math.round(item.total)}`;
+                totalCell.textContent = `₹${Number(item.total).toFixed(2)}`;
             }
 
         } catch (error) {
@@ -3819,7 +3814,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                         finalPrice = 0;
                     }
 
-                    finalPrice = Math.round(finalPrice);
+                    finalPrice = parseFloat(Number(finalPrice).toFixed(2));
 
                     item.price_type = GLOBAL_PRICE_TYPE;
                     item.base_price = basePrice;
@@ -3841,44 +3836,63 @@ document.getElementById('invoice-type').addEventListener('change', function () {
 
 
     // ==================== CALCULATION FUNCTIONS ====================
-    function calculateItemGST(item) {
+    function calculateItemGST(item, overallDiscountShare = 0) {
         try {
-            if (GST_TYPE === 'non-gst' || (item.cgst_rate + item.sgst_rate + item.igst_rate) <= 0) {
+            const qty = parseFloat(item.quantity) || 0;
+            const unitPrice = parseFloat(item.price) || 0;
+            const lineTotalBeforeDiscount = unitPrice * qty;
+            const discountShare = Math.max(0, parseFloat(overallDiscountShare) || 0);
+            const lineTotalAfterDiscount = Math.max(0, lineTotalBeforeDiscount - discountShare);
+
+            const cgstRate = parseFloat(item.cgst_rate) || 0;
+            const sgstRate = parseFloat(item.sgst_rate) || 0;
+            const igstRate = parseFloat(item.igst_rate) || 0;
+            const totalGSTRate = cgstRate + sgstRate + igstRate;
+
+            if (GST_TYPE === 'non-gst' || totalGSTRate <= 0) {
                 return {
-                    taxable: item.price * item.quantity,
+                    taxable: parseFloat(lineTotalAfterDiscount.toFixed(2)),
                     cgst: 0,
                     sgst: 0,
                     igst: 0,
-                    total: 0
+                    total: 0,
+                    line_total_before_discount: parseFloat(lineTotalBeforeDiscount.toFixed(2)),
+                    overall_discount_share: parseFloat(discountShare.toFixed(2)),
+                    line_total_after_discount: parseFloat(lineTotalAfterDiscount.toFixed(2))
                 };
             }
 
-            const itemTotal = item.price * item.quantity;
-            const totalGSTRate = item.cgst_rate + item.sgst_rate + item.igst_rate;
+            // Product prices are inclusive of GST in this POS.
+            // First distribute overall discount proportionally, then split GST from the discounted line value.
+            const taxableValue = lineTotalAfterDiscount / (1 + (totalGSTRate / 100));
+            const gstAmount = lineTotalAfterDiscount - taxableValue;
 
-            // GST is included in the price
-            // Calculate the taxable value (excluding GST)
-            const taxableValue = itemTotal / (1 + (totalGSTRate / 100));
-            const gstAmount = itemTotal - taxableValue;
-
-            // Distribute GST among components
-            let cgst = 0, sgst = 0, igst = 0;
-            if (totalGSTRate > 0) {
-                cgst = gstAmount * (item.cgst_rate / totalGSTRate);
-                sgst = gstAmount * (item.sgst_rate / totalGSTRate);
-                igst = gstAmount * (item.igst_rate / totalGSTRate);
-            }
+            const cgst = gstAmount * (cgstRate / totalGSTRate);
+            const sgst = gstAmount * (sgstRate / totalGSTRate);
+            const igst = gstAmount * (igstRate / totalGSTRate);
 
             return {
-                taxable: taxableValue,
-                cgst: cgst,
-                sgst: sgst,
-                igst: igst,
-                total: gstAmount
+                taxable: parseFloat(taxableValue.toFixed(2)),
+                cgst: parseFloat(cgst.toFixed(2)),
+                sgst: parseFloat(sgst.toFixed(2)),
+                igst: parseFloat(igst.toFixed(2)),
+                total: parseFloat(gstAmount.toFixed(2)),
+                line_total_before_discount: parseFloat(lineTotalBeforeDiscount.toFixed(2)),
+                overall_discount_share: parseFloat(discountShare.toFixed(2)),
+                line_total_after_discount: parseFloat(lineTotalAfterDiscount.toFixed(2))
             };
         } catch (error) {
             console.error('Error calculating item GST:', error);
-            return { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 };
+            return {
+                taxable: 0,
+                cgst: 0,
+                sgst: 0,
+                igst: 0,
+                total: 0,
+                line_total_before_discount: 0,
+                overall_discount_share: 0,
+                line_total_after_discount: 0
+            };
         }
     }
 
@@ -3901,6 +3915,44 @@ document.getElementById('invoice-type').addEventListener('change', function () {
         }
     }
 
+    function calculateOverallDiscountDistribution(overallDiscount) {
+        const distribution = [];
+        const subtotal = CART.reduce((sum, item) => {
+            const qty = parseFloat(item.quantity) || 0;
+            const price = parseFloat(item.price) || 0;
+            return sum + (price * qty);
+        }, 0);
+
+        overallDiscount = parseFloat(overallDiscount) || 0;
+
+        if (subtotal <= 0 || overallDiscount <= 0 || CART.length === 0) {
+            CART.forEach(() => distribution.push(0));
+            return distribution;
+        }
+
+        overallDiscount = Math.min(overallDiscount, subtotal);
+        let distributedTotal = 0;
+
+        CART.forEach((item, index) => {
+            const itemAmount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            let share = 0;
+
+            // Last item receives rounding balance so total discount exactly matches bill discount.
+            if (index === CART.length - 1) {
+                share = overallDiscount - distributedTotal;
+            } else {
+                share = (itemAmount / subtotal) * overallDiscount;
+                share = parseFloat(share.toFixed(2));
+                distributedTotal += share;
+            }
+
+            share = Math.max(0, Math.min(share, itemAmount));
+            distribution.push(parseFloat(share.toFixed(2)));
+        });
+
+        return distribution;
+    }
+
     function calculateTotals() {
         try {
             let subtotal = 0;
@@ -3912,59 +3964,54 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             let totalReferralCommission = 0;
 
             CART.forEach(item => {
-                const itemTotal = item.price * item.quantity;
-                const itemGST = calculateItemGST(item);
-                const itemReferralCommission = calculateItemReferralCommission(item);
-
+                const itemTotal = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
                 subtotal += itemTotal;
-                totalTaxable += itemGST.taxable || 0;
-                totalCGST += itemGST.cgst;
-                totalSGST += itemGST.sgst;
-                totalIGST += itemGST.igst;
-                totalReferralCommission += itemReferralCommission;
+                totalReferralCommission += calculateItemReferralCommission(item);
 
-                // Calculate item discount
-                const product = findProductById(item.product_id);
-                if (product && item.discount_value > 0) {
-                    let basePrice = item.price_type === 'wholesale' ?
-                        parseFloat(product.wholesale_price) : parseFloat(product.retail_price);
-
-                    if (item.discount_type === 'percentage') {
-                        totalItemDiscount += (basePrice * (item.discount_value / 100)) * item.quantity;
-                    } else {
-                        totalItemDiscount += item.discount_value * item.quantity;
-                    }
-                }
+                // Item price in CART is already after item-level discount.
+                // Keep this only for display when the item stores discount_amount.
+                totalItemDiscount += parseFloat(item.discount_amount || 0) || 0;
             });
 
-            const subtotalAfterItems = subtotal - totalItemDiscount;
+            const subtotalAfterItems = subtotal;
 
-            // ==== FIX STARTS HERE ====
-            // Overall discount - CORRECTED to handle both percentage and rupees
-            const overallDiscVal = parseFloat(document.getElementById('additional-dis').value) || 0;
-            const overallDiscType = document.getElementById('overall-discount-type').value; // Changed from 'discount-type'
+            const overallDiscVal = parseFloat(document.getElementById('additional-dis')?.value) || 0;
+            const overallDiscType = document.getElementById('overall-discount-type')?.value || 'fixed';
             let overallDiscount = 0;
 
             if (overallDiscVal > 0) {
                 if (overallDiscType === 'percentage') {
                     overallDiscount = subtotalAfterItems * (overallDiscVal / 100);
                 } else {
-                    // Fixed rupees discount - ensure it doesn't exceed total
                     overallDiscount = Math.min(overallDiscVal, subtotalAfterItems);
                 }
             }
-            // ==== FIX ENDS HERE ====
+
+            overallDiscount = parseFloat(overallDiscount.toFixed(2));
+
+            // Main rule:
+            // Big amount item gets big discount, small amount item gets small discount.
+            // GST is calculated on each item's amount after its proportional discount share.
+            const discountDistribution = calculateOverallDiscountDistribution(overallDiscount);
+
+            CART.forEach((item, index) => {
+                const itemGST = calculateItemGST(item, discountDistribution[index] || 0);
+                totalTaxable += itemGST.taxable || 0;
+                totalCGST += itemGST.cgst || 0;
+                totalSGST += itemGST.sgst || 0;
+                totalIGST += itemGST.igst || 0;
+            });
 
             const totalBeforePoints = Math.max(0, subtotalAfterItems - overallDiscount);
 
-            // Loyalty points discount
-            const pointsDiscount = LOYALTY_POINTS_DISCOUNT > totalBeforePoints ?
-                totalBeforePoints : LOYALTY_POINTS_DISCOUNT;
+            const pointsDiscount = LOYALTY_POINTS_DISCOUNT > totalBeforePoints
+                ? totalBeforePoints
+                : LOYALTY_POINTS_DISCOUNT;
 
-            // GST total
-            const totalGST = GST_TYPE === 'gst' ? (totalCGST + totalSGST + totalIGST) : 0;
+            const totalGST = GST_TYPE === 'gst'
+                ? (totalCGST + totalSGST + totalIGST)
+                : 0;
 
-            // Grand total
             const grandTotal = Math.max(0, totalBeforePoints - pointsDiscount);
 
             return {
@@ -3979,9 +4026,9 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 totalGST: parseFloat(totalGST.toFixed(2)),
                 totalReferralCommission: parseFloat(totalReferralCommission.toFixed(2)),
                 grandTotal: parseFloat(grandTotal.toFixed(2)),
-                subtotalAfterItems: parseFloat(subtotalAfterItems.toFixed(2))
+                subtotalAfterItems: parseFloat(subtotalAfterItems.toFixed(2)),
+                discountDistribution: discountDistribution
             };
-
         } catch (error) {
             console.error('Error calculating totals:', error);
             return {
@@ -3996,41 +4043,197 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 totalGST: 0,
                 totalReferralCommission: 0,
                 grandTotal: 0,
-                subtotalAfterItems: 0
+                subtotalAfterItems: 0,
+                discountDistribution: []
             };
         }
+    }
+
+
+    function getRoundedBillTotals(totals = null) {
+        const calculatedTotals = totals || calculateTotals();
+
+        // IMPORTANT:
+        // Use the real decimal bill amount for round-off calculation.
+        // Do not use already-rounded GST display values here.
+        const actualGrandTotal = Number.parseFloat(calculatedTotals.grandTotal) || 0;
+        const roundedGrandTotal = Math.round(actualGrandTotal);
+        const roundOff = Number.parseFloat((roundedGrandTotal - actualGrandTotal).toFixed(2));
+
+        return {
+            actualGrandTotal: Number.parseFloat(actualGrandTotal.toFixed(2)),
+            roundedGrandTotal: roundedGrandTotal,
+            roundOff: roundOff
+        };
+    }
+
+    function setTextIfExists(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    }
+
+    function formatRupeeAmount(value, decimals = 2) {
+        const amount = Number.parseFloat(value) || 0;
+        return `₹ ${amount.toFixed(decimals)}`;
+    }
+
+    function formatRoundOffAmount(value) {
+        const amount = Number.parseFloat(value) || 0;
+        if (amount < 0) {
+            return `-₹ ${Math.abs(amount).toFixed(2)}`;
+        }
+        return `₹ ${amount.toFixed(2)}`;
+    }
+
+    function buildInvoiceItemsForPayload(totals) {
+        const distribution = totals.discountDistribution || calculateOverallDiscountDistribution(totals.overallDiscount || 0);
+
+        return CART.map((item, index) => {
+            const overallShare = parseFloat(distribution[index] || 0);
+            const gst = calculateItemGST(item, overallShare);
+            const lineBeforeDiscount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            const lineAfterDiscount = Math.max(0, lineBeforeDiscount - overallShare);
+
+            return {
+                product_id: item.product_id,
+                name: item.name,
+                code: item.code,
+                quantity: item.quantity,
+                unit: item.unit,
+                price: item.price,
+                price_type: item.price_type,
+
+                item_discount_value: item.discount_value || 0,
+                item_discount_type: item.discount_type || 'percentage',
+                item_discount_amount: item.discount_amount || 0,
+
+                overall_discount_share: parseFloat(overallShare.toFixed(2)),
+                discount_value: parseFloat(overallShare.toFixed(2)),
+                discount_type: 'fixed',
+
+                total: parseFloat(lineAfterDiscount.toFixed(2)),
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                taxable_value: gst.taxable,
+                cgst_amount: gst.cgst,
+                sgst_amount: gst.sgst,
+                igst_amount: gst.igst,
+                line_total_before_discount: parseFloat(lineBeforeDiscount.toFixed(2)),
+                line_total_after_discount: parseFloat(lineAfterDiscount.toFixed(2)),
+                stock_price: item.stock_price,
+                referral_enabled: item.referral_enabled,
+                referral_type: item.referral_type,
+                referral_value: item.referral_value,
+                referral_commission: calculateItemReferralCommission(item),
+                is_secondary_unit: item.is_secondary_unit,
+                sec_unit_conversion: item.sec_unit_conversion,
+                quantity_in_primary: item.quantity_in_primary || (
+                    item.is_secondary_unit
+                        ? (item.quantity / item.sec_unit_conversion)
+                        : item.quantity
+                )
+            };
+        });
+    }
+
+    function buildQuotationItemsForPayload(totals) {
+        const distribution = totals.discountDistribution || calculateOverallDiscountDistribution(totals.overallDiscount || 0);
+
+        return CART.map((item, index) => {
+            const overallShare = parseFloat(distribution[index] || 0);
+            const gst = calculateItemGST(item, overallShare);
+            const lineBeforeDiscount = (parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0);
+            const lineAfterDiscount = Math.max(0, lineBeforeDiscount - overallShare);
+
+            return {
+                product_id: item.product_id,
+                product_name: item.name,
+                quantity: item.quantity,
+                unit_price: item.price,
+                discount_amount: parseFloat(overallShare.toFixed(2)),
+                discount_type: 'fixed',
+                total_price: parseFloat(lineAfterDiscount.toFixed(2)),
+                hsn_code: item.hsn_code,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                tax_amount: gst.total,
+                taxable_value: gst.taxable,
+                cgst_amount: gst.cgst,
+                sgst_amount: gst.sgst,
+                igst_amount: gst.igst,
+                overall_discount_share: parseFloat(overallShare.toFixed(2)),
+                line_total_before_discount: parseFloat(lineBeforeDiscount.toFixed(2)),
+                line_total_after_discount: parseFloat(lineAfterDiscount.toFixed(2)),
+                price_type: item.price_type
+            };
+        });
     }
     function updateBillingSummary() {
         try {
             const totals = calculateTotals();
+            const rounded = getRoundedBillTotals(totals);
 
-            // Update displays (round to whole numbers)
-            document.getElementById('subtotal-display').textContent = `₹ ${Math.round(totals.subtotal)}`;
-            document.getElementById('item-discount-display').textContent = `₹ ${Math.round(totals.totalItemDiscount)}`;
-            document.getElementById('overall-discount-display').textContent = `₹ ${Math.round(totals.overallDiscount)}`;
-            document.getElementById('points-discount-display').textContent = `₹ ${Math.round(totals.pointsDiscount)}`;
+            // Actual decimal bill amount, e.g. 306.80.
+            const actualGrandTotal = rounded.actualGrandTotal;
 
-            // Add this line for taxable value
-            document.getElementById('taxable-display').textContent = `₹ ${Math.round(totals.totalTaxable)}`;
+            // Final payable amount, e.g. 307.
+            const roundedGrandTotal = rounded.roundedGrandTotal;
 
-            document.getElementById('cgst-display').textContent = `₹ ${Math.round(totals.totalCGST)}`;
-            document.getElementById('sgst-display').textContent = `₹ ${Math.round(totals.totalSGST)}`;
-            document.getElementById('igst-display').textContent = `₹ ${Math.round(totals.totalIGST)}`;
-            document.getElementById('grand-total-display').textContent = `₹ ${Math.round(totals.grandTotal)}`;
+            // Difference between payable amount and actual decimal bill amount, e.g. 0.20.
+            const roundOff = rounded.roundOff;
 
-            // Show/hide rows
-            document.getElementById('item-discount-row').style.display = totals.totalItemDiscount > 0 ? '' : 'none';
-            document.getElementById('overall-discount-row').style.display = totals.overallDiscount > 0 ? '' : 'none';
-            document.getElementById('points-discount-row').style.display = totals.pointsDiscount > 0 ? '' : 'none';
+            // Cart/subtotal values should keep decimal amount.
+            setTextIfExists('subtotal-display', formatRupeeAmount(totals.subtotal, 2));
+            setTextIfExists('item-discount-display', formatRupeeAmount(totals.totalItemDiscount, 2));
+            setTextIfExists('overall-discount-display', formatRupeeAmount(totals.overallDiscount, 2));
+            setTextIfExists('points-discount-display', formatRupeeAmount(totals.pointsDiscount, 2));
 
-            // Add this line to show/hide taxable row
-            document.getElementById('taxable-row').style.display = GST_TYPE === 'gst' && totals.totalTaxable > 0 ? '' : 'none';
+            // GST values are displayed as whole rupees in your current bill summary design.
+            setTextIfExists('taxable-display', `₹ ${Math.round(totals.totalTaxable)}`);
+            setTextIfExists('cgst-display', `₹ ${Math.round(totals.totalCGST)}`);
+            setTextIfExists('sgst-display', `₹ ${Math.round(totals.totalSGST)}`);
+            setTextIfExists('igst-display', `₹ ${Math.round(totals.totalIGST)}`);
 
-            document.getElementById('cgst-row').style.display = GST_TYPE === 'gst' && totals.totalCGST > 0 ? '' : 'none';
-            document.getElementById('sgst-row').style.display = GST_TYPE === 'gst' && totals.totalSGST > 0 ? '' : 'none';
-            document.getElementById('igst-row').style.display = GST_TYPE === 'gst' && totals.totalIGST > 0 ? '' : 'none';
+            // Round-off row must show the difference, not 0.00.
+            // Example: 306.80 -> 307, round off = +0.20.
+            setTextIfExists('round-off', formatRoundOffAmount(roundOff));
+            setTextIfExists('round-off-display', formatRoundOffAmount(roundOff));
+            setTextIfExists('roundoff-display', formatRoundOffAmount(roundOff));
 
-            // Update payment summary
+            // Grand total is the rounded payable amount.
+            setTextIfExists('grand-total-display', `₹ ${roundedGrandTotal}`);
+            setTextIfExists('grand-total', `₹ ${roundedGrandTotal}`);
+
+            // Keep a few values globally for debugging and other functions.
+            window.POS_ACTUAL_GRAND_TOTAL = actualGrandTotal;
+            window.POS_ROUNDED_GRAND_TOTAL = roundedGrandTotal;
+            window.POS_ROUND_OFF = roundOff;
+
+            // Show/hide rows safely.
+            const itemDiscountRow = document.getElementById('item-discount-row');
+            if (itemDiscountRow) itemDiscountRow.style.display = totals.totalItemDiscount > 0 ? '' : 'none';
+
+            const overallDiscountRow = document.getElementById('overall-discount-row');
+            if (overallDiscountRow) overallDiscountRow.style.display = totals.overallDiscount > 0 ? '' : 'none';
+
+            const pointsDiscountRow = document.getElementById('points-discount-row');
+            if (pointsDiscountRow) pointsDiscountRow.style.display = totals.pointsDiscount > 0 ? '' : 'none';
+
+            const taxableRow = document.getElementById('taxable-row');
+            if (taxableRow) taxableRow.style.display = GST_TYPE === 'gst' && totals.totalTaxable > 0 ? '' : 'none';
+
+            const cgstRow = document.getElementById('cgst-row');
+            if (cgstRow) cgstRow.style.display = GST_TYPE === 'gst' && totals.totalCGST > 0 ? '' : 'none';
+
+            const sgstRow = document.getElementById('sgst-row');
+            if (sgstRow) sgstRow.style.display = GST_TYPE === 'gst' && totals.totalSGST > 0 ? '' : 'none';
+
+            const igstRow = document.getElementById('igst-row');
+            if (igstRow) igstRow.style.display = GST_TYPE === 'gst' && totals.totalIGST > 0 ? '' : 'none';
+
             updatePaymentSummary();
             updateButtonStates();
 
@@ -4096,7 +4299,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     function updatePaymentSummary() {
         try {
             const totals = calculateTotals();
-            const grandTotal = totals.grandTotal;
+            const rounded = getRoundedBillTotals(totals);
+            const grandTotal = rounded.roundedGrandTotal;
 
             // Get payment amounts
             const cashAmount = ACTIVE_PAYMENT_METHODS.has('cash') ? parseFloat(document.getElementById('cash-amount').value) || 0 : 0;
@@ -4127,6 +4331,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 credit_due_date: creditDueDate,
                 totalPaid: totalPaid,
                 grandTotal: grandTotal,
+                actualGrandTotal: rounded.actualGrandTotal,
+                roundOff: rounded.roundOff,
                 change: changeGiven,
                 pending: pendingAmount
             });
@@ -4262,6 +4468,14 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                     <span style="color: #0d6efd;">₹ ${Math.round(paymentData.totalPaid)}</span>
                 </div>
                 <div class="amount-distribution-row">
+                    <span>Actual Amount:</span>
+                    <span>₹ ${Number(paymentData.actualGrandTotal || paymentData.grandTotal).toFixed(2)}</span>
+                </div>
+                <div class="amount-distribution-row">
+                    <span>Round Off:</span>
+                    <span>${(paymentData.roundOff || 0) >= 0 ? `₹ ${Number(paymentData.roundOff || 0).toFixed(2)}` : `-₹ ${Math.abs(Number(paymentData.roundOff || 0)).toFixed(2)}`}</span>
+                </div>
+                <div class="amount-distribution-row">
                     <span>Bill Amount:</span>
                     <span>₹ ${Math.round(paymentData.grandTotal)}</span>
                 </div>
@@ -4307,7 +4521,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     function autoFillRemainingAmount() {
         try {
             const totals = calculateTotals();
-            const grandTotal = totals.grandTotal;
+            const rounded = getRoundedBillTotals(totals);
+            const grandTotal = rounded.roundedGrandTotal;
 
             if (grandTotal === 0) {
                 showToast('No bill amount to fill. Add items to cart first.', 'warning');
@@ -4906,6 +5121,17 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             console.warn('Error fetching latest invoice number:', error);
         }
     }
+    function formatDateTimeForMysql(value) {
+    if (!value) {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        value = now.toISOString().slice(0, 16);
+    }
+
+    // datetime-local gives: 2026-05-14T11:05
+    // MySQL needs: 2026-05-14 11:05:00
+    return value.replace('T', ' ') + ':00';
+}
     let isGeneratingBill = false;
     async function generateBill() {
         try {
@@ -4996,6 +5222,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             console.log('✅ All items have sufficient stock');
 
             const totals = calculateTotals();
+            const rounded = getRoundedBillTotals(totals);
             const paymentData = collectPaymentData();
 
             // Validate payment
@@ -5005,10 +5232,12 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 return;
             }
 
-            if (paymentData.totalPaid < totals.grandTotal) {
-                const pending = totals.grandTotal - paymentData.totalPaid;
+            if (paymentData.totalPaid < rounded.roundedGrandTotal) {
+                const pending = rounded.roundedGrandTotal - paymentData.totalPaid;
                 console.warn('❌ Generate Bill Failed: Insufficient payment', {
-                    grand_total: totals.grandTotal,
+                    actual_grand_total: rounded.actualGrandTotal,
+                    grand_total: rounded.roundedGrandTotal,
+                    round_off: rounded.roundOff,
                     total_paid: paymentData.totalPaid,
                     pending_amount: pending
                 });
@@ -5044,56 +5273,30 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 total_igst: totals.totalIGST,
                 total_taxable: totals.totalTaxable,
                 total_gst: totals.totalGST,
-                grand_total: totals.grandTotal,
+                grand_total: rounded.roundedGrandTotal,
+                actual_grand_total: rounded.actualGrandTotal,
+                round_off: rounded.roundOff,
                 referral_commission: totals.totalReferralCommission,
 
                 shipping_details: {
-                    name: SHIPPING_DETAILS.name || '',
-                    contact: SHIPPING_DETAILS.contact || '',
-                    gstin: SHIPPING_DETAILS.gstin || '',
-                    address: SHIPPING_DETAILS.address || '',
-                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
-                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
-                    transport_type: SHIPPING_DETAILS.transport_type || '',
-                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
-                },
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (
-                        item.is_secondary_unit
-                            ? (item.quantity / item.sec_unit_conversion)
-                            : item.quantity
-                    )
-                })),
+    name: SHIPPING_DETAILS.name || '',
+    contact: SHIPPING_DETAILS.contact || '',
+    gstin: SHIPPING_DETAILS.gstin || '',
+    address: SHIPPING_DETAILS.address || '',
+    district: SHIPPING_DETAILS.district || '',
+    state: SHIPPING_DETAILS.state || '',
+    pincode: SHIPPING_DETAILS.pincode || '',
+    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || SHIPPING_DETAILS.charges || 0),
+    transport_type: SHIPPING_DETAILS.transport_type || '',
+    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+},
+                items: buildInvoiceItemsForPayload(totals),
 
                 payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
                 payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal
-                    ? (totals.grandTotal - paymentData.totalPaid)
+                pending_amount: paymentData.totalPaid < rounded.roundedGrandTotal
+                    ? (rounded.roundedGrandTotal - paymentData.totalPaid)
                     : 0
             };
 
@@ -5148,14 +5351,19 @@ document.getElementById('invoice-type').addEventListener('change', function () {
 
                             // Clear shipping details from memory
                             SHIPPING_DETAILS = {
-                                name: '',
-                                contact: '',
-                                gstin: '',
-                                address: '',
-                                vehicle_number: '',
-                                transport_type: '',
-                                charges: 0
-                            };
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    district: '',
+    state: '',
+    pincode: '',
+    vehicle_number: '',
+    shipping_charges: 0,
+    transport_type: '',
+    transport_charge: 0,
+    charges: 0
+};
 
                             // Clear shipping details from session storage
                             sessionStorage.removeItem('pos_shipping_details');
@@ -5240,7 +5448,8 @@ document.getElementById('invoice-type').addEventListener('change', function () {
 
             if (data.success && data.has_credit_limit) {
                 const totals = calculateTotals();
-                const pendingAmount = totals.grandTotal - collectPaymentData().totalPaid;
+                const rounded = getRoundedBillTotals(totals);
+                const pendingAmount = rounded.roundedGrandTotal - collectPaymentData().totalPaid;
 
                 if (pendingAmount > 0 && data.available_credit < pendingAmount) {
                     return {
@@ -5299,6 +5508,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             showLoading('Preparing invoice for print...');
 
             const totals = calculateTotals();
+            const rounded = getRoundedBillTotals(totals);
             const paymentData = collectPaymentData();
 
             const invoiceData = {
@@ -5310,9 +5520,12 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 customer_id: CURRENT_CUSTOMER_ID,
 
                 invoice_number: (currentInvoiceNumber || '').trim(),
-                invoice_date: (document.getElementById('date').value || '').trim(),
-                date: (document.getElementById('date').value || '').trim(),
 
+invoice_date: formatDateTimeForMysql(document.getElementById('date').value),
+date: formatDateTimeForMysql(document.getElementById('date').value),
+
+// overwrite created_at also with invoice date time
+created_at: formatDateTimeForMysql(document.getElementById('date').value),
                 invoice_type: GST_TYPE,
                 price_type: GLOBAL_PRICE_TYPE,
                 referral_id: SELECTED_REFERRAL_ID,
@@ -5327,57 +5540,31 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 total_igst: totals.totalIGST,
                 total_taxable: totals.totalTaxable,
                 total_gst: totals.totalGST,
-                grand_total: totals.grandTotal,
+                grand_total: rounded.roundedGrandTotal,
+                actual_grand_total: rounded.actualGrandTotal,
+                round_off: rounded.roundOff,
                 referral_commission: totals.totalReferralCommission,
 
                 shipping_details: {
-                    name: SHIPPING_DETAILS.name || '',
-                    contact: SHIPPING_DETAILS.contact || '',
-                    gstin: SHIPPING_DETAILS.gstin || '',
-                    address: SHIPPING_DETAILS.address || '',
-                    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
-                    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || 0),
-                    transport_type: SHIPPING_DETAILS.transport_type || '',
-                    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
-                },
+    name: SHIPPING_DETAILS.name || '',
+    contact: SHIPPING_DETAILS.contact || '',
+    gstin: SHIPPING_DETAILS.gstin || '',
+    address: SHIPPING_DETAILS.address || '',
+    district: SHIPPING_DETAILS.district || '',
+    state: SHIPPING_DETAILS.state || '',
+    pincode: SHIPPING_DETAILS.pincode || '',
+    vehicle_number: SHIPPING_DETAILS.vehicle_number || '',
+    shipping_charges: parseFloat(SHIPPING_DETAILS.shipping_charges || SHIPPING_DETAILS.charges || 0),
+    transport_type: SHIPPING_DETAILS.transport_type || '',
+    transport_charge: parseFloat(SHIPPING_DETAILS.transport_charge || 0)
+},
 
-                items: CART.map(item => ({
-                    product_id: item.product_id,
-                    name: item.name,
-                    code: item.code,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                    price_type: item.price_type,
-                    discount_value: item.discount_value,
-                    discount_type: item.discount_type,
-                    total: item.price * item.quantity,
-                    hsn_code: item.hsn_code,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_value: calculateItemGST(item).taxable,
-                    cgst_amount: calculateItemGST(item).cgst,
-                    sgst_amount: calculateItemGST(item).sgst,
-                    igst_amount: calculateItemGST(item).igst,
-                    stock_price: item.stock_price,
-                    referral_enabled: item.referral_enabled,
-                    referral_type: item.referral_type,
-                    referral_value: item.referral_value,
-                    referral_commission: calculateItemReferralCommission(item),
-                    is_secondary_unit: item.is_secondary_unit,
-                    sec_unit_conversion: item.sec_unit_conversion,
-                    quantity_in_primary: item.quantity_in_primary || (
-                        item.is_secondary_unit
-                            ? (item.quantity / item.sec_unit_conversion)
-                            : item.quantity
-                    )
-                })),
+                items: buildInvoiceItemsForPayload(totals),
 
                 payment_method: Array.from(ACTIVE_PAYMENT_METHODS).join('+'),
                 payment_details: paymentData,
-                pending_amount: paymentData.totalPaid < totals.grandTotal
-                    ? (totals.grandTotal - paymentData.totalPaid)
+                pending_amount: paymentData.totalPaid < rounded.roundedGrandTotal
+                    ? (rounded.roundedGrandTotal - paymentData.totalPaid)
                     : 0
             };
 
@@ -5415,14 +5602,19 @@ document.getElementById('invoice-type').addEventListener('change', function () {
 
                     // Clear shipping details from memory
                     SHIPPING_DETAILS = {
-                        name: '',
-                        contact: '',
-                        gstin: '',
-                        address: '',
-                        vehicle_number: '',
-                        transport_type: '',
-                        charges: 0
-                    };
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    district: '',
+    state: '',
+    pincode: '',
+    vehicle_number: '',
+    shipping_charges: 0,
+    transport_type: '',
+    transport_charge: 0,
+    charges: 0
+};
 
                     // Clear shipping details from session storage
                     sessionStorage.removeItem('pos_shipping_details');
@@ -5570,13 +5762,19 @@ document.getElementById('invoice-type').addEventListener('change', function () {
 
             // Clear shipping details
             SHIPPING_DETAILS = {
-                name: '',
-                contact: '',
-                gstin: '',
-                address: '',
-                vehicle_number: '',
-                charges: 0
-            };
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    district: '',
+    state: '',
+    pincode: '',
+    vehicle_number: '',
+    shipping_charges: 0,
+    transport_type: '',
+    transport_charge: 0,
+    charges: 0
+};
 
             sessionStorage.removeItem('pos_shipping_details');
             updateShippingDetailsHorizontal();
@@ -6891,21 +7089,7 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                         total_tax: totals.totalGST,
                         grand_total: totals.grandTotal,
                         notes: notes,
-                        items: CART.map(item => ({
-                            product_id: item.product_id,
-                            product_name: item.name,
-                            quantity: item.quantity,
-                            unit_price: item.price,
-                            discount_amount: item.discount_amount || 0,
-                            discount_type: item.discount_type,
-                            total_price: item.total,
-                            hsn_code: item.hsn_code,
-                            cgst_rate: item.cgst_rate,
-                            sgst_rate: item.sgst_rate,
-                            igst_rate: item.igst_rate,
-                            tax_amount: calculateItemGST(item).total,
-                            price_type: item.price_type
-                        }))
+                        items: buildQuotationItemsForPayload(totals)
                     };
 
                     showLoading('Saving quotation...');
@@ -7349,16 +7533,20 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     console.log('POS System: Script loaded successfully');
 
     // ==================== SHIPPING DETAILS FUNCTIONS ====================
-    let SHIPPING_DETAILS = {
-        name: '',
-        contact: '',
-        gstin: '',
-        address: '',
-        vehicle_number: '',
-        shipping_charges: 0,
-        transport_type: '',
-        transport_charge: 0
-    };
+let SHIPPING_DETAILS = {
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    district: '',
+    state: '',
+    pincode: '',
+    vehicle_number: '',
+    shipping_charges: 0,
+    transport_type: '',
+    transport_charge: 0,
+    charges: 0
+};
     function initShippingModal() {
         try {
             const shippingBtn = document.getElementById('btnShippingDetails');
@@ -7450,7 +7638,10 @@ document.getElementById('invoice-type').addEventListener('change', function () {
             document.getElementById('shipping-contact').value = SHIPPING_DETAILS.contact || '';
             document.getElementById('shipping-gstin').value = SHIPPING_DETAILS.gstin || '';
             document.getElementById('shipping-address').value = SHIPPING_DETAILS.address || '';
-            document.getElementById('shipping-vehicle').value = SHIPPING_DETAILS.vehicle_number || '';
+document.getElementById('shipping-district').value = SHIPPING_DETAILS.district || '';
+document.getElementById('shipping-state').value = SHIPPING_DETAILS.state || '';
+document.getElementById('shipping-pincode').value = SHIPPING_DETAILS.pincode || '';
+document.getElementById('shipping-vehicle').value = SHIPPING_DETAILS.vehicle_number || '';
 
             const transportTypeInput = document.getElementById('shipping-transport-type');
             if (transportTypeInput) {
@@ -7475,7 +7666,10 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 contact: document.getElementById('shipping-contact').value.trim(),
                 gstin: document.getElementById('shipping-gstin').value.trim().toUpperCase(),
                 address: document.getElementById('shipping-address').value.trim(),
-                vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
+district: document.getElementById('shipping-district').value.trim(),
+state: document.getElementById('shipping-state').value.trim(),
+pincode: document.getElementById('shipping-pincode').value.trim(),
+vehicle_number: document.getElementById('shipping-vehicle').value.trim(),
 
                 shipping_charges: parseFloat(document.getElementById('shipping-charges').value) || 0,
 
@@ -7561,8 +7755,11 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                 SHIPPING_DETAILS.name ||
                 SHIPPING_DETAILS.contact ||
                 SHIPPING_DETAILS.gstin ||
-                SHIPPING_DETAILS.address ||
-                SHIPPING_DETAILS.vehicle_number ||
+SHIPPING_DETAILS.address ||
+SHIPPING_DETAILS.district ||
+SHIPPING_DETAILS.state ||
+SHIPPING_DETAILS.pincode ||
+SHIPPING_DETAILS.vehicle_number ||
                 SHIPPING_DETAILS.transport_type ||
                 parseFloat(SHIPPING_DETAILS.charges || 0) > 0;
 
@@ -7626,7 +7823,20 @@ document.getElementById('invoice-type').addEventListener('change', function () {
                     </div>
                 `;
                 }
+                if (SHIPPING_DETAILS.district || SHIPPING_DETAILS.state || SHIPPING_DETAILS.pincode) {
+    const locationText = [
+        SHIPPING_DETAILS.district,
+        SHIPPING_DETAILS.state,
+        SHIPPING_DETAILS.pincode
+    ].filter(Boolean).join(', ');
 
+    html += `
+        <div class="shipping-badge-horizontal">
+            <i class="fas fa-location-dot"></i>
+            <span class="badge-value">${locationText}</span>
+        </div>
+    `;
+}
                 if (parseFloat(SHIPPING_DETAILS.charges || 0) > 0) {
                     html += `
                     <div class="shipping-badge-horizontal">
@@ -7690,14 +7900,19 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     function clearShippingDetails() {
         try {
             SHIPPING_DETAILS = {
-                name: '',
-                contact: '',
-                gstin: '',
-                address: '',
-                vehicle_number: '',
-                transport_type: '',
-                charges: 0
-            };
+    name: '',
+    contact: '',
+    gstin: '',
+    address: '',
+    district: '',
+    state: '',
+    pincode: '',
+    vehicle_number: '',
+    shipping_charges: 0,
+    transport_type: '',
+    transport_charge: 0,
+    charges: 0
+};
 
             saveShippingDetailsToSession();
             updateShippingDetailsHorizontal();
@@ -7802,4 +8017,87 @@ document.getElementById('invoice-type').addEventListener('change', function () {
     window.clearShippingDetails = clearShippingDetails;
     window.clearShippingDetailsWithConfirm = clearShippingDetailsWithConfirm;
     window.updateShippingDetailsHorizontal = updateShippingDetailsHorizontal;
+
+    // ==================== FINAL ROUND-OFF SAFETY FIX ====================
+    // This keeps the Round Off row correct even if another display function
+    // updates Sub Total / Grand Total after updateBillingSummary().
+    function parseCurrencyValue(text) {
+        return Number.parseFloat(String(text || '').replace(/[^0-9.-]/g, '')) || 0;
+    }
+
+    function setRoundOffDisplayValue(roundOff) {
+        const formatted = roundOff < 0
+            ? `-₹ ${Math.abs(roundOff).toFixed(2)}`
+            : `₹ ${roundOff.toFixed(2)}`;
+
+        ['round-off', 'round-off-display', 'roundoff-display'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = formatted;
+                el.innerText = formatted;
+            }
+        });
+    }
+
+    function refreshRoundOffDisplay() {
+        try {
+            let actualTotal = 0;
+            let roundedTotal = 0;
+
+            if (typeof calculateTotals === 'function') {
+                const totals = calculateTotals();
+                actualTotal = Number.parseFloat(totals.grandTotal) || 0;
+                roundedTotal = Math.round(actualTotal);
+            }
+
+            // Fallback from visible DOM if calculateTotals is unavailable.
+            if (!actualTotal) {
+                actualTotal = parseCurrencyValue(document.getElementById('subtotal-display')?.textContent);
+            }
+
+            if (!roundedTotal) {
+                roundedTotal = parseCurrencyValue(document.getElementById('grand-total-display')?.textContent);
+                if (!roundedTotal && actualTotal) {
+                    roundedTotal = Math.round(actualTotal);
+                }
+            }
+
+            const roundOff = Number.parseFloat((roundedTotal - actualTotal).toFixed(2));
+            setRoundOffDisplayValue(roundOff);
+
+            window.POS_ACTUAL_GRAND_TOTAL = Number.parseFloat(actualTotal.toFixed(2));
+            window.POS_ROUNDED_GRAND_TOTAL = roundedTotal;
+            window.POS_ROUND_OFF = roundOff;
+        } catch (error) {
+            console.error('Error refreshing round off display:', error);
+        }
+    }
+
+    // Wrap updateBillingSummary so round-off is updated last.
+    if (typeof window.updateBillingSummary === 'function') {
+        const updateBillingSummaryBeforeRoundOffPatch = window.updateBillingSummary;
+        window.updateBillingSummary = function () {
+            const result = updateBillingSummaryBeforeRoundOffPatch.apply(this, arguments);
+            refreshRoundOffDisplay();
+            setTimeout(refreshRoundOffDisplay, 0);
+            return result;
+        };
+    }
+
+    // Also wrap payment summary because it can run after billing summary.
+    if (typeof window.updatePaymentSummary === 'function') {
+        const updatePaymentSummaryBeforeRoundOffPatch = window.updatePaymentSummary;
+        window.updatePaymentSummary = function () {
+            const result = updatePaymentSummaryBeforeRoundOffPatch.apply(this, arguments);
+            refreshRoundOffDisplay();
+            setTimeout(refreshRoundOffDisplay, 0);
+            return result;
+        };
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(refreshRoundOffDisplay, 100);
+        setTimeout(refreshRoundOffDisplay, 500);
+    });
+
 </script>

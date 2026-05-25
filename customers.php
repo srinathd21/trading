@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Kolkata');
 session_start();
 require_once 'config/database.php';
+require_once __DIR__ . '/includes/business_features.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
@@ -21,6 +22,9 @@ if (!$business_id || !$current_shop_id) {
 // Store in session for consistency if needed
 $_SESSION['business_id'] = $business_id;
 
+// GST API feature access
+$can_use_gst_api = hasBusinessFeature($pdo, (int)$business_id, 'gst_api_fetch');
+
 // ==================== HANDLE FORM SUBMISSIONS ====================
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $action = $_POST['action'] ?? '';
@@ -31,6 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $alt_phone = trim($_POST['alt_phone'] ?? ''); // New field
         $email = trim($_POST['email'] ?? '');
         $address = trim($_POST['address'] ?? '');
+        $district = trim($_POST['district'] ?? '');
+        $state = trim($_POST['state'] ?? '');
+        $pincode = trim($_POST['pincode'] ?? '');
         $gstin = trim($_POST['gstin'] ?? '');
         $customer_type = $_POST['customer_type'] ?? 'retail';
         $referral_id = !empty($_POST['referral_id']) ? (int)$_POST['referral_id'] : null;
@@ -49,11 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         try {
             if ($action == 'add_customer') {
-                $sql = "INSERT INTO customers (business_id, name, phone, alt_phone, email, address, gstin, customer_type, referral_id, 
+                $sql = "INSERT INTO customers (business_id, name, phone, alt_phone, email, address, district, state, pincode, gstin, customer_type, referral_id, 
                         credit_limit, outstanding_type, outstanding_amount, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$business_id, $name, $phone, $alt_phone, $email, $address, $gstin, $customer_type, $referral_id, 
+                $stmt->execute([$business_id, $name, $phone, $alt_phone, $email, $address, $district, $state, $pincode, $gstin, $customer_type, $referral_id, 
                               $credit_limit, $outstanding_type, $outstanding_amount]);
                 
                 $_SESSION['success'] = "Customer added successfully!";
@@ -65,7 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         phone = ?, 
                         alt_phone = ?,
                         email = ?, 
-                        address = ?, 
+                        address = ?,
+                        district = ?,
+                        state = ?,
+                        pincode = ?,
                         gstin = ?, 
                         customer_type = ?, 
                         referral_id = ?,
@@ -74,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         outstanding_amount = ?
                         WHERE id = ? AND business_id = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$name, $phone, $alt_phone, $email, $address, $gstin, $customer_type, $referral_id, 
+                $stmt->execute([$name, $phone, $alt_phone, $email, $address, $district, $state, $pincode, $gstin, $customer_type, $referral_id, 
                               $credit_limit, $outstanding_type, $outstanding_amount, $customer_id, $business_id]);
                 
                 $_SESSION['success'] = "Customer updated successfully!";
@@ -163,9 +173,9 @@ $where = "WHERE c.business_id = ?";
 $params = [$business_id];
 
 if ($search) {
-    $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.gstin LIKE ? OR c.address LIKE ?)";
+    $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.gstin LIKE ? OR c.address LIKE ? OR c.district LIKE ? OR c.state LIKE ? OR c.pincode LIKE ?)";
     $like = "%$search%";
-    $params = array_merge($params, [$like, $like, $like, $like, $like]);
+    $params = array_merge($params, [$like, $like, $like, $like, $like, $like, $like, $like]);
 }
 if ($customer_type && in_array($customer_type, ['retail', 'wholesale'])) {
     $where .= " AND c.customer_type = ?";
@@ -282,6 +292,30 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
             .btn-group { flex-wrap: wrap; gap: 3px; }
             .btn-group .btn { flex: 1; min-width: 40px; padding: 0.375rem 0.5rem; }
         }
+
+        .gst-fetch-wrap { display: flex; gap: 8px; }
+        .gst-fetch-wrap .form-control { flex: 1; }
+        .gst-api-status {
+            display: none;
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .gst-api-status.success { color: #198754; }
+        .gst-api-status.error { color: #dc3545; }
+        .gst-api-status.info { color: #0d6efd; }
+        .gst-fetch-btn { white-space: nowrap; min-width: 135px; }
+        .gst-manual-note {
+            display: block;
+            margin-top: 6px;
+            color: #6c757d;
+            font-size: 12px;
+        }
+        @media(max-width: 576px) {
+            .gst-fetch-wrap { flex-direction: column; }
+            .gst-fetch-btn { width: 100%; }
+        }
+
     </style>
 </head>
 <body data-sidebar="dark">
@@ -498,7 +532,7 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                             <i class="bx bx-search"></i>
                                         </span>
                                         <input type="text" name="search" class="form-control"
-                                               placeholder="Name, phone, email, GSTIN, address..."
+                                               placeholder="Name, phone, email, GSTIN, address, district, state, pincode..."
                                                value="<?= htmlspecialchars($search) ?>">
                                     </div>
                                 </div>
@@ -586,6 +620,20 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                     <small class="text-muted">
                                                         <i class="bx bx-map me-1"></i><?= htmlspecialchars(substr($c['address'], 0, 60)) ?>
                                                         <?= strlen($c['address']) > 60 ? '...' : '' ?>
+                                                    </small>
+                                                    <?php endif; ?>
+                                                    <?php
+                                                        $location_parts = array_filter([
+                                                            $c['district'] ?? '',
+                                                            $c['state'] ?? '',
+                                                            $c['pincode'] ?? ''
+                                                        ]);
+                                                        $location_text = implode(', ', $location_parts);
+                                                    ?>
+                                                    <?php if ($location_text): ?>
+                                                    <br>
+                                                    <small class="text-muted">
+                                                        <i class="bx bx-map-pin me-1"></i><?= htmlspecialchars($location_text) ?>
                                                     </small>
                                                     <?php endif; ?>
                                                     <?php if ($c['referral_name']): ?>
@@ -746,6 +794,9 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                                                         data-alt_phone="<?= htmlspecialchars($c['alt_phone'] ?? '', ENT_QUOTES) ?>"
                                                         data-email="<?= htmlspecialchars($c['email'] ?? '', ENT_QUOTES) ?>"
                                                         data-address="<?= htmlspecialchars($c['address'] ?? '', ENT_QUOTES) ?>"
+                                                        data-district="<?= htmlspecialchars($c['district'] ?? '', ENT_QUOTES) ?>"
+                                                        data-state="<?= htmlspecialchars($c['state'] ?? '', ENT_QUOTES) ?>"
+                                                        data-pincode="<?= htmlspecialchars($c['pincode'] ?? '', ENT_QUOTES) ?>"
                                                         data-gstin="<?= htmlspecialchars($c['gstin'] ?? '', ENT_QUOTES) ?>"
                                                         data-customer_type="<?= htmlspecialchars($c['customer_type'], ENT_QUOTES) ?>"
                                                         data-referral_id="<?= htmlspecialchars($c['referral_id'] ?? '', ENT_QUOTES) ?>"
@@ -890,7 +941,28 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">GSTIN Number</label>
-                                <input type="text" name="gstin" id="custGstin" class="form-control text-uppercase" maxlength="15" placeholder="22ABCDE1234F1Z5">
+
+                                <div class="gst-fetch-wrap">
+                                    <input type="text" name="gstin" id="custGstin" class="form-control text-uppercase" maxlength="15" placeholder="22ABCDE1234F1Z5">
+
+                                    <?php if ($can_use_gst_api): ?>
+                                        <button type="button" class="btn btn-primary gst-fetch-btn" id="fetchGstBtn">
+                                            <i class="bx bx-search-alt me-1"></i> Fetch GST
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="button" class="btn btn-light gst-fetch-btn" disabled title="GST API feature is not enabled for this business">
+                                            Manual Only
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div id="gstApiStatus" class="gst-api-status"></div>
+
+                                <?php if (!$can_use_gst_api): ?>
+                                    <small class="gst-manual-note">
+                                        GST API fetch is not enabled for this business. Enter details manually.
+                                    </small>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -942,6 +1014,27 @@ $net_manual_outstanding = $manual_credit_total - $manual_debit_total;
                     <div class="mb-3">
                         <label class="form-label">Address</label>
                         <textarea name="address" id="custAddress" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">District</label>
+                                <input type="text" name="district" id="custDistrict" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">State</label>
+                                <input type="text" name="state" id="custState" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Pincode</label>
+                                <input type="text" name="pincode" id="custPincode" class="form-control" maxlength="10">
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -1001,6 +1094,9 @@ $(document).ready(function() {
         $('#custAltPhone').val($(this).data('alt_phone') || '');
         $('#custEmail').val($(this).data('email'));
         $('#custAddress').val($(this).data('address'));
+        $('#custDistrict').val($(this).data('district') || '');
+        $('#custState').val($(this).data('state') || '');
+        $('#custPincode').val($(this).data('pincode') || '');
         $('#custGstin').val($(this).data('gstin'));
         $('#custType').val($(this).data('customer_type'));
         $('#custReferral').val($(this).data('referral_id'));
@@ -1069,6 +1165,10 @@ $(document).ready(function() {
         $('#custOutstandingType').val('credit');
         $('#custOutstandingAmount').val('0');
         $('#custAltPhone').val('');
+        $('#custDistrict').val('');
+        $('#custState').val('');
+        $('#custPincode').val('');
+        clearGstStatus();
     });
 
     // Phone number formatting for both fields
@@ -1078,6 +1178,14 @@ $(document).ready(function() {
             phone = phone.substring(0, 15);
         }
         $(this).val(phone);
+    });
+
+    $('#custPincode').on('input', function() {
+        let pincode = $(this).val().replace(/\D/g, '');
+        if (pincode.length > 10) {
+            pincode = pincode.substring(0, 10);
+        }
+        $(this).val(pincode);
     });
 
     // Auto-search with debounce
@@ -1117,6 +1225,90 @@ $(document).ready(function() {
     $('#custGstin').on('input', function() {
         $(this).val($(this).val().toUpperCase());
     });
+
+
+    function showGstStatus(message, type) {
+        const box = $('#gstApiStatus');
+        box.removeClass('success error info').addClass(type || 'info');
+        box.html(message).show();
+    }
+
+    function clearGstStatus() {
+        $('#gstApiStatus').hide().removeClass('success error info').html('');
+    }
+
+    function isValidGstin(gstin) {
+        return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
+    }
+
+    <?php if ($can_use_gst_api): ?>
+    $('#fetchGstBtn').on('click', function () {
+        const btn = $(this);
+        const gstin = ($('#custGstin').val() || '').trim().toUpperCase();
+
+        $('#custGstin').val(gstin);
+        clearGstStatus();
+
+        if (!gstin) {
+            showGstStatus('<i class="bx bx-error-circle me-1"></i>Enter GSTIN number.', 'error');
+            $('#custGstin').focus();
+            return;
+        }
+
+        if (!isValidGstin(gstin)) {
+            showGstStatus('<i class="bx bx-error-circle me-1"></i>Invalid GSTIN format. Please check the number.', 'error');
+            $('#custGstin').focus();
+            return;
+        }
+
+        const originalText = btn.html();
+        btn.prop('disabled', true).html('<i class="bx bx-loader bx-spin me-1"></i>Fetching...');
+
+        $.ajax({
+            url: 'ajax/ajax-fetch-gst-details.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { gstin: gstin },
+            success: function (res) {
+                if (!res || !res.success) {
+                    const msg = (res && res.message) ? res.message : 'GST details not found.';
+                    showGstStatus('<i class="bx bx-error-circle me-1"></i>' + msg, 'error');
+                    return;
+                }
+
+                const data = res.data || {};
+
+                if (data.name) $('#custName').val(data.name);
+                if (data.address) $('#custAddress').val(data.address);
+                if (data.district) $('#custDistrict').val(data.district);
+                if (data.state) $('#custState').val(data.state);
+                if (data.pincode) $('#custPincode').val(String(data.pincode).replace(/\D/g, '').substring(0, 10));
+                if (data.email) $('#custEmail').val(data.email);
+                if (data.phone) $('#custPhone').val(String(data.phone).replace(/\D/g, '').substring(0, 15));
+
+                if (data.customer_type) {
+                    $('#custType').val(data.customer_type);
+                } else if (data.gstin) {
+                    $('#custType').val('wholesale');
+                }
+
+                let message = '<i class="bx bx-check-circle me-1"></i>GST details fetched successfully.';
+                if (data.status) message += ' Status: <strong>' + data.status + '</strong>.';
+
+                showGstStatus(message, 'success');
+            },
+            error: function (xhr) {
+                let msg = 'Unable to fetch GST details. Please try again.';
+                if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                showGstStatus('<i class="bx bx-error-circle me-1"></i>' + msg, 'error');
+            },
+            complete: function () {
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
+    });
+    <?php endif; ?>
+
 
     // Auto-hide alerts after 5 seconds
     setTimeout(function() {

@@ -18,6 +18,19 @@ if (!in_array($user_role, ['admin', 'warehouse_manager', 'shop_manager','stock_m
     exit();
 }
 
+function dbColumnExists(PDO $pdo, string $table, string $column): bool {
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+        $stmt->execute([$column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+$hasDueDays = dbColumnExists($pdo, 'purchases', 'due_days');
+$hasDueDate = dbColumnExists($pdo, 'purchases', 'due_date');
+
 // Success message after payment
 $payment_success = isset($_GET['success']) && $_GET['success'] === 'payment';
 $paid_po = htmlspecialchars($_GET['po'] ?? '', ENT_QUOTES);
@@ -27,6 +40,7 @@ $search = trim($_GET['search'] ?? '');
 $status = trim($_GET['status'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
+$due_status = trim($_GET['due_status'] ?? '');
 $manufacturer_id = isset($_GET['manufacturer']) ? (int)$_GET['manufacturer'] : 0;
 
 // Get manufacturer name if manufacturer_id is provided
@@ -73,10 +87,33 @@ if (!empty($date_to)) {
     $params[] = $date_to;
 }
 
+// Due date alert filter
+if ($hasDueDate && !empty($due_status)) {
+    if ($due_status === 'overdue') {
+        $where[] = "p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) < CURDATE()";
+    } elseif ($due_status === 'today') {
+        $where[] = "p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) = CURDATE()";
+    } elseif ($due_status === 'upcoming') {
+        $where[] = "p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) > CURDATE() AND DATE(p.due_date) <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)";
+    } elseif ($due_status === 'no_due') {
+        $where[] = "(p.due_date IS NULL OR p.due_date = '0000-00-00')";
+    }
+}
+
 // Build WHERE clause string
 $whereClause = !empty($where) ? " WHERE " . implode(" AND ", $where) : "";
 
 // === Summary Stats with filters ===
+$dueStatsSelect = $hasDueDate ? ",
+        SUM(CASE WHEN p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) < CURDATE() THEN 1 ELSE 0 END) AS overdue_count,
+        SUM(CASE WHEN p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) = CURDATE() THEN 1 ELSE 0 END) AS due_today_count,
+        SUM(CASE WHEN p.payment_status <> 'paid' AND p.due_date IS NOT NULL AND DATE(p.due_date) > CURDATE() AND DATE(p.due_date) <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS due_soon_count
+" : ",
+        0 AS overdue_count,
+        0 AS due_today_count,
+        0 AS due_soon_count
+";
+
 $stats_sql = "
     SELECT
         COUNT(*) AS total_orders,
@@ -84,6 +121,7 @@ $stats_sql = "
         COALESCE(SUM(paid_amount), 0) AS total_paid,
         COALESCE(SUM(total_amount - paid_amount), 0) AS pending_amount,
         SUM(CASE WHEN payment_status = 'unpaid' THEN 1 ELSE 0 END) AS unpaid_count
+        $dueStatsSelect
     FROM purchases p
     LEFT JOIN manufacturers m ON p.manufacturer_id = m.id
     $whereClause
@@ -94,11 +132,16 @@ $stmt->execute($params);
 $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // === Fetch Filtered Purchase Orders ===
+$dueDaysSelect = $hasDueDays ? "p.due_days," : "NULL AS due_days,";
+$dueDateSelect = $hasDueDate ? "p.due_date," : "NULL AS due_date,";
+
 $purchases_sql = "
     SELECT
         p.id,
         p.purchase_number,
         p.purchase_date,
+        $dueDaysSelect
+        $dueDateSelect
         p.total_amount,
         p.paid_amount,
         p.payment_status,
@@ -191,6 +234,44 @@ include 'includes/head.php';
 }
 .manufacturer-filter-badge a:hover {
     text-decoration: underline;
+}
+.due-alert-card {
+    border: 0;
+    border-left: 4px solid transparent;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+.due-alert-card.overdue {
+    border-left-color: #dc3545;
+    background: #fff5f5;
+}
+.due-alert-card.today {
+    border-left-color: #ffc107;
+    background: #fffaf0;
+}
+.due-alert-card.upcoming {
+    border-left-color: #0dcaf0;
+    background: #f0fcff;
+}
+.due-date-line {
+    font-size: 0.78rem;
+    display: block;
+    margin-top: 4px;
+}
+.due-badge-overdue {
+    background: #f8d7da;
+    color: #842029;
+}
+.due-badge-today {
+    background: #fff3cd;
+    color: #664d03;
+}
+.due-badge-upcoming {
+    background: #cff4fc;
+    color: #055160;
+}
+.due-badge-paid {
+    background: #d1e7dd;
+    color: #0f5132;
 }
 @media (max-width: 768px) {
     .btn-group-action {
@@ -369,6 +450,74 @@ include 'includes/head.php';
                     </div>
                 </div>
 
+                <?php if ($hasDueDate && ((int)($stats['overdue_count'] ?? 0) > 0 || (int)($stats['due_today_count'] ?? 0) > 0 || (int)($stats['due_soon_count'] ?? 0) > 0)): ?>
+                <!-- Due Date Alerts -->
+                <div class="row mb-4">
+                    <?php if ((int)($stats['overdue_count'] ?? 0) > 0): ?>
+                    <div class="col-xl-4 col-md-6 mb-2">
+                        <a href="purchases.php?due_status=overdue" class="text-decoration-none">
+                            <div class="card due-alert-card overdue mb-0">
+                                <div class="card-body py-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <h6 class="text-danger mb-1">
+                                                <i class="bx bx-error-circle me-1"></i> Overdue Payments
+                                            </h6>
+                                            <h4 class="mb-0 text-danger"><?= (int)($stats['overdue_count'] ?? 0) ?></h4>
+                                            <small class="text-muted">Purchase bills crossed due date</small>
+                                        </div>
+                                        <i class="bx bx-alarm-exclamation fs-1 text-danger"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ((int)($stats['due_today_count'] ?? 0) > 0): ?>
+                    <div class="col-xl-4 col-md-6 mb-2">
+                        <a href="purchases.php?due_status=today" class="text-decoration-none">
+                            <div class="card due-alert-card today mb-0">
+                                <div class="card-body py-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <h6 class="text-warning mb-1">
+                                                <i class="bx bx-calendar-exclamation me-1"></i> Due Today
+                                            </h6>
+                                            <h4 class="mb-0 text-warning"><?= (int)($stats['due_today_count'] ?? 0) ?></h4>
+                                            <small class="text-muted">Payments to follow up today</small>
+                                        </div>
+                                        <i class="bx bx-calendar-event fs-1 text-warning"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ((int)($stats['due_soon_count'] ?? 0) > 0): ?>
+                    <div class="col-xl-4 col-md-6 mb-2">
+                        <a href="purchases.php?due_status=upcoming" class="text-decoration-none">
+                            <div class="card due-alert-card upcoming mb-0">
+                                <div class="card-body py-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <h6 class="text-info mb-1">
+                                                <i class="bx bx-time-five me-1"></i> Due Soon
+                                            </h6>
+                                            <h4 class="mb-0 text-info"><?= (int)($stats['due_soon_count'] ?? 0) ?></h4>
+                                            <small class="text-muted">Due within next 7 days</small>
+                                        </div>
+                                        <i class="bx bx-calendar-check fs-1 text-info"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
                 <!-- Search & Filter Card -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-body">
@@ -401,6 +550,16 @@ include 'includes/head.php';
                                     </select>
                                 </div>
                                 <div class="col-lg-2 col-md-6">
+                                    <label class="form-label">Due Alert</label>
+                                    <select name="due_status" class="form-select" <?= !$hasDueDate ? 'disabled' : '' ?>>
+                                        <option value="">All Due Dates</option>
+                                        <option value="overdue" <?= $due_status == 'overdue' ? 'selected' : '' ?>>Overdue</option>
+                                        <option value="today" <?= $due_status == 'today' ? 'selected' : '' ?>>Due Today</option>
+                                        <option value="upcoming" <?= $due_status == 'upcoming' ? 'selected' : '' ?>>Due Soon</option>
+                                        <option value="no_due" <?= $due_status == 'no_due' ? 'selected' : '' ?>>No Due Date</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-2 col-md-6">
                                     <label class="form-label">From Date</label>
                                     <input type="date" name="date_from" class="form-control" 
                                            value="<?= htmlspecialchars($date_from) ?>">
@@ -416,7 +575,7 @@ include 'includes/head.php';
                                         <button type="submit" class="btn btn-primary flex-grow-1">
                                             <i class="bx bx-filter me-1"></i> Apply
                                         </button>
-                                        <?php if ($search || $status || $date_from || $date_to || $manufacturer_id): ?>
+                                        <?php if ($search || $status || $due_status || $date_from || $date_to || $manufacturer_id): ?>
                                         <a href="purchases.php<?= $manufacturer_id > 0 ? '?manufacturer=' . $manufacturer_id : '' ?>" class="btn btn-outline-secondary">
                                             <i class="bx bx-reset me-1"></i> Clear
                                         </a>
@@ -461,6 +620,41 @@ include 'includes/head.php';
                                             'unpaid' => 'bx-x-circle'
                                         ][$p['payment_status']] ?? 'bx-receipt';
                                         $balance = $p['total_amount'] - $p['paid_amount'];
+
+                                        $due_date_raw = $p['due_date'] ?? null;
+                                        $due_days_value = $p['due_days'] ?? null;
+                                        $due_badge_class = 'secondary';
+                                        $due_label = 'No Due Date';
+                                        $due_days_left_text = '';
+                                        $is_unpaid_or_partial = $p['payment_status'] !== 'paid';
+
+                                        if ($hasDueDate && !empty($due_date_raw) && $due_date_raw !== '0000-00-00') {
+                                            $today = new DateTime(date('Y-m-d'));
+                                            $dueObj = new DateTime($due_date_raw);
+                                            $diffDays = (int)$today->diff($dueObj)->format('%r%a');
+
+                                            if (!$is_unpaid_or_partial) {
+                                                $due_badge_class = 'due-badge-paid';
+                                                $due_label = 'Paid';
+                                                $due_days_left_text = 'Due: ' . date('d M Y', strtotime($due_date_raw));
+                                            } elseif ($diffDays < 0) {
+                                                $due_badge_class = 'due-badge-overdue';
+                                                $due_label = 'Overdue';
+                                                $due_days_left_text = abs($diffDays) . ' day(s) late';
+                                            } elseif ($diffDays === 0) {
+                                                $due_badge_class = 'due-badge-today';
+                                                $due_label = 'Due Today';
+                                                $due_days_left_text = 'Due: ' . date('d M Y', strtotime($due_date_raw));
+                                            } elseif ($diffDays <= 7) {
+                                                $due_badge_class = 'due-badge-upcoming';
+                                                $due_label = 'Due Soon';
+                                                $due_days_left_text = $diffDays . ' day(s) left';
+                                            } else {
+                                                $due_badge_class = 'bg-light text-muted';
+                                                $due_label = 'Upcoming';
+                                                $due_days_left_text = $diffDays . ' day(s) left';
+                                            }
+                                        }
                                     ?>
                                     <tr class="purchase-row" data-id="<?= $p['id'] ?>">
                                         <td>
@@ -504,6 +698,29 @@ include 'includes/head.php';
                                             <div class="mb-2">
                                                 <strong class="d-block"><?= date('d M Y', strtotime($p['purchase_date'])) ?></strong>
                                                 <small class="text-muted"><?= date('D', strtotime($p['purchase_date'])) ?></small>
+
+                                                <?php if ($hasDueDate && !empty($p['due_date']) && $p['due_date'] !== '0000-00-00'): ?>
+                                                    <span class="due-date-line">
+                                                        <span class="badge <?= $due_badge_class ?> px-2 py-1">
+                                                            <i class="bx bx-calendar-exclamation me-1"></i><?= $due_label ?>
+                                                        </span>
+                                                    </span>
+                                                    <small class="text-muted d-block">
+                                                        Due: <?= date('d M Y', strtotime($p['due_date'])) ?>
+                                                        <?php if (!empty($due_days_value)): ?>
+                                                            (<?= (int)$due_days_value ?> days)
+                                                        <?php endif; ?>
+                                                    </small>
+                                                    <?php if ($is_unpaid_or_partial): ?>
+                                                        <small class="<?= $due_label === 'Overdue' ? 'text-danger fw-bold' : ($due_label === 'Due Today' ? 'text-warning fw-bold' : 'text-muted') ?>">
+                                                            <?= htmlspecialchars($due_days_left_text) ?>
+                                                        </small>
+                                                    <?php endif; ?>
+                                                <?php else: ?>
+                                                    <small class="text-muted d-block mt-1">
+                                                        <i class="bx bx-calendar-x me-1"></i>No due date
+                                                    </small>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                         <td class="text-center">
@@ -524,6 +741,15 @@ include 'includes/head.php';
                                             <small class="text-danger">
                                                 <i class="bx bx-alarm me-1"></i>₹<?= number_format($balance) ?> pending
                                             </small>
+                                            <?php if ($hasDueDate && $due_label === 'Overdue'): ?>
+                                                <small class="d-block text-danger fw-bold mt-1">
+                                                    <i class="bx bx-error-circle me-1"></i><?= htmlspecialchars($due_days_left_text) ?>
+                                                </small>
+                                            <?php elseif ($hasDueDate && $due_label === 'Due Today'): ?>
+                                                <small class="d-block text-warning fw-bold mt-1">
+                                                    <i class="bx bx-bell me-1"></i>Payment due today
+                                                </small>
+                                            <?php endif; ?>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
@@ -642,7 +868,7 @@ $(document).ready(function() {
     $('[data-bs-toggle="tooltip"]').tooltip();
 
     // Auto-submit on filter change
-    $('select[name="status"], input[name="date_from"], input[name="date_to"]').on('change', function() {
+    $('select[name="status"], select[name="due_status"], input[name="date_from"], input[name="date_to"]').on('change', function() {
         if ($(this).val() !== '') {
             $('#filterForm').submit();
         }

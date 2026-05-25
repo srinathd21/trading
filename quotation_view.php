@@ -75,20 +75,33 @@ $sgst_total = 0;
 $igst_total = 0;
 
 foreach ($items as $item) {
-    $item_total = $item['quantity'] * $item['unit_price'];
-    $discount_amount = $item['discount_amount'];
-    
+    $item_total = (float)$item['quantity'] * (float)$item['unit_price'];
+    $discount_amount = (float)$item['discount_amount'];
+
     if ($item['discount_type'] == 'percent') {
         $discount_amount = ($item_total * $discount_amount) / 100;
     }
-    
+
     $item_total_after_discount = $item_total - $discount_amount;
-    
-    if ($item['igst_rate'] > 0) {
-        $igst_total += ($item_total_after_discount * $item['igst_rate']) / 100;
+
+    $cgst_rate = (float)$item['cgst_rate'];
+    $sgst_rate = (float)$item['sgst_rate'];
+    $igst_rate = (float)$item['igst_rate'];
+
+    if ($igst_rate > 0) {
+        $total_rate = $igst_rate;
+        $taxable_value = $item_total_after_discount / (1 + ($total_rate / 100));
+        $igst_total += $item_total_after_discount - $taxable_value;
     } else {
-        $cgst_total += ($item_total_after_discount * $item['cgst_rate']) / 100;
-        $sgst_total += ($item_total_after_discount * $item['sgst_rate']) / 100;
+        $total_rate = $cgst_rate + $sgst_rate;
+        $taxable_value = $item_total_after_discount / (1 + ($total_rate / 100));
+
+        $total_tax = $item_total_after_discount - $taxable_value;
+
+        if ($total_rate > 0) {
+            $cgst_total += ($total_tax * $cgst_rate) / $total_rate;
+            $sgst_total += ($total_tax * $sgst_rate) / $total_rate;
+        }
     }
 }
 

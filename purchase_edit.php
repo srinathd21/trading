@@ -57,6 +57,11 @@ function finalFromEntered(float $value, float $gstRate, string $gstType): float 
 $hasPurchaseItemGstType = dbColumnExists($pdo, 'purchase_items', 'gst_type');
 $hasBatchGstType = dbColumnExists($pdo, 'purchase_batches', 'gst_type');
 $hasProductGstType = dbColumnExists($pdo, 'products', 'gst_type');
+$hasRoundOffEnabled = dbColumnExists($pdo, 'purchases', 'round_off_enabled');
+$hasRoundOffAmount = dbColumnExists($pdo, 'purchases', 'round_off_amount');
+$hasRoundedTotal = dbColumnExists($pdo, 'purchases', 'rounded_total');
+$hasDueDays = dbColumnExists($pdo, 'purchases', 'due_days');
+$hasDueDate = dbColumnExists($pdo, 'purchases', 'due_date');
 
 $shop_id = (int)($_SESSION['current_shop_id'] ?? 1);
 $shop_name_stmt = $pdo->prepare("SELECT shop_name FROM shops WHERE id = ? AND business_id = ?");
@@ -77,6 +82,20 @@ if (!$purchase) {
     header('Location: purchases.php');
     exit();
 }
+
+$existing_due_days = isset($purchase['due_days']) ? (int)$purchase['due_days'] : 0;
+$existing_due_date = $purchase['due_date'] ?? '';
+if ($existing_due_days <= 0 && !empty($existing_due_date) && !empty($purchase['purchase_date'])) {
+    try {
+        $pd = new DateTime($purchase['purchase_date']);
+        $dd = new DateTime($existing_due_date);
+        $existing_due_days = max(0, (int)$pd->diff($dd)->format('%r%a'));
+    } catch (Throwable $e) {
+        $existing_due_days = 0;
+    }
+}
+$standard_due_days = [5, 15, 20, 30];
+$existing_due_selection = in_array($existing_due_days, $standard_due_days, true) ? (string)$existing_due_days : ($existing_due_days > 0 ? 'custom' : '');
 
 $selectGstType = $hasPurchaseItemGstType ? "pi.gst_type AS item_gst_type," : "NULL AS item_gst_type,";
 $items_stmt = $pdo->prepare("\n    SELECT pi.*, $selectGstType\n           p.product_name, p.product_code, p.secondary_unit, p.sec_unit_conversion,\n           p.retail_price_type, p.retail_price_value,\n           p.wholesale_price_type, p.wholesale_price_value,\n           p.stock_price AS original_stock_price, p.mrp AS product_mrp,\n           " . ($hasProductGstType ? "p.gst_type AS product_gst_type," : "'inclusive' AS product_gst_type,") . "\n           pb.id AS batch_id, pb.batch_number, pb.manufacture_date, pb.expiry_date,\n           pb.quantity_remaining AS batch_quantity_remaining,\n           pb.old_mrp, pb.new_mrp AS batch_mrp,\n           pb.old_retail_price, pb.retail_price AS batch_retail_price,\n           pb.old_wholesale_price, pb.wholesale_price AS batch_wholesale_price\n    FROM purchase_items pi\n    JOIN products p ON pi.product_id = p.id AND p.business_id = pi.business_id\n    LEFT JOIN purchase_batches pb ON pi.purchase_id = pb.purchase_id\n        AND pi.product_id = pb.product_id AND pb.business_id = pi.business_id\n    WHERE pi.purchase_id = ? AND pi.business_id = ?\n    ORDER BY pi.id\n");
@@ -110,6 +129,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $items = $_POST['items'] ?? [];
     $payment_status = $_POST['payment_status'] ?? 'unpaid';
     $paid_amount = (float)($_POST['paid_amount'] ?? 0);
+    $due_days_selection = trim($_POST['due_days_selection'] ?? '');
+    $custom_due_days = (int)($_POST['custom_due_days'] ?? 0);
+    $due_days = null;
+    if (in_array($due_days_selection, ['5', '15', '20', '30'], true)) {
+        $due_days = (int)$due_days_selection;
+    } elseif ($due_days_selection === 'custom' && $custom_due_days > 0) {
+        $due_days = $custom_due_days;
+    }
+    $due_date = null;
+    if ($due_days !== null && $due_days >= 0) {
+        try {
+            $dueObj = new DateTime($purchase_date);
+            $dueObj->modify('+' . $due_days . ' days');
+            $due_date = $dueObj->format('Y-m-d');
+        } catch (Throwable $e) {
+            $due_date = null;
+        }
+    }
+    $round_off_enabled = (int)($_POST['round_off_enabled'] ?? 0);
+    $round_off_amount = (float)($_POST['round_off_amount'] ?? 0);
+    $rounded_total = (float)($_POST['rounded_total'] ?? 0);
 
     if ($manufacturer_id <= 0 || $shop_id <= 0 || empty($items)) {
         $error = 'Please select supplier, receiving shop and add at least one product.';
@@ -136,13 +176,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Upload failed.');
                 }
             }
+            $updateFields = [
+                'manufacturer_id = ?',
+                'purchase_date = ?',
+                'reference = ?',
+                'purchase_invoice_no = ?',
+                'bill_image = ?',
+                'notes = ?',
+                'shop_id = ?',
+                'payment_status = ?',
+                'paid_amount = ?'
+            ];
+            $updateParams = [
+                $manufacturer_id,
+                $purchase_date,
+                $reference,
+                $purchase_invoice_no ?: null,
+                $bill_image_path,
+                $notes,
+                $shop_id,
+                $payment_status,
+                $paid_amount
+            ];
 
-            $update_purchase = $pdo->prepare("\n                UPDATE purchases\n                SET manufacturer_id = ?, purchase_date = ?, reference = ?,\n                    purchase_invoice_no = ?, bill_image = ?, notes = ?,\n                    shop_id = ?, payment_status = ?, paid_amount = ?,\n                    updated_at = NOW()\n                WHERE id = ? AND business_id = ?\n            ");
-            $update_purchase->execute([
-                $manufacturer_id, $purchase_date, $reference, $purchase_invoice_no ?: null,
-                $bill_image_path, $notes, $shop_id, $payment_status, $paid_amount,
-                $purchase_id, $current_business_id
-            ]);
+            if ($hasDueDays) {
+                $updateFields[] = 'due_days = ?';
+                $updateParams[] = $due_days;
+            }
+            if ($hasDueDate) {
+                $updateFields[] = 'due_date = ?';
+                $updateParams[] = $due_date;
+            }
+
+            $updateFields[] = 'updated_at = NOW()';
+            $updateParams[] = $purchase_id;
+            $updateParams[] = $current_business_id;
+
+            $update_purchase = $pdo->prepare('UPDATE purchases SET ' . implode(', ', $updateFields) . ' WHERE id = ? AND business_id = ?');
+            $update_purchase->execute($updateParams);
 
             /* Restore old stock from this purchase before re-applying edited items */
             $old_items_stmt = $pdo->prepare("\n                SELECT pi.product_id, pi.quantity\n                FROM purchase_items pi\n                WHERE pi.purchase_id = ? AND pi.business_id = ?\n            ");
@@ -395,8 +466,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $pdo->prepare("UPDATE purchases SET total_amount = ?, total_gst = ? WHERE id = ? AND business_id = ?")
-                ->execute([$grand_total, $total_gst, $purchase_id, $current_business_id]);
+            $final_total_to_save = $grand_total;
+            if ($round_off_enabled === 1 && $rounded_total > 0) {
+                $final_total_to_save = $rounded_total;
+            }
+
+            if ($hasRoundOffEnabled && $hasRoundOffAmount && $hasRoundedTotal) {
+                $pdo->prepare("
+                    UPDATE purchases
+                    SET total_amount = ?,
+                        total_gst = ?,
+                        round_off_enabled = ?,
+                        round_off_amount = ?,
+                        rounded_total = ?
+                    WHERE id = ? AND business_id = ?
+                ")->execute([
+                    $final_total_to_save,
+                    $total_gst,
+                    $round_off_enabled,
+                    $round_off_amount,
+                    $rounded_total,
+                    $purchase_id,
+                    $current_business_id
+                ]);
+            } else {
+                $pdo->prepare("UPDATE purchases SET total_amount = ?, total_gst = ? WHERE id = ? AND business_id = ?")
+                    ->execute([$final_total_to_save, $total_gst, $purchase_id, $current_business_id]);
+            }
 
             if ($total_credit_amount > 0) {
                 $gstmt = $pdo->prepare("\n                    INSERT INTO gst_credits\n                    (business_id, purchase_id, purchase_number, purchase_invoice_no, credit_amount, status, created_at)\n                    VALUES (?, ?, ?, ?, ?, 'not_claimed', NOW())\n                ");
@@ -532,6 +628,9 @@ foreach ($prodRes as $p) {
 <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><i class="bx bx-error me-2"></i><?= h($error) ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 <div class="stock-change-warning"><i class="bx bx-info-circle me-2"></i><strong>Important:</strong> Editing this purchase will adjust stock quantities. Previous purchase stock is restored first, then edited stock is applied.</div>
 <form method="POST" id="purchaseForm" enctype="multipart/form-data">
+<input type="hidden" name="round_off_enabled" id="round_off_enabled" value="0">
+<input type="hidden" name="round_off_amount" id="round_off_amount" value="0">
+<input type="hidden" name="rounded_total" id="rounded_total" value="0">
 <div class="row g-3">
 <div class="col-12"><div class="card border-start border-primary border-4 shadow-sm"><div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bx bx-detail me-2"></i> Purchase Details</h5></div><div class="card-body"><div class="row g-2">
 <div class="col-md-3"><label class="form-label fw-bold">Purchase Number</label><input type="text" class="form-control bg-light" value="<?= h($purchase['purchase_number']) ?>" readonly></div>
@@ -542,6 +641,9 @@ foreach ($prodRes as $p) {
 <div class="col-md-3"><label class="form-label fw-bold">Bill/Reference No.</label><input type="text" name="reference" class="form-control" value="<?= h($purchase['reference'] ?? '') ?>"></div>
 <div class="col-md-2"><label class="form-label">Payment Status</label><select name="payment_status" class="form-select"><option value="unpaid" <?= $purchase['payment_status'] === 'unpaid' ? 'selected' : '' ?>>Unpaid</option><option value="partial" <?= $purchase['payment_status'] === 'partial' ? 'selected' : '' ?>>Partial</option><option value="paid" <?= $purchase['payment_status'] === 'paid' ? 'selected' : '' ?>>Paid</option></select></div>
 <div class="col-md-2"><label class="form-label">Paid Amount</label><input type="number" name="paid_amount" step="0.01" min="0" class="form-control" value="<?= h($purchase['paid_amount'] ?? 0) ?>"></div>
+<div class="col-md-2"><label class="form-label">Due Days</label><select name="due_days_selection" id="due_days_selection" class="form-select"><option value="" <?= $existing_due_selection === '' ? 'selected' : '' ?>>No Due</option><option value="5" <?= $existing_due_selection === '5' ? 'selected' : '' ?>>5 Days</option><option value="15" <?= $existing_due_selection === '15' ? 'selected' : '' ?>>15 Days</option><option value="20" <?= $existing_due_selection === '20' ? 'selected' : '' ?>>20 Days</option><option value="30" <?= $existing_due_selection === '30' ? 'selected' : '' ?>>30 Days</option><option value="custom" <?= $existing_due_selection === 'custom' ? 'selected' : '' ?>>Custom</option></select></div>
+<div class="col-md-2" id="custom_due_days_wrap" style="<?= $existing_due_selection === 'custom' ? '' : 'display:none;' ?>"><label class="form-label">Custom Days</label><input type="number" name="custom_due_days" id="custom_due_days" min="1" step="1" class="form-control" value="<?= $existing_due_selection === 'custom' ? h($existing_due_days) : '' ?>" placeholder="Days"></div>
+<div class="col-md-2"><label class="form-label">Due Date</label><input type="date" name="due_date" id="due_date" class="form-control bg-light" value="<?= h($existing_due_date) ?>" readonly></div>
 <div class="col-md-2"><label class="form-label">Notes</label><textarea name="notes" class="form-control" rows="1"><?= h($purchase['notes'] ?? '') ?></textarea></div>
 <div class="col-12"><label class="form-label fw-bold">Bill Image</label><?php if (!empty($purchase['bill_image']) && file_exists($purchase['bill_image'])): ?><div class="current-bill mb-2"><a href="<?= h($purchase['bill_image']) ?>" target="_blank"><i class="bx bx-file me-1"></i> View Current Bill</a></div><?php endif; ?><div class="bill-upload-section w-100" onclick="document.getElementById('billImage').click()"><i class="bx bx-cloud-upload fs-3 text-primary"></i><p class="mb-0">Click to upload new bill image</p><small class="text-muted">JPG, PNG, GIF, WEBP, PDF (Max 10MB)</small><input type="file" name="bill_image" id="billImage" class="d-none" accept="image/*,.pdf"><div id="billPreview" class="bill-preview"></div></div></div>
 </div></div></div></div>
@@ -558,7 +660,7 @@ foreach ($prodRes as $p) {
 <div class="col-md-12"><div id="batchInfoSection" class="batch-info-section"><div class="row g-2"><div class="col-md-4"><label class="form-label small">Batch Number</label><input type="text" id="batchNumber" class="form-control" placeholder="Auto-generated"></div><div class="col-md-4"><label class="form-label small">Manufacture Date</label><input type="date" id="manufactureDate" class="form-control"></div><div class="col-md-4"><label class="form-label small">Expiry Date</label><input type="date" id="expiryDate" class="form-control"></div></div></div></div>
 <div class="col-md-12"><button type="button" id="addProductBtn" class="btn btn-primary w-100"><i class="bx bx-plus me-1"></i> Add Product to List</button></div>
 </div><div id="productDetails" class="product-details-card"><div class="row"><div class="col-md-6"><strong id="productName"></strong><br><small class="text-muted">Code: <span id="productCode"></span></small><br><small class="text-muted" id="productHSN"></small><div id="productStockInfo" class="mt-1"></div></div><div class="col-md-6 text-end"><small class="text-danger fw-bold">MRP: ₹<span id="mrpDisplay"></span></small><br><small class="text-success fw-bold">Current Cost: ₹<span id="currentCost"></span></small><br><small class="text-muted" id="productGST"></small><div class="mt-1"><small>Retail: ₹<span id="currentRetailPrice"></span></small><br><small>Wholesale: ₹<span id="currentWholesalePrice"></span></small></div></div></div></div><div id="priceChangeWarning" class="price-change-warning" style="display:none;"><i class="bx bx-info-circle me-1"></i><span id="warningText"></span></div></div>
-<div class="table-responsive mt-3"><table class="table table-hover selected-products-table" id="selectedProductsTable"><thead><tr><th>#</th><th>Product</th><th class="text-end">Qty</th><th class="text-end">Purchase Price</th><th class="text-end">Tax</th><th class="text-end">Total</th><th class="text-center">Batch</th><th class="text-center">Action</th></tr></thead><tbody id="selectedProductsBody"></tbody><tfoot><tr><td colspan="5" class="text-end fw-bold">Grand Total:</td><td class="text-end fw-bold" id="grandTotal">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">Total GST:</td><td class="text-end fw-bold" id="totalGST">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">GST Credit:</td><td class="text-end fw-bold text-success" id="gstCredit">₹0.00</td><td colspan="2"></td></tr></tfoot></table></div>
+<div class="table-responsive mt-3"><table class="table table-hover selected-products-table" id="selectedProductsTable"><thead><tr><th>#</th><th>Product</th><th class="text-end">Qty</th><th class="text-end">Purchase Price</th><th class="text-end">Tax</th><th class="text-end">Total</th><th class="text-center">Batch</th><th class="text-center">Action</th></tr></thead><tbody id="selectedProductsBody"></tbody><tfoot><tr><td colspan="5" class="text-end fw-bold">Total GST:</td><td class="text-end fw-bold" id="totalGST">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">GST Credit:</td><td class="text-end fw-bold text-success" id="gstCredit">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end fw-bold">Grand Total:</td><td class="text-end fw-bold" id="grandTotal">₹0.00</td><td colspan="2"></td></tr><tr class="table-warning" id="roundOffRow" style="display:none;"><td colspan="5" class="text-end fw-bold">Round Off:</td><td class="text-end fw-bold" id="roundOffDisplay">₹0.00</td><td colspan="2"></td></tr><tr class="table-success" id="roundedTotalRow" style="display:none;"><td colspan="5" class="text-end fw-bold">Payable Rounded Total:</td><td class="text-end fw-bold" id="roundedGrandTotal">₹0.00</td><td colspan="2"></td></tr><tr><td colspan="5" class="text-end"><button type="button" class="btn btn-sm btn-warning" id="roundOffBtn"><i class="bx bx-calculator me-1"></i> Round Off Paisa</button> <button type="button" class="btn btn-sm btn-outline-secondary" id="clearRoundOffBtn" style="display:none;">Clear Round Off</button></td><td colspan="3"></td></tr></tfoot></table></div>
 <div class="alert alert-info mt-3"><strong>Purchase Summary:</strong> <span id="stockSummary">No products selected</span></div></div><div class="card-footer"><div class="text-end"><button type="submit" class="btn btn-success btn-lg px-5" id="submitBtn"><i class="bx bx-save me-2"></i> Update Purchase Order</button></div></div></div></div>
 </div></form></div></div><?php include 'includes/footer.php'; ?></div></div>
 <?php include 'includes/scripts.php'; ?>
@@ -569,6 +671,7 @@ const PRODUCTS = <?php echo json_encode($jsProducts, JSON_UNESCAPED_UNICODE|JSON
 const BARCODE_MAP = <?php echo json_encode($barcodeMap, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
 const PURCHASE_ITEMS = <?php echo json_encode($purchase_items, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
 let selectedProducts = new Map(); let itemCounter = 0; let currentProductId = null; let manualPriceUpdate = false;
+let roundOffEnabled = false; let currentRawGrandTotal = 0; let currentRoundedTotal = 0; let currentRoundOffAmount = 0;
 const Toast = Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:2500,timerProgressBar:true});
 function findProductById(id){return PRODUCTS[id];}
 function num(v){return parseFloat(v)||0;}
@@ -589,12 +692,15 @@ function checkPriceChange(finalPurchasePrice,product){let w=$('#priceChangeWarni
 function addProductToCart(){let productId=$('#productSelect').val(); if(!productId){Toast.fire({icon:'warning',title:'Select product'});return;} let product=findProductById(productId); let data={productId,productName:product.name,productCode:product.code,mrp:num($('#mrp').val()),discount:$('#discount').val().trim(),purchasePrice:num($('#purchasePrice').val()),quantity:num($('#quantity').val())||1,cgst:num($('#cgstRate').val()),sgst:num($('#sgstRate').val()),igst:num($('#igstRate').val()),gst_type:$('#gstType').val()||'inclusive',hsn:product.hsn||'',batch_number:$('#batchNumber').val()||'',manufacture_date:$('#manufactureDate').val()||'',expiry_date:$('#expiryDate').val()||''}; if(data.mrp<=0||data.purchasePrice<=0){Toast.fire({icon:'warning',title:'Enter valid MRP and purchase price'});return;} proceedWithAddProduct(product,data);}
 function proceedWithAddProduct(product,data){let selling=calculateSellingPrices(data.purchasePrice,product,data.cgst,data.sgst,data.igst,data.gst_type); let totals=calculateItemTotal(data.purchasePrice,data.quantity,data.cgst,data.sgst,data.igst,data.gst_type); let itemId=++itemCounter; selectedProducts.set(itemId,{id:data.productId,itemId,name:data.productName,code:data.productCode,mrp:data.mrp,discount:data.discount,purchase_price:data.purchasePrice,final_purchase_price:finalFromEntered(data.purchasePrice,data.cgst,data.sgst,data.igst,data.gst_type),retail_price:selling.retailPrice,wholesale_price:selling.wholesalePrice,retail_base:selling.retailBase,wholesale_base:selling.wholesaleBase,quantity:data.quantity,cgst:data.cgst,sgst:data.sgst,igst:data.igst,total_gst:gstRate(data.cgst,data.sgst,data.igst),gst_type:data.gst_type,hsn:data.hsn,batch_number:data.batch_number,manufacture_date:data.manufacture_date,expiry_date:data.expiry_date,without_gst:totals.withoutGst,gst_amount:totals.gstAmount,cgst_amount:totals.cgst,sgst_amount:totals.sgst,igst_amount:totals.igst,total:totals.total,gst_credit:totals.gstCredit}); updateProductsTable(); updateSummary(); resetProductFields(); Toast.fire({icon:'success',title:'Product added'});}
 function loadPurchaseItems(){selectedProducts.clear(); itemCounter=0; PURCHASE_ITEMS.forEach(item=>{let product=findProductById(item.product_id); if(!product)return; let cgst=num(item.cgst_rate),sgst=num(item.sgst_rate),igst=num(item.igst_rate); let gstType=item.item_gst_type||item.gst_type||product.gst_type||'inclusive'; let enteredPurchase=enteredFromFinal(item.purchase_price,cgst,sgst,igst,gstType); let enteredMrp=enteredFromFinal(item.mrp,cgst,sgst,igst,gstType); let totals=calculateItemTotal(enteredPurchase,item.quantity,cgst,sgst,igst,gstType); let itemId=++itemCounter; selectedProducts.set(itemId,{id:item.product_id,itemId,name:product.name,code:product.code,mrp:enteredMrp,discount:item.discount||'',purchase_price:enteredPurchase,final_purchase_price:num(item.purchase_price),retail_price:num(item.retail_price),wholesale_price:num(item.wholesale_price),quantity:num(item.quantity),cgst,sgst,igst,total_gst:gstRate(cgst,sgst,igst),gst_type:gstType,hsn:item.hsn_code||product.hsn,batch_number:item.batch_number||'',manufacture_date:item.manufacture_date||'',expiry_date:item.expiry_date||'',without_gst:totals.withoutGst,gst_amount:totals.gstAmount,cgst_amount:totals.cgst,sgst_amount:totals.sgst,igst_amount:totals.igst,total:totals.total,gst_credit:totals.gstCredit});}); updateProductsTable(); updateSummary();}
-function updateProductsTable(){let tbody=$('#selectedProductsBody'); tbody.empty(); let totalAmount=0,totalGST=0,totalCredit=0,row=0; if(selectedProducts.size===0){tbody.html('<tr class="text-center"><td colspan="8" class="py-4">No products added yet</td></tr>'); $('#itemCount').text('0 Items'); $('#submitBtn').prop('disabled',true); $('#grandTotal,#totalGST,#gstCredit').text(formatMoney(0)); return;} selectedProducts.forEach((p,itemId)=>{row++; totalAmount+=p.total; totalGST+=p.gst_amount; totalCredit+=p.gst_credit; tbody.append(`<tr><td>${row}</td><td><strong>${p.name}</strong><br><small>${p.code}</small>${p.hsn?`<br><small>HSN: ${p.hsn}</small>`:''}<input type="hidden" name="items[${itemId}][product_id]" value="${p.id}"><input type="hidden" name="items[${itemId}][mrp]" value="${p.mrp}"><input type="hidden" name="items[${itemId}][discount]" value="${p.discount}"><input type="hidden" name="items[${itemId}][purchase_price]" value="${p.purchase_price}"><input type="hidden" name="items[${itemId}][retail_price]" value="${p.retail_price}"><input type="hidden" name="items[${itemId}][wholesale_price]" value="${p.wholesale_price}"><input type="hidden" name="items[${itemId}][quantity]" value="${p.quantity}"><input type="hidden" name="items[${itemId}][cgst_rate]" value="${p.cgst}"><input type="hidden" name="items[${itemId}][sgst_rate]" value="${p.sgst}"><input type="hidden" name="items[${itemId}][igst_rate]" value="${p.igst}"><input type="hidden" name="items[${itemId}][gst_type]" value="${p.gst_type}"><input type="hidden" name="items[${itemId}][batch_number]" value="${p.batch_number}"><input type="hidden" name="items[${itemId}][manufacture_date]" value="${p.manufacture_date}"><input type="hidden" name="items[${itemId}][expiry_date]" value="${p.expiry_date}"></td><td class="text-end">${p.quantity}</td><td class="text-end"><strong>${formatMoney(p.final_purchase_price)}</strong><br><small>${p.gst_type}</small><br><small>Base: ${formatMoney(p.purchase_price)}</small></td><td class="text-end">${p.total_gst}%<br><small>${formatMoney(p.gst_amount)}</small></td><td class="text-end fw-bold">${formatMoney(p.total)}<br><small>Without GST: ${formatMoney(p.without_gst)}</small></td><td class="text-center">${p.batch_number||'-'}</td><td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm delete-btn" data-item-id="${itemId}"><i class="bx bx-trash"></i></button></td></tr>`);}); $('#grandTotal').text(formatMoney(totalAmount)); $('#totalGST').text(formatMoney(totalGST)); $('#gstCredit').text(formatMoney(totalCredit)); $('#itemCount').text(`${selectedProducts.size} ${selectedProducts.size===1?'Item':'Items'}`); $('#submitBtn').prop('disabled',false); $('.delete-btn').on('click',function(){selectedProducts.delete($(this).data('item-id')); updateProductsTable(); updateSummary();});}
+function calculateRoundOffAmount(amount){amount=num(amount);let rounded=Math.round(amount);let roundOff=rounded-amount;return{raw:amount,rounded:rounded,roundOff:roundOff};}
+function applyRoundOffDisplay(){let result=calculateRoundOffAmount(currentRawGrandTotal);currentRoundedTotal=result.rounded;currentRoundOffAmount=result.roundOff;$('#round_off_enabled').val(roundOffEnabled?'1':'0');$('#round_off_amount').val(roundOffEnabled?currentRoundOffAmount.toFixed(2):'0');$('#rounded_total').val(roundOffEnabled?currentRoundedTotal.toFixed(2):currentRawGrandTotal.toFixed(2));if(roundOffEnabled){$('#roundOffRow,#roundedTotalRow,#clearRoundOffBtn').show();$('#roundOffDisplay').text((currentRoundOffAmount>=0?'+ ':'- ')+formatMoney(Math.abs(currentRoundOffAmount)));$('#roundedGrandTotal').text(formatMoney(currentRoundedTotal));$('#grandTotal').text(formatMoney(currentRawGrandTotal));}else{$('#roundOffRow,#roundedTotalRow,#clearRoundOffBtn').hide();$('#roundOffDisplay').text(formatMoney(0));$('#roundedGrandTotal').text(formatMoney(0));$('#grandTotal').text(formatMoney(currentRawGrandTotal));}}
+function updateProductsTable(){let tbody=$('#selectedProductsBody'); tbody.empty(); let totalAmount=0,totalGST=0,totalCredit=0,row=0; if(selectedProducts.size===0){tbody.html('<tr class="text-center"><td colspan="8" class="py-4">No products added yet</td></tr>'); $('#itemCount').text('0 Items'); $('#submitBtn').prop('disabled',true); currentRawGrandTotal=0; roundOffEnabled=false; $('#totalGST,#gstCredit').text(formatMoney(0)); applyRoundOffDisplay(); return;} selectedProducts.forEach((p,itemId)=>{row++; totalAmount+=p.total; totalGST+=p.gst_amount; totalCredit+=p.gst_credit; tbody.append(`<tr><td>${row}</td><td><strong>${p.name}</strong><br><small>${p.code}</small>${p.hsn?`<br><small>HSN: ${p.hsn}</small>`:''}<input type="hidden" name="items[${itemId}][product_id]" value="${p.id}"><input type="hidden" name="items[${itemId}][mrp]" value="${p.mrp}"><input type="hidden" name="items[${itemId}][discount]" value="${p.discount}"><input type="hidden" name="items[${itemId}][purchase_price]" value="${p.purchase_price}"><input type="hidden" name="items[${itemId}][retail_price]" value="${p.retail_price}"><input type="hidden" name="items[${itemId}][wholesale_price]" value="${p.wholesale_price}"><input type="hidden" name="items[${itemId}][quantity]" value="${p.quantity}"><input type="hidden" name="items[${itemId}][cgst_rate]" value="${p.cgst}"><input type="hidden" name="items[${itemId}][sgst_rate]" value="${p.sgst}"><input type="hidden" name="items[${itemId}][igst_rate]" value="${p.igst}"><input type="hidden" name="items[${itemId}][gst_type]" value="${p.gst_type}"><input type="hidden" name="items[${itemId}][batch_number]" value="${p.batch_number}"><input type="hidden" name="items[${itemId}][manufacture_date]" value="${p.manufacture_date}"><input type="hidden" name="items[${itemId}][expiry_date]" value="${p.expiry_date}"></td><td class="text-end">${p.quantity}</td><td class="text-end"><strong>${formatMoney(p.final_purchase_price)}</strong><br><small>${p.gst_type}</small><br><small>Base: ${formatMoney(p.purchase_price)}</small></td><td class="text-end">${p.total_gst}%<br><small>${formatMoney(p.gst_amount)}</small></td><td class="text-end fw-bold">${formatMoney(p.total)}<br><small>Without GST: ${formatMoney(p.without_gst)}</small></td><td class="text-center">${p.batch_number||'-'}</td><td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm delete-btn" data-item-id="${itemId}"><i class="bx bx-trash"></i></button></td></tr>`);}); currentRawGrandTotal=totalAmount; $('#totalGST').text(formatMoney(totalGST)); $('#gstCredit').text(formatMoney(totalCredit)); applyRoundOffDisplay(); $('#itemCount').text(`${selectedProducts.size} ${selectedProducts.size===1?'Item':'Items'}`); $('#submitBtn').prop('disabled',false); $('.delete-btn').on('click',function(){selectedProducts.delete($(this).data('item-id')); updateProductsTable(); updateSummary();});}
 function updateSummary(){if(selectedProducts.size===0){$('#stockSummary').html('No products selected');return;} let q=0,v=0,w=0,g=0; selectedProducts.forEach(p=>{q+=p.quantity;v+=p.total;w+=p.without_gst;g+=p.gst_amount;}); $('#stockSummary').html(`${selectedProducts.size} items | Qty: <strong>${q}</strong> | Without GST: <strong>${formatMoney(w)}</strong> | GST: <strong>${formatMoney(g)}</strong> | Final: <strong>${formatMoney(v)}</strong>`);}
 function resetProductFields(){$('#productSelect').val(null).trigger('change');currentProductId=null;manualPriceUpdate=false;$('#stockDisplay,#mrp,#purchasePrice').val('0');$('#discount').val('');$('#quantity').val(1);$('#calculatedPurchasePrice,#retailPrice,#wholesalePrice').val('');$('#cgstRate,#sgstRate,#igstRate').val('0');$('#gstType').val('inclusive');$('#batchNumber,#manufactureDate,#expiryDate').val('');$('#productDetails,#batchInfoSection').removeClass('show').hide();$('#priceCalculation,#priceDetails,#priceChangeWarning').hide();}
 function setupBillImagePreview(){$('#billImage').on('change',function(){let file=this.files[0],preview=$('#billPreview'); if(!file){preview.hide().html('');return;} let reader=new FileReader(); reader.onload=e=>{preview.html(file.type==='application/pdf'?`<embed src="${e.target.result}" type="application/pdf" />`:`<img src="${e.target.result}" />`).show();}; reader.readAsDataURL(file);});}
 function initializeSelect2(){$('.select2-supplier,.select2-shop').select2({width:'100%'}); let productOptions=[]; Object.keys(PRODUCTS).forEach(id=>{let p=PRODUCTS[id]; productOptions.push({id,text:`${p.name} (${p.code})`});}); $('#productSelect').select2({placeholder:'-- Type to search product --',allowClear:true,width:'100%',data:productOptions}); $('#productSelect').on('change',function(){let id=$(this).val(); if(id)updateProductDetails(id);});}
-$(document).ready(function(){initializeSelect2();setupBillImagePreview(); if(typeof flatpickr!=='undefined'){flatpickr('#manufactureDate',{dateFormat:'Y-m-d'});flatpickr('#expiryDate',{dateFormat:'Y-m-d'});} loadPurchaseItems(); $('#addProductBtn').on('click',addProductToCart); $('#discount').on('input',function(){manualPriceUpdate=false;updatePriceCalculations();}); $('#purchasePrice').on('input',function(){manualPriceUpdate=true;updatePriceCalculations();}); $('#mrp,#quantity,#cgstRate,#sgstRate,#igstRate,#gstType').on('input change',updatePriceCalculations); $('#purchaseForm').on('submit',function(e){if(selectedProducts.size===0){e.preventDefault();Toast.fire({icon:'warning',title:'Please add at least one product'});}});});
+function updateDueDateFields(){let purchaseDate=$('input[name="purchase_date"]').val();let selected=$('#due_days_selection').val();let days=0;if(selected==='custom'){days=parseInt($('#custom_due_days').val()||'0',10)||0;$('#custom_due_days_wrap').show();}else{$('#custom_due_days_wrap').hide();days=parseInt(selected||'0',10)||0;}if(!purchaseDate||days<=0){$('#due_date').val('');return;}let d=new Date(purchaseDate+'T00:00:00');d.setDate(d.getDate()+days);let yyyy=d.getFullYear();let mm=String(d.getMonth()+1).padStart(2,'0');let dd=String(d.getDate()).padStart(2,'0');$('#due_date').val(`${yyyy}-${mm}-${dd}`);} 
+$(document).ready(function(){initializeSelect2();setupBillImagePreview(); if(typeof flatpickr!=='undefined'){flatpickr('#manufactureDate',{dateFormat:'Y-m-d'});flatpickr('#expiryDate',{dateFormat:'Y-m-d'});} loadPurchaseItems(); updateDueDateFields(); $('#due_days_selection,#custom_due_days,input[name="purchase_date"]').on('input change',updateDueDateFields); $('#addProductBtn').on('click',addProductToCart); $('#discount').on('input',function(){manualPriceUpdate=false;updatePriceCalculations();}); $('#purchasePrice').on('input',function(){manualPriceUpdate=true;updatePriceCalculations();}); $('#mrp,#quantity,#cgstRate,#sgstRate,#igstRate,#gstType').on('input change',updatePriceCalculations); $('#roundOffBtn').on('click',function(){if(selectedProducts.size===0){Toast.fire({icon:'warning',title:'Add products before round off'});return;} roundOffEnabled=true; applyRoundOffDisplay(); Toast.fire({icon:'success',title:'Paisa rounded off'});}); $('#clearRoundOffBtn').on('click',function(){roundOffEnabled=false; applyRoundOffDisplay(); Toast.fire({icon:'info',title:'Round off removed'});}); $('#purchaseForm').on('submit',function(e){if(selectedProducts.size===0){e.preventDefault();Toast.fire({icon:'warning',title:'Please add at least one product'});}});});
 </script>
 </body>
 </html>

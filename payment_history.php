@@ -252,11 +252,7 @@ $payment_modes = ['cash', 'upi', 'bank', 'cheque'];
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex flex-wrap gap-2">
-                                <?php if (!$payment_table_exists): ?>
-                                <a href="javascript:void(0)" onclick="showCreateTableModal()" class="btn btn-warning">
-                                    <i class="bx bx-database me-1"></i> Setup Payment Table
-                                </a>
-                                <?php endif; ?>
+                               
                                 <button class="btn btn-outline-secondary" onclick="exportPayments()">
                                     <i class="bx bx-download me-1"></i> Export
                                 </button>

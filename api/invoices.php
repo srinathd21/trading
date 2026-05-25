@@ -2,7 +2,7 @@
 // api/invoices.php
 require_once '../includes/auth.php';
 require_once '../config/database.php';
-
+require_once '../includes/number_format_helper.php';
 checkAuth();
 $business_id = getBusinessId();
 $shop_id = getShopId();
@@ -84,136 +84,37 @@ function getNextInvoiceNumber()
 {
     global $pdo, $business_id, $shop_id;
 
-    $data = json_decode(file_get_contents('php://input'), true);
+    $data = json_decode(file_get_contents('php://input'), true) ?: [];
 
     $gst_type = strtolower(trim($data['invoice_type'] ?? 'gst'));
     $is_non_gst = in_array($gst_type, ['non-gst', 'non_gst', 'nongst'], true);
 
-    // =========================
-    // GET PREFIX FROM invoice_settings
-    // =========================
-    $settings = [];
+    $date_value = $data['invoice_date'] ?? $data['date'] ?? date('Y-m-d H:i:s');
 
-    if (!empty($shop_id)) {
-        $settings_sql = "SELECT invoice_prefix, non_gst_invoice_prefix
-                         FROM invoice_settings
-                         WHERE business_id = ? AND shop_id = ?
-                         LIMIT 1";
-        $settings_stmt = $pdo->prepare($settings_sql);
-        $settings_stmt->execute([$business_id, $shop_id]);
-        $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    // Fallback to business default settings
-    if (empty($settings)) {
-        $settings_sql = "SELECT invoice_prefix, non_gst_invoice_prefix
-                         FROM invoice_settings
-                         WHERE business_id = ? AND shop_id IS NULL
-                         LIMIT 1";
-        $settings_stmt = $pdo->prepare($settings_sql);
-        $settings_stmt->execute([$business_id]);
-        $settings = $settings_stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    // Final fallback values
-    $gst_prefix = trim($settings['invoice_prefix'] ?? 'INV');
-    $non_gst_prefix = trim($settings['non_gst_invoice_prefix'] ?? 'NGST');
-
-    $prefix = $is_non_gst ? $non_gst_prefix : $gst_prefix;
-
-    // =========================
-    // SPECIAL FORMAT FOR BUSINESS ID 28
-    // =========================
-    if ((int)$business_id === 28) {
-        // Example result: BAE/2026-2027/0001
-        $full_prefix = rtrim($prefix) . '';
-        $number_length = 4;
-    } else {
-        // Default format for other businesses
-        // Example result: INV202604-0001
-        $year_month = date('Ym');
-        $full_prefix = $prefix . $year_month . '-';
-        $number_length = 4;
-    }
-
-    debug_log("Generating next invoice number", [
+    $result = nf_generate_document_number($pdo, [
         'business_id' => $business_id,
         'shop_id' => $shop_id,
-        'gst_type' => $gst_type,
-        'is_non_gst' => $is_non_gst,
-        'gst_prefix' => $gst_prefix,
-        'non_gst_prefix' => $non_gst_prefix,
-        'selected_prefix' => $prefix,
-        'full_prefix' => $full_prefix
+        'document_type' => $is_non_gst ? 'invoice_non_gst' : 'invoice_gst',
+        'table_name' => 'invoices',
+        'number_column' => 'invoice_number',
+        'date_column' => 'created_at',
+        'date_value' => $date_value
     ]);
 
-    // =========================
-    // FIND LAST INVOICE NUMBER
-    // =========================
-    $sql = "SELECT invoice_number
-            FROM invoices
-            WHERE business_id = ?
-              AND shop_id = ?
-              AND invoice_number LIKE ?
-            ORDER BY CAST(SUBSTRING(invoice_number, ? + 1) AS UNSIGNED) DESC
-            LIMIT 1";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        $business_id,
-        $shop_id,
-        $full_prefix . '%',
-        strlen($full_prefix)
-    ]);
-    $last = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    $seq = 1;
-    if ($last && !empty($last['invoice_number'])) {
-        $last_num = (int)substr($last['invoice_number'], strlen($full_prefix));
-        $seq = $last_num + 1;
+    if (!$result['success']) {
+        echo json_encode($result);
+        return;
     }
-
-    // =========================
-    // ENSURE UNIQUE NUMBER
-    // =========================
-    $max_attempts = 50;
-    $attempt = 0;
-    $invoice_number = '';
-
-    while ($attempt < $max_attempts) {
-        $invoice_number = $full_prefix . str_pad($seq, $number_length, '0', STR_PAD_LEFT);
-
-        $check_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
-        $check_stmt = $pdo->prepare($check_sql);
-        $check_stmt->execute([$invoice_number, $business_id]);
-        $exists = $check_stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$exists) {
-            break;
-        }
-
-        $seq++;
-        $attempt++;
-    }
-
-    if ($attempt >= $max_attempts) {
-        $invoice_number = $full_prefix . time();
-    }
-
-    debug_log("Generated invoice number", [
-        'invoice_number' => $invoice_number,
-        'attempts' => $attempt,
-        'final_seq' => $seq
-    ]);
 
     echo json_encode([
         'success' => true,
-        'invoice_number' => $invoice_number,
-        'prefix' => $prefix,
-        'next_number' => str_pad($seq, $number_length, '0', STR_PAD_LEFT)
+        'invoice_number' => $result['number'],
+        'prefix' => $result['prefix'],
+        'middle_value' => $result['middle_value'],
+        'next_number' => $result['sequence'],
+        'reset_period' => $result['reset_period']
     ]);
 }
-
 function saveInvoice($action = 'save')
 {
     global $pdo, $business_id, $shop_id, $user_id;
@@ -504,23 +405,49 @@ function saveInvoice($action = 'save')
             ]);
         }
 
-        /* =========================
-   INVOICE NUMBER + DATE
+/* =========================
+   INVOICE NUMBER + DATE & TIME
 ========================= */
 $invoice_number = trim($data['invoice_number'] ?? '');
 if ($invoice_number === '') {
     throw new Exception("Invoice number is required");
 }
 
-$invoice_date = trim($data['invoice_date'] ?? ($data['date'] ?? ''));
-if ($invoice_date === '') {
-    throw new Exception("Invoice date is required");
+/*
+    Frontend can send:
+    1) 2026-05-14T11:05      from datetime-local
+    2) 2026-05-14 11:05:00   MySQL format
+    3) 2026-05-14            old date-only fallback
+*/
+$invoice_date_raw = trim($data['invoice_date'] ?? ($data['date'] ?? ''));
+
+if ($invoice_date_raw === '') {
+    throw new Exception("Invoice date and time is required");
 }
 
-$invoice_date_obj = DateTime::createFromFormat('Y-m-d', $invoice_date);
-if (!$invoice_date_obj || $invoice_date_obj->format('Y-m-d') !== $invoice_date) {
-    throw new Exception("Invalid invoice date format");
+// Convert datetime-local format to MySQL format
+$invoice_date_raw = str_replace('T', ' ', $invoice_date_raw);
+
+// If seconds missing, add :00
+if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $invoice_date_raw)) {
+    $invoice_date_raw .= ':00';
 }
+
+// If only date received, add current time as fallback
+if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $invoice_date_raw)) {
+    $invoice_date_raw .= ' ' . date('H:i:s');
+}
+
+// Validate full datetime
+$invoice_date_obj = DateTime::createFromFormat('Y-m-d H:i:s', $invoice_date_raw);
+
+if (!$invoice_date_obj || $invoice_date_obj->format('Y-m-d H:i:s') !== $invoice_date_raw) {
+    throw new Exception("Invalid invoice date and time format");
+}
+
+// Final values
+$invoice_date = $invoice_date_obj->format('Y-m-d');
+$created_at = $invoice_date_obj->format('Y-m-d H:i:s');
 
 $check_duplicate_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
 $check_stmt = $pdo->prepare($check_duplicate_sql);
@@ -536,10 +463,9 @@ if ($existing_invoice) {
     throw new Exception("Invoice number already exists. Please enter a different invoice number.");
 }
 
-$created_at = $invoice_date . ' ' . date('H:i:s');
-
-debug_log("Using user-entered invoice number and date", [
+debug_log("Using user-entered invoice number and invoice date-time as created_at", [
     'invoice_number' => $invoice_number,
+    'invoice_date_raw' => $invoice_date_raw,
     'invoice_date' => $invoice_date,
     'created_at' => $created_at
 ]);
@@ -572,6 +498,9 @@ $shipping_name = trim($shipping_details['name'] ?? '');
 $shipping_contact = trim($shipping_details['contact'] ?? '');
 $shipping_gstin = trim($shipping_details['gstin'] ?? '');
 $shipping_address = trim($shipping_details['address'] ?? '');
+$shipping_district = trim($shipping_details['district'] ?? '');
+$shipping_state = trim($shipping_details['state'] ?? '');
+$shipping_pincode = trim($shipping_details['pincode'] ?? '');
 $shipping_vehicle_number = trim($shipping_details['vehicle_number'] ?? '');
 
 $shipping_charges = (float)($shipping_details['shipping_charges'] ?? 0);
@@ -640,7 +569,8 @@ $stmt = $pdo->prepare("
         referral_id, referral_commission_amount,
         points_redeemed, points_discount_amount,
         shipping_name, shipping_contact, shipping_gstin, shipping_address,
-        shipping_vehicle_number, shipping_transport_type, shipping_charges, transport_charge,
+shipping_district, shipping_state, shipping_pincode,
+shipping_vehicle_number, shipping_transport_type, shipping_charges, transport_charge,
         credit_due_date,
         created_at, gst_type
     ) VALUES (
@@ -652,10 +582,11 @@ $stmt = $pdo->prepare("
         ?, ?, ?, ?,
         ?, ?,
         ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?,
-        ?, ?
+       ?, ?, ?, ?,
+?, ?, ?,
+?, ?, ?, ?,
+?,
+?, ?
     )
 ");
 
@@ -693,11 +624,14 @@ $stmt->execute([
     $total_referral_commission,
     $points_used,
     $points_discount,
-    $shipping_name ?: null,
-    $shipping_contact ?: null,
-    $shipping_gstin ?: null,
-    $shipping_address ?: null,
-    $shipping_vehicle_number ?: null,
+$shipping_name ?: null,
+$shipping_contact ?: null,
+$shipping_gstin ?: null,
+$shipping_address ?: null,
+$shipping_district ?: null,
+$shipping_state ?: null,
+$shipping_pincode ?: null,
+$shipping_vehicle_number ?: null,
 $shipping_transport_type ?: null,
 $shipping_charges,
 $transport_charge,

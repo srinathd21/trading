@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Kolkata');
 session_start();
 require_once 'config/database.php';
+require_once 'includes/number_format_helper.php';
 
 // Authorization
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'warehouse_manager','stock_manager'])) {
@@ -34,31 +35,85 @@ $warehouse_name = $warehouse['shop_name'] ?? 'Warehouse';
 $success = $error = '';
 
 /**
- * Generate a unique purchase number for the current business
+ * Safe column checker for purchases table.
  */
-function generatePurchaseNumber($pdo, $business_id) {
-    $year = date('Y');
-    $month = date('m');
-    
-    // Get the count of purchases for THIS SPECIFIC BUSINESS in the current month
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) 
-        FROM purchases 
-        WHERE business_id = ?
-       
-    ");
-    $stmt->execute([$business_id]);
-    $count = $stmt->fetchColumn();
-    
-    // Generate the next number in sequence (count + 1)
-    $next_number = $count + 1;
-    $purchase_number = "PO{$year}{$month}-" . str_pad($next_number, 4, '0', STR_PAD_LEFT);
-    
-    return $purchase_number;
+function purchaseColumnExists(PDO $pdo, string $column): bool {
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM purchases LIKE ?");
+        $stmt->execute([$column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * Create due-days columns automatically if they are missing.
+ * This avoids HTTP 500 when the page is deployed before DB update.
+ */
+function ensurePurchaseDueColumns(PDO $pdo): void {
+    try {
+        if (!purchaseColumnExists($pdo, 'due_days')) {
+            $pdo->exec("ALTER TABLE purchases ADD COLUMN due_days INT NULL DEFAULT NULL AFTER purchase_date");
+        }
+
+        if (!purchaseColumnExists($pdo, 'due_date')) {
+            $pdo->exec("ALTER TABLE purchases ADD COLUMN due_date DATE NULL DEFAULT NULL AFTER due_days");
+        }
+    } catch (Throwable $e) {
+        error_log('Unable to ensure purchase due columns: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Calculate due date from purchase date and selected due days.
+ */
+function calculatePurchaseDueDate(string $purchase_date, int $due_days): string {
+    $purchase_date = trim($purchase_date) !== '' ? $purchase_date : date('Y-m-d');
+
+    try {
+        $dt = new DateTime($purchase_date);
+    } catch (Throwable $e) {
+        $dt = new DateTime();
+    }
+
+    if ($due_days > 0) {
+        $dt->modify('+' . $due_days . ' days');
+    }
+
+    return $dt->format('Y-m-d');
+}
+
+ensurePurchaseDueColumns($pdo);
+
+
+/**
+ * Generate purchase number using number_format_settings table.
+ * Supports split format: prefix + middle format + separator + last digits.
+ * Examples: PO202604-0001, PO2026-2027-0001
+ */
+function generatePurchaseNumber($pdo, $business_id, $shop_id = null, $purchase_date = null) {
+    $purchase_date = $purchase_date ?: date('Y-m-d');
+
+    $result = nf_generate_document_number($pdo, [
+        'business_id'   => $business_id,
+        'shop_id'       => $shop_id,
+        'document_type' => 'purchase',
+        'table_name'    => 'purchases',
+        'number_column' => 'purchase_number',
+        'date_column'   => 'purchase_date',
+        'date_value'    => $purchase_date
+    ]);
+
+    if (!empty($result['success'])) {
+        return $result['number'];
+    }
+
+    throw new Exception($result['message'] ?? 'Unable to generate purchase number');
 }
 
 // Generate Unique Purchase Number for current business
-$purchase_number = generatePurchaseNumber($pdo, $current_business_id);
+$purchase_number = generatePurchaseNumber($pdo, $current_business_id, $shop_id, date('Y-m-d'));
 
 // Fetch Data - Only from current business
 $manufacturers = $pdo->prepare("
@@ -95,11 +150,33 @@ if (!file_exists($upload_dir)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $manufacturer_id = (int)($_POST['manufacturer_id'] ?? 0);
     $purchase_date   = $_POST['purchase_date'] ?? date('Y-m-d');
+    $posted_purchase_number = trim($_POST['purchase_number'] ?? '');
     $reference       = trim($_POST['reference'] ?? '');
     $purchase_invoice_no = trim($_POST['purchase_invoice_no'] ?? '');
     $notes           = trim($_POST['notes'] ?? '');
     $shop_id         = (int)($_POST['shop_id'] ?? 0);
     $items           = $_POST['items'] ?? [];
+
+    // Due days and due date
+    $due_days_option = $_POST['due_days_option'] ?? '5';
+    $custom_due_days = (int)($_POST['custom_due_days'] ?? 0);
+
+    if ($due_days_option === 'custom') {
+        $due_days = $custom_due_days > 0 ? $custom_due_days : 0;
+    } else {
+        $due_days = (int)$due_days_option;
+    }
+
+    if (!in_array($due_days, [0, 5, 15, 20, 30], true) && $due_days_option !== 'custom') {
+        $due_days = 5;
+    }
+
+    $due_date = calculatePurchaseDueDate($purchase_date, $due_days);
+
+    // Round-off values from UI
+    $round_off_enabled = (int)($_POST['round_off_enabled'] ?? 0);
+    $round_off_amount  = (float)($_POST['round_off_amount'] ?? 0);
+    $rounded_total     = (float)($_POST['rounded_total'] ?? 0);
 
     if ($manufacturer_id <= 0 || $shop_id <= 0 || empty($items)) {
         $error = "Please select supplier, receiving shop and add at least one product.";
@@ -107,8 +184,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
 
-            // Generate a new purchase number for this submission (in case of any race conditions)
-            $purchase_number = generatePurchaseNumber($pdo, $current_business_id);
+            // Use posted purchase number first; if empty/duplicate, generate from number_format_settings.
+            $purchase_number = $posted_purchase_number;
+
+            if ($purchase_number === '') {
+                $purchase_number = generatePurchaseNumber($pdo, $current_business_id, $shop_id, $purchase_date);
+            }
+
+            $check_po = $pdo->prepare("
+                SELECT id
+                FROM purchases
+                WHERE business_id = ?
+                  AND purchase_number = ?
+                LIMIT 1
+            ");
+            $check_po->execute([$current_business_id, $purchase_number]);
+
+            if ($check_po->fetch()) {
+                $purchase_number = generatePurchaseNumber($pdo, $current_business_id, $shop_id, $purchase_date);
+            }
 
             // Handle bill image upload
             $bill_image_path = null;
@@ -144,15 +238,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert Purchase Record with business_id
             $stmt = $pdo->prepare("
                 INSERT INTO purchases 
-                (purchase_number, manufacturer_id, purchase_date, reference, shop_id,
+                (purchase_number, manufacturer_id, purchase_date, due_days, due_date, reference, shop_id,
                  purchase_invoice_no, bill_image, notes, 
                  total_amount, total_gst, payment_status, created_by, created_at, business_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'unpaid', ?, NOW(), ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'unpaid', ?, NOW(), ?)
             ");
             $stmt->execute([
                 $purchase_number, 
                 $manufacturer_id, 
-                $purchase_date, 
+                $purchase_date,
+                $due_days,
+                $due_date,
                 $reference,
                 $shop_id,
                 $purchase_invoice_no ?: null,
@@ -591,11 +687,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Update Final Totals in purchases table
+            // If round off is enabled, save the rounded total as purchase total_amount.
+            $final_total_to_save = $grand_total;
+            if ($round_off_enabled === 1 && $rounded_total > 0) {
+                $final_total_to_save = $rounded_total;
+            }
+
             $pdo->prepare("
                 UPDATE purchases 
                 SET total_amount = ?, total_gst = ?, paid_amount = 0 
                 WHERE id = ? AND business_id = ?
-            ")->execute([$grand_total, $total_gst, $purchase_id, $current_business_id]);
+            ")->execute([$final_total_to_save, $total_gst, $purchase_id, $current_business_id]);
 
             // Create GST credit record
             if ($total_credit_amount > 0) {
@@ -1247,7 +1349,7 @@ textarea.form-control { height: auto; min-height: 32px; }
         </div>
     </div>
 
-    <div class="main-content">
+    <div class="main-content mb-5">
         <div class="page-content mb-4">
             <div class="container-fluid">
 
@@ -1288,6 +1390,9 @@ textarea.form-control { height: auto; min-height: 32px; }
                 <?php endif; ?>
 
                 <form method="POST" id="purchaseForm" enctype="multipart/form-data">
+                    <input type="hidden" name="round_off_enabled" id="round_off_enabled" value="0">
+                    <input type="hidden" name="round_off_amount" id="round_off_amount" value="0">
+                    <input type="hidden" name="rounded_total" id="rounded_total" value="0">
                     <div class="row g-4">
                         <!-- Purchase Details Card -->
                         <div class="col-12">
@@ -1301,12 +1406,38 @@ textarea.form-control { height: auto; min-height: 32px; }
     <div class="row g-2">
         <div class="col-md-3">
             <label class="form-label fw-bold">Purchase Number</label>
-            <input type="text" class="form-control bg-light" value="<?= $purchase_number ?>" readonly>
+            <input type="text"
+                   name="purchase_number"
+                   id="purchase_number"
+                   class="form-control bg-light"
+                   value="<?= htmlspecialchars($purchase_number) ?>"
+                   readonly>
         </div>
 
         <div class="col-md-3">
             <label class="form-label fw-bold">Purchase Date <span class="text-danger">*</span></label>
-            <input type="date" name="purchase_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+            <input type="date" name="purchase_date" id="purchase_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Due Days</label>
+            <select name="due_days_option" id="due_days_option" class="form-select">
+                <option value="5" selected>5 Days</option>
+                <option value="15">15 Days</option>
+                <option value="20">20 Days</option>
+                <option value="30">30 Days</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+
+        <div class="col-md-3" id="custom_due_days_box" style="display:none;">
+            <label class="form-label fw-bold">Custom Due Days</label>
+            <input type="number" name="custom_due_days" id="custom_due_days" class="form-control" min="1" step="1" placeholder="Enter days">
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Due Date</label>
+            <input type="date" name="due_date" id="due_date" class="form-control bg-light" value="<?= date('Y-m-d', strtotime('+5 days')) ?>" readonly>
         </div>
 
         <div class="col-md-3">
@@ -1609,11 +1740,6 @@ textarea.form-control { height: auto; min-height: 32px; }
                                             </tbody>
                                             <tfoot>
                                                 <tr class="table-light">
-                                                    <td colspan="5" class="text-end fw-bold">Grand Total:</td>
-                                                    <td class="text-end fw-bold" id="grandTotal">₹0.00</td>
-                                                    <td colspan="2"></td>
-                                                </tr>
-                                                <tr class="table-light">
                                                     <td colspan="5" class="text-end fw-bold">Total GST:</td>
                                                     <td class="text-end fw-bold" id="totalGST">₹0.00</td>
                                                     <td colspan="2"></td>
@@ -1622,6 +1748,32 @@ textarea.form-control { height: auto; min-height: 32px; }
                                                     <td colspan="5" class="text-end fw-bold">GST Credit:</td>
                                                     <td class="text-end fw-bold text-success" id="gstCredit">₹0.00</td>
                                                     <td colspan="2"></td>
+                                                </tr>
+                                                <tr class="table-light">
+                                                    <td colspan="5" class="text-end fw-bold">Grand Total:</td>
+                                                    <td class="text-end fw-bold" id="grandTotal">₹0.00</td>
+                                                    <td colspan="2"></td>
+                                                </tr>
+                                                <tr class="table-warning" id="roundOffRow" style="display:none;">
+                                                    <td colspan="5" class="text-end fw-bold">Round Off:</td>
+                                                    <td class="text-end fw-bold" id="roundOffDisplay">₹0.00</td>
+                                                    <td colspan="2"></td>
+                                                </tr>
+                                                <tr class="table-success" id="roundedTotalRow" style="display:none;">
+                                                    <td colspan="5" class="text-end fw-bold">Payable Rounded Total:</td>
+                                                    <td class="text-end fw-bold" id="roundedGrandTotal">₹0.00</td>
+                                                    <td colspan="2"></td>
+                                                </tr>
+                                                <tr class="table-light">
+                                                    <td colspan="5" class="text-end">
+                                                        <button type="button" class="btn btn-sm btn-warning" id="roundOffBtn">
+                                                            <i class="bx bx-calculator me-1"></i> Round Off Paisa
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearRoundOffBtn" style="display:none;">
+                                                            Clear Round Off
+                                                        </button>
+                                                    </td>
+                                                    <td colspan="3"></td>
                                                 </tr>
                                             </tfoot>
                                         </table>
@@ -1855,6 +2007,10 @@ let selectedProducts = new Map();
 let itemCounter = 0;
 let currentProductId = null;
 let manualPriceUpdate = false; // Flag to track manual price entry mode
+let roundOffEnabled = false;
+let currentRawGrandTotal = 0;
+let currentRoundedTotal = 0;
+let currentRoundOffAmount = 0;
 
 // SweetAlert2 Toast configuration
 const Toast = Swal.mixin({
@@ -2473,6 +2629,54 @@ function resetProductFields() {
     select.focus();
 }
 
+
+function calculateRoundOffAmount(amount) {
+    amount = parseFloat(amount) || 0;
+    const rounded = Math.round(amount);
+    const roundOff = rounded - amount;
+
+    return {
+        raw: amount,
+        rounded: rounded,
+        roundOff: roundOff
+    };
+}
+
+function applyRoundOffDisplay() {
+    const result = calculateRoundOffAmount(currentRawGrandTotal);
+
+    currentRoundedTotal = result.rounded;
+    currentRoundOffAmount = result.roundOff;
+
+    $('#round_off_enabled').val(roundOffEnabled ? '1' : '0');
+    $('#round_off_amount').val(currentRoundOffAmount.toFixed(2));
+    $('#rounded_total').val(currentRoundedTotal.toFixed(2));
+
+    if (roundOffEnabled) {
+        $('#roundOffRow').show();
+        $('#roundedTotalRow').show();
+        $('#clearRoundOffBtn').show();
+
+        $('#roundOffDisplay').text(
+            (currentRoundOffAmount >= 0 ? '+ ' : '- ') + formatMoney(Math.abs(currentRoundOffAmount))
+        );
+
+        $('#roundedGrandTotal').text(formatMoney(currentRoundedTotal));
+        $('#grandTotal').text(formatMoney(currentRawGrandTotal));
+    } else {
+        $('#roundOffRow').hide();
+        $('#roundedTotalRow').hide();
+        $('#clearRoundOffBtn').hide();
+
+        $('#roundOffDisplay').text(formatMoney(0));
+        $('#roundedGrandTotal').text(formatMoney(0));
+
+        $('#round_off_amount').val('0');
+        $('#rounded_total').val(currentRawGrandTotal.toFixed(2));
+        $('#grandTotal').text(formatMoney(currentRawGrandTotal));
+    }
+}
+
 // Update products table
 function updateProductsTable() {
     const tbody = $('#selectedProductsBody');
@@ -2486,9 +2690,12 @@ function updateProductsTable() {
         tbody.append('<tr id="emptyRow" class="text-center"><td colspan="8" class="py-4"><i class="bx bx-package fs-1 text-muted mb-3 d-block"></i><p class="text-muted">No products added yet</p></td></tr>');
         $('#itemCount').text('0 Items');
         $('#submitBtn').prop('disabled', true);
+        currentRawGrandTotal = 0;
+        roundOffEnabled = false;
         $('#grandTotal').text(formatMoney(0));
         $('#totalGST').text(formatMoney(0));
         $('#gstCredit').text(formatMoney(0));
+        applyRoundOffDisplay();
         return;
     }
 
@@ -2589,9 +2796,10 @@ function updateProductsTable() {
     });
 
     // Update totals
-    $('#grandTotal').text(formatMoney(totalAmount));
+    currentRawGrandTotal = totalAmount;
     $('#totalGST').text(formatMoney(totalGST));
     $('#gstCredit').text(formatMoney(totalGSTCredit));
+    applyRoundOffDisplay();
     $('#itemCount').text(`${selectedProducts.size} ${selectedProducts.size === 1 ? 'Item' : 'Items'}`);
     $('#submitBtn').prop('disabled', false);
 
@@ -2668,6 +2876,9 @@ function updateSummary() {
 
 // Submit form
 function prepareFormForSubmit() {
+    // Sync round-off values before submit
+    applyRoundOffDisplay();
+
     // Clear existing input fields
     $('input[name^="items["]').remove();
     
@@ -3287,6 +3498,35 @@ $(document).ready(function() {
     
     // Add product button click
     $('#addProductBtn').on('click', addProductToCart);
+
+    // Round off paisa button click
+    $('#roundOffBtn').on('click', function() {
+        if (selectedProducts.size === 0) {
+            Toast.fire({
+                icon: 'warning',
+                title: 'Add products before round off'
+            });
+            return;
+        }
+
+        roundOffEnabled = true;
+        applyRoundOffDisplay();
+
+        Toast.fire({
+            icon: 'success',
+            title: 'Paisa rounded off'
+        });
+    });
+
+    $('#clearRoundOffBtn').on('click', function() {
+        roundOffEnabled = false;
+        applyRoundOffDisplay();
+
+        Toast.fire({
+            icon: 'info',
+            title: 'Round off removed'
+        });
+    });
     
     // Set default shop
     $('select[name="shop_id"]').val('<?= $shop_id ?>').trigger('change');
@@ -3399,6 +3639,107 @@ $(document).ready(function() {
             }, 100);
         }
     });
+});
+</script>
+
+<script>
+async function refreshPurchaseNumberByDate() {
+    const purchaseNumberInput = document.getElementById('purchase_number');
+    const purchaseDateInput = document.getElementById('purchase_date');
+
+    if (!purchaseNumberInput || !purchaseDateInput) {
+        return;
+    }
+
+    try {
+        const response = await fetch('api/number-generator.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                document_type: 'purchase',
+                purchase_date: purchaseDateInput.value
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            purchaseNumberInput.value = data.document_number || data.number || purchaseNumberInput.value;
+        } else {
+            console.warn('Purchase number API message:', data.message || data);
+        }
+    } catch (error) {
+        console.error('Purchase number refresh failed:', error);
+    }
+}
+
+function calculateDueDateFromDays() {
+    const purchaseDateInput = document.getElementById('purchase_date');
+    const dueDaysSelect = document.getElementById('due_days_option');
+    const customBox = document.getElementById('custom_due_days_box');
+    const customInput = document.getElementById('custom_due_days');
+    const dueDateInput = document.getElementById('due_date');
+
+    if (!purchaseDateInput || !dueDaysSelect || !dueDateInput) {
+        return;
+    }
+
+    const purchaseDate = purchaseDateInput.value;
+    if (!purchaseDate) {
+        return;
+    }
+
+    let days = 0;
+
+    if (dueDaysSelect.value === 'custom') {
+        if (customBox) {
+            customBox.style.display = '';
+        }
+        days = parseInt(customInput ? customInput.value : '0', 10) || 0;
+    } else {
+        if (customBox) {
+            customBox.style.display = 'none';
+        }
+        if (customInput) {
+            customInput.value = '';
+        }
+        days = parseInt(dueDaysSelect.value, 10) || 0;
+    }
+
+    const dt = new Date(purchaseDate + 'T00:00:00');
+    dt.setDate(dt.getDate() + days);
+
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+
+    dueDateInput.value = `${yyyy}-${mm}-${dd}`;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const purchaseDateInput = document.getElementById('purchase_date');
+    const dueDaysSelect = document.getElementById('due_days_option');
+    const customDueDaysInput = document.getElementById('custom_due_days');
+
+    calculateDueDateFromDays();
+
+    if (purchaseDateInput) {
+        purchaseDateInput.addEventListener('change', function () {
+            refreshPurchaseNumberByDate();
+            calculateDueDateFromDays();
+        });
+    }
+
+    if (dueDaysSelect) {
+        dueDaysSelect.addEventListener('change', calculateDueDateFromDays);
+    }
+
+    if (customDueDaysInput) {
+        customDueDaysInput.addEventListener('input', calculateDueDateFromDays);
+    }
 });
 </script>
 </body>

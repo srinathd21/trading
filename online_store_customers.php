@@ -79,7 +79,9 @@ $stats = [
     'total_customers'    => 0,
     'retail_customers'   => 0,
     'wholesale_customers'=> 0,
-    'credit_outstanding' => 0
+    'credit_outstanding' => 0,
+    'total_online_sales' => 0,
+    'total_online_orders'=> 0
 ];
 
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -145,6 +147,7 @@ try {
     $outstandingTypeCol  = first_existing_column($customerCols, ['outstanding_type']);
     $outstandingAmountCol= first_existing_column($customerCols, ['outstanding_amount']);
     $createdAtCol        = first_existing_column($customerCols, ['created_at']);
+    $isOnlineCustomerCol = first_existing_column($customerCols, ['is_online_customer']);
 
     if (!$idCol || !$businessIdCol || !$nameCol) {
         throw new Exception('Required customer columns are missing.');
@@ -154,7 +157,11 @@ try {
     $typeFilter  = trim($_GET['customer_type'] ?? '');
     $creditFilter= trim($_GET['credit_type'] ?? '');
 
-    $where = ["c.`$businessIdCol` = :business_id"];
+    // Only show online customers
+    $where = [
+        "c.`$businessIdCol` = :business_id",
+        "c.`$isOnlineCustomerCol` = 1"
+    ];
     $params = [':business_id' => $business_id];
 
     if ($search !== '') {
@@ -190,7 +197,7 @@ try {
 
     $whereSql = ' WHERE ' . implode(' AND ', $where);
 
-    // Online order stats join if available
+    // Online order stats join
     $onlineOrderJoin = '';
     $onlineStatsSelect = "0 AS total_orders, 0.00 AS total_online_sales";
     if (table_exists($pdo, 'online_store_orders')) {
@@ -224,19 +231,27 @@ try {
     $totalRows = (int)$stmtCount->fetchColumn();
     $totalPages = max(1, (int)ceil($totalRows / $perPage));
 
+    // Stats query for online customers only
     $statsSql = "
         SELECT
             COUNT(*) AS total_customers,
             SUM(CASE WHEN " . ($customerTypeCol ? "c.`$customerTypeCol` = 'retail'" : "0") . " THEN 1 ELSE 0 END) AS retail_customers,
             SUM(CASE WHEN " . ($customerTypeCol ? "c.`$customerTypeCol` = 'wholesale'" : "0") . " THEN 1 ELSE 0 END) AS wholesale_customers,
-            SUM(CASE WHEN " . ($outstandingTypeCol && $outstandingAmountCol ? "c.`$outstandingTypeCol` = 'credit'" : "0") . " THEN COALESCE(c.`$outstandingAmountCol`, 0) ELSE 0 END) AS credit_outstanding
+            SUM(CASE WHEN " . ($outstandingTypeCol && $outstandingAmountCol ? "c.`$outstandingTypeCol` = 'credit'" : "0") . " THEN COALESCE(c.`$outstandingAmountCol`, 0) ELSE 0 END) AS credit_outstanding,
+            (SELECT SUM(COALESCE(`{$orderAmountCol}`, 0)) FROM online_store_orders WHERE " . ($orderBusinessIdCol ? "`{$orderBusinessIdCol}` = :business_id_stats2" : "1=1") . ") AS total_online_sales,
+            (SELECT COUNT(*) FROM online_store_orders WHERE " . ($orderBusinessIdCol ? "`{$orderBusinessIdCol}` = :business_id_stats3" : "1=1") . ") AS total_online_orders
         FROM `customers` c
         $whereSql
     ";
     $stmtStats = $pdo->prepare($statsSql);
     foreach ($params as $key => $value) {
-        $stmtStats->bindValue($key, $value);
+        if ($key !== ':business_id') {
+            $stmtStats->bindValue($key, $value);
+        }
     }
+    $stmtStats->bindValue(':business_id_stats2', $business_id, PDO::PARAM_INT);
+    $stmtStats->bindValue(':business_id_stats3', $business_id, PDO::PARAM_INT);
+    $stmtStats->bindValue(':business_id', $business_id, PDO::PARAM_INT);
     $stmtStats->execute();
     $statsRow = $stmtStats->fetch(PDO::FETCH_ASSOC);
     if ($statsRow) {
@@ -257,6 +272,7 @@ try {
             " . ($outstandingTypeCol ? "COALESCE(c.`$outstandingTypeCol`, 'credit')" : "'credit'") . " AS outstanding_type,
             " . ($outstandingAmountCol ? "COALESCE(c.`$outstandingAmountCol`, 0)" : "0") . " AS outstanding_amount,
             " . ($createdAtCol ? "c.`$createdAtCol`" : "NULL") . " AS created_at,
+            c.`$isOnlineCustomerCol` AS is_online_customer,
             $onlineStatsSelect
         FROM `customers` c
         $onlineOrderJoin
@@ -324,7 +340,7 @@ try {
                                         <div>
                                             <h4 class="mb-1">Online Store Customers</h4>
                                             <p class="text-muted mb-0">
-                                                Manage online store customer details in the same UI template.
+                                                Manage online registered customers only.
                                                 <span class="d-block small mt-1">
                                                     Store: <strong><?= h($storeInfo['store_title'] ?? $storeInfo['display_name'] ?? 'Online Store') ?></strong>
                                                 </span>
@@ -372,7 +388,7 @@ try {
                                         <i class="bx bx-group"></i>
                                     </div>
                                     <div class="ms-3">
-                                        <p class="text-muted mb-1">Total Customers</p>
+                                        <p class="text-muted mb-1">Total Online Customers</p>
                                         <h4 class="mb-0"><?= (int)($stats['total_customers'] ?? 0) ?></h4>
                                     </div>
                                 </div>
@@ -416,12 +432,47 @@ try {
                         <div class="card shadow-sm stats-card h-100">
                             <div class="card-body">
                                 <div class="d-flex align-items-center">
-                                    <div class="stat-icon bg-soft-info text-info">
+                                    <div class="stat-icon bg-soft-danger text-danger">
                                         <i class="bx bx-rupee"></i>
                                     </div>
                                     <div class="ms-3">
                                         <p class="text-muted mb-1">Credit Outstanding</p>
                                         <h4 class="mb-0">₹<?= format_money($stats['credit_outstanding'] ?? 0) ?></h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Stats Row -->
+                <div class="row mt-3">
+                    <div class="col-xl-6 col-md-6">
+                        <div class="card shadow-sm stats-card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <div class="stat-icon bg-soft-info text-info">
+                                        <i class="bx bx-shopping-bag"></i>
+                                    </div>
+                                    <div class="ms-3">
+                                        <p class="text-muted mb-1">Total Online Orders</p>
+                                        <h4 class="mb-0"><?= (int)($stats['total_online_orders'] ?? 0) ?></h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-6 col-md-6 mt-3 mt-xl-0">
+                        <div class="card shadow-sm stats-card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <div class="stat-icon bg-soft-primary text-primary">
+                                        <i class="bx bx-line-chart"></i>
+                                    </div>
+                                    <div class="ms-3">
+                                        <p class="text-muted mb-1">Total Online Sales</p>
+                                        <h4 class="mb-0">₹<?= format_money($stats['total_online_sales'] ?? 0) ?></h4>
                                     </div>
                                 </div>
                             </div>
@@ -484,10 +535,10 @@ try {
                     <div class="card-header bg-white">
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
                             <h5 class="mb-0">
-                                <i class="bx bx-list-ul me-2"></i> Customer List
+                                <i class="bx bx-list-ul me-2"></i> Online Customer List
                             </h5>
                             <span class="badge bg-light text-dark border">
-                                <?= (int)$totalRows ?> record(s)
+                                <?= (int)$totalRows ?> online customer(s)
                             </span>
                         </div>
                     </div>
@@ -506,7 +557,7 @@ try {
                                             <th class="text-end">Outstanding</th>
                                             <th class="text-center">Orders</th>
                                             <th class="text-end">Online Sales</th>
-                                            <th>Created</th>
+                                            <th>Registered On</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -518,6 +569,9 @@ try {
                                                 <span class="badge bg-<?= $row['customer_type'] === 'wholesale' ? 'warning text-dark' : 'primary' ?>">
                                                     <?= h(ucfirst($row['customer_type'])) ?>
                                                 </span>
+                                                <?php if ($row['is_online_customer'] == 1): ?>
+                                                    <span class="badge bg-success ms-1">Online</span>
+                                                <?php endif; ?>
                                             </td>
                                             <td>
                                                 <div><?= h($row['phone'] ?: '-') ?></div>
@@ -589,8 +643,8 @@ try {
                                 <div class="mb-3">
                                     <i class="bx bx-user-circle text-muted" style="font-size: 54px;"></i>
                                 </div>
-                                <h5 class="mb-2">No customers found</h5>
-                                <p class="text-muted mb-0">Try changing the filters or add customers for this business.</p>
+                                <h5 class="mb-2">No online customers found</h5>
+                                <p class="text-muted mb-0">No registered online customers found for this business.</p>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -655,6 +709,7 @@ document.addEventListener('DOMContentLoaded', function () {
 .bg-soft-success{background:rgba(25,135,84,.12)!important;}
 .bg-soft-warning{background:rgba(255,193,7,.18)!important;}
 .bg-soft-info{background:rgba(13,202,240,.12)!important;}
+.bg-soft-danger{background:rgba(220,53,69,.12)!important;}
 .customer-table thead th{
     white-space: nowrap;
     font-weight: 700;

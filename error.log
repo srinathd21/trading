@@ -459,3 +459,805 @@ Stack trace:
 [24-Apr-2026 19:34:35 Asia/Kolkata] Deleted GST credits
 [24-Apr-2026 19:34:35 Asia/Kolkata] Deleted purchase
 [24-Apr-2026 19:34:35 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 19:25:24 Asia/Kolkata] Attempting to delete purchase ID: 123 for business: 28
+[27-Apr-2026 19:25:24 Asia/Kolkata] Found 1 batches
+[27-Apr-2026 19:25:24 Asia/Kolkata] Updated stock ID 1066 for product 1547: set quantity to old_qty (0.0000), cleared batch tracking
+[27-Apr-2026 19:25:24 Asia/Kolkata] Restored product 1547 prices to old values from batch 139
+[27-Apr-2026 19:25:24 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 19:25:24 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 19:25:24 Asia/Kolkata] Deleted batches
+[27-Apr-2026 19:25:24 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 19:25:24 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 19:25:24 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 19:25:29 Asia/Kolkata] Attempting to delete purchase ID: 108 for business: 28
+[27-Apr-2026 19:25:29 Asia/Kolkata] Found 2 batches
+[27-Apr-2026 19:25:29 Asia/Kolkata] Updated stock ID 1000 for product 1483: set quantity to old_qty (0.0000), cleared batch tracking
+[27-Apr-2026 19:25:29 Asia/Kolkata] Restored product 1483 prices to old values from batch 123
+[27-Apr-2026 19:25:29 Asia/Kolkata] Product 1482 has other active batches, skipping price restoration
+[27-Apr-2026 19:25:29 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 19:25:29 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 19:25:29 Asia/Kolkata] Deleted batches
+[27-Apr-2026 19:25:29 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 19:25:29 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 19:25:29 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 19:25:36 Asia/Kolkata] Attempting to delete purchase ID: 109 for business: 28
+[27-Apr-2026 19:25:36 Asia/Kolkata] Found 1 batches
+[27-Apr-2026 19:25:36 Asia/Kolkata] Updated stock ID 1001 for product 1484: set quantity to old_qty (0.0000), cleared batch tracking
+[27-Apr-2026 19:25:36 Asia/Kolkata] Restored product 1484 prices to old values from batch 125
+[27-Apr-2026 19:25:36 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 19:25:36 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 19:25:36 Asia/Kolkata] Deleted batches
+[27-Apr-2026 19:25:36 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 19:25:36 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 19:25:36 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 19:25:41 Asia/Kolkata] Attempting to delete purchase ID: 107 for business: 28
+[27-Apr-2026 19:25:41 Asia/Kolkata] Found 1 batches
+[27-Apr-2026 19:25:41 Asia/Kolkata] Restored product 1482 prices to old values from batch 122
+[27-Apr-2026 19:25:41 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 19:25:41 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 19:25:41 Asia/Kolkata] Deleted batches
+[27-Apr-2026 19:25:41 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 19:25:41 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 19:25:41 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 20:13:48 Asia/Kolkata] Attempting to delete purchase ID: 124 for business: 28
+[27-Apr-2026 20:13:48 Asia/Kolkata] Found 1 batches
+[27-Apr-2026 20:13:48 Asia/Kolkata] Product 1548 has other active batches, skipping price restoration
+[27-Apr-2026 20:13:48 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 20:13:48 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 20:13:48 Asia/Kolkata] Deleted batches
+[27-Apr-2026 20:13:48 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 20:13:48 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 20:13:48 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 20:13:53 Asia/Kolkata] Attempting to delete purchase ID: 125 for business: 28
+[27-Apr-2026 20:13:53 Asia/Kolkata] Found 2 batches
+[27-Apr-2026 20:13:53 Asia/Kolkata] Updated stock ID 1068 for product 1549: set quantity to old_qty (0.0000), cleared batch tracking
+[27-Apr-2026 20:13:53 Asia/Kolkata] Restored product 1548 prices to old values from batch 141
+[27-Apr-2026 20:13:53 Asia/Kolkata] Restored product 1549 prices to old values from batch 142
+[27-Apr-2026 20:13:53 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 20:13:53 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 20:13:53 Asia/Kolkata] Deleted batches
+[27-Apr-2026 20:13:53 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 20:13:53 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 20:13:53 Asia/Kolkata] Purchase deletion successful
+[27-Apr-2026 20:23:24 Asia/Kolkata] Attempting to delete purchase ID: 128 for business: 28
+[27-Apr-2026 20:23:24 Asia/Kolkata] Found 1 batches
+[27-Apr-2026 20:23:24 Asia/Kolkata] Updated stock ID 1069 for product 1550: set quantity to old_qty (9.0000), cleared batch tracking
+[27-Apr-2026 20:23:24 Asia/Kolkata] Product 1550 has other active batches, skipping price restoration
+[27-Apr-2026 20:23:24 Asia/Kolkata] Found 0 payments
+[27-Apr-2026 20:23:24 Asia/Kolkata] Deleted purchase items
+[27-Apr-2026 20:23:24 Asia/Kolkata] Deleted batches
+[27-Apr-2026 20:23:24 Asia/Kolkata] Deleted GST credits
+[27-Apr-2026 20:23:24 Asia/Kolkata] Deleted purchase
+[27-Apr-2026 20:23:24 Asia/Kolkata] Purchase deletion successful
+[30-Apr-2026 07:51:10 Asia/Kolkata] Attempting to delete purchase ID: 138 for business: 28
+[30-Apr-2026 07:51:10 Asia/Kolkata] Found 4 batches
+[30-Apr-2026 07:51:10 Asia/Kolkata] Updated stock ID 1105 for product 1586: set quantity to old_qty (0.0000), cleared batch tracking
+[30-Apr-2026 07:51:10 Asia/Kolkata] Updated stock ID 1101 for product 1582: set quantity to old_qty (0.0000), cleared batch tracking
+[30-Apr-2026 07:51:10 Asia/Kolkata] Updated stock ID 1103 for product 1584: set quantity to old_qty (0.0000), cleared batch tracking
+[30-Apr-2026 07:51:10 Asia/Kolkata] Updated stock ID 1104 for product 1585: set quantity to old_qty (0.0000), cleared batch tracking
+[30-Apr-2026 07:51:10 Asia/Kolkata] Restored product 1586 prices to old values from batch 167
+[30-Apr-2026 07:51:10 Asia/Kolkata] Restored product 1582 prices to old values from batch 168
+[30-Apr-2026 07:51:10 Asia/Kolkata] Restored product 1584 prices to old values from batch 169
+[30-Apr-2026 07:51:10 Asia/Kolkata] Restored product 1585 prices to old values from batch 170
+[30-Apr-2026 07:51:10 Asia/Kolkata] Found 0 payments
+[30-Apr-2026 07:51:10 Asia/Kolkata] Deleted purchase items
+[30-Apr-2026 07:51:10 Asia/Kolkata] Deleted batches
+[30-Apr-2026 07:51:10 Asia/Kolkata] Deleted GST credits
+[30-Apr-2026 07:51:10 Asia/Kolkata] Deleted purchase
+[30-Apr-2026 07:51:10 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:02:52 Asia/Kolkata] Attempting to delete purchase ID: 185 for business: 28
+[10-May-2026 08:02:52 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:02:52 Asia/Kolkata] Updated stock ID 1201 for product 1682: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:02:52 Asia/Kolkata] Restored product 1682 prices to old values from batch 260
+[10-May-2026 08:02:52 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:02:52 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:02:52 Asia/Kolkata] Deleted batches
+[10-May-2026 08:02:52 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:02:52 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:02:52 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:02:58 Asia/Kolkata] Attempting to delete purchase ID: 184 for business: 28
+[10-May-2026 08:02:58 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:02:58 Asia/Kolkata] Updated stock ID 1200 for product 1681: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:02:58 Asia/Kolkata] Restored product 1681 prices to old values from batch 259
+[10-May-2026 08:02:58 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:02:58 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:02:58 Asia/Kolkata] Deleted batches
+[10-May-2026 08:02:58 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:02:58 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:02:58 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:05 Asia/Kolkata] Attempting to delete purchase ID: 183 for business: 28
+[10-May-2026 08:03:05 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:03:05 Asia/Kolkata] Updated stock ID 1197 for product 1678: set quantity to old_qty (4.0000), cleared batch tracking
+[10-May-2026 08:03:05 Asia/Kolkata] Product 1678 has other active batches, skipping price restoration
+[10-May-2026 08:03:05 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:05 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:05 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:05 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:05 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:05 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:13 Asia/Kolkata] Attempting to delete purchase ID: 182 for business: 28
+[10-May-2026 08:03:13 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:03:13 Asia/Kolkata] Updated stock ID 1151 for product 1632: set quantity to old_qty (30.0000), cleared batch tracking
+[10-May-2026 08:03:13 Asia/Kolkata] Product 1632 has other active batches, skipping price restoration
+[10-May-2026 08:03:13 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:13 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:13 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:13 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:13 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:13 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:19 Asia/Kolkata] Attempting to delete purchase ID: 181 for business: 28
+[10-May-2026 08:03:19 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:03:19 Asia/Kolkata] Updated stock ID 1154 for product 1635: set quantity to old_qty (10.0000), cleared batch tracking
+[10-May-2026 08:03:19 Asia/Kolkata] Updated stock ID 1071 for product 1552: set quantity to old_qty (32.0000), cleared batch tracking
+[10-May-2026 08:03:19 Asia/Kolkata] Updated stock ID 1075 for product 1556: set quantity to old_qty (10.0000), cleared batch tracking
+[10-May-2026 08:03:19 Asia/Kolkata] Updated stock ID 1095 for product 1576: set quantity to old_qty (18.0000), cleared batch tracking
+[10-May-2026 08:03:19 Asia/Kolkata] Product 1635 has other active batches, skipping price restoration
+[10-May-2026 08:03:19 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:03:19 Asia/Kolkata] Product 1556 has other active batches, skipping price restoration
+[10-May-2026 08:03:19 Asia/Kolkata] Product 1576 has other active batches, skipping price restoration
+[10-May-2026 08:03:19 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:19 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:19 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:19 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:19 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:19 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:24 Asia/Kolkata] Attempting to delete purchase ID: 180 for business: 28
+[10-May-2026 08:03:24 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:03:24 Asia/Kolkata] Updated stock ID 1192 for product 1673: set quantity to old_qty (10.0000), cleared batch tracking
+[10-May-2026 08:03:24 Asia/Kolkata] Updated stock ID 1170 for product 1651: set quantity to old_qty (6.0000), cleared batch tracking
+[10-May-2026 08:03:24 Asia/Kolkata] Updated stock ID 1152 for product 1633: set quantity to old_qty (70.0000), cleared batch tracking
+[10-May-2026 08:03:24 Asia/Kolkata] Product 1673 has other active batches, skipping price restoration
+[10-May-2026 08:03:24 Asia/Kolkata] Product 1651 has other active batches, skipping price restoration
+[10-May-2026 08:03:24 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:03:24 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:24 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:24 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:24 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:24 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:24 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:30 Asia/Kolkata] Attempting to delete purchase ID: 179 for business: 28
+[10-May-2026 08:03:30 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:03:30 Asia/Kolkata] Updated stock ID 1198 for product 1679: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:03:30 Asia/Kolkata] Updated stock ID 1199 for product 1680: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:03:30 Asia/Kolkata] Restored product 1678 prices to old values from batch 247
+[10-May-2026 08:03:30 Asia/Kolkata] Restored product 1679 prices to old values from batch 248
+[10-May-2026 08:03:30 Asia/Kolkata] Restored product 1680 prices to old values from batch 249
+[10-May-2026 08:03:30 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:30 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:30 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:30 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:30 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:30 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:36 Asia/Kolkata] Attempting to delete purchase ID: 178 for business: 28
+[10-May-2026 08:03:36 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:03:36 Asia/Kolkata] Updated stock ID 1073 for product 1554: set quantity to old_qty (210.0000), cleared batch tracking
+[10-May-2026 08:03:36 Asia/Kolkata] Product 1554 has other active batches, skipping price restoration
+[10-May-2026 08:03:36 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:36 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:36 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:36 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:36 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:36 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:41 Asia/Kolkata] Attempting to delete purchase ID: 177 for business: 28
+[10-May-2026 08:03:41 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:03:41 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:03:41 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:41 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:41 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:41 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:41 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:41 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:50 Asia/Kolkata] Attempting to delete purchase ID: 176 for business: 28
+[10-May-2026 08:03:50 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:03:50 Asia/Kolkata] Updated stock ID 1196 for product 1677: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:03:50 Asia/Kolkata] Product 1576 has other active batches, skipping price restoration
+[10-May-2026 08:03:50 Asia/Kolkata] Product 1556 has other active batches, skipping price restoration
+[10-May-2026 08:03:50 Asia/Kolkata] Restored product 1677 prices to old values from batch 244
+[10-May-2026 08:03:50 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:50 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:50 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:50 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:50 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:50 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:03:59 Asia/Kolkata] Attempting to delete purchase ID: 175 for business: 28
+[10-May-2026 08:03:59 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:03:59 Asia/Kolkata] Updated stock ID 1072 for product 1553: set quantity to old_qty (540.0000), cleared batch tracking
+[10-May-2026 08:03:59 Asia/Kolkata] Product 1553 has other active batches, skipping price restoration
+[10-May-2026 08:03:59 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:03:59 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:03:59 Asia/Kolkata] Deleted batches
+[10-May-2026 08:03:59 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:03:59 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:03:59 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:13 Asia/Kolkata] Attempting to delete purchase ID: 174 for business: 28
+[10-May-2026 08:04:13 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:04:13 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:04:13 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:13 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:13 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:13 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:13 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:13 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:25 Asia/Kolkata] Attempting to delete purchase ID: 173 for business: 28
+[10-May-2026 08:04:25 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:04:25 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:04:25 Asia/Kolkata] Product 1635 has other active batches, skipping price restoration
+[10-May-2026 08:04:25 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:25 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:25 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:25 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:25 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:25 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:34 Asia/Kolkata] Attempting to delete purchase ID: 172 for business: 28
+[10-May-2026 08:04:34 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:04:34 Asia/Kolkata] Updated stock ID 1193 for product 1674: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:34 Asia/Kolkata] Updated stock ID 1195 for product 1676: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:34 Asia/Kolkata] Updated stock ID 1194 for product 1675: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:34 Asia/Kolkata] Restored product 1673 prices to old values from batch 234
+[10-May-2026 08:04:34 Asia/Kolkata] Restored product 1674 prices to old values from batch 235
+[10-May-2026 08:04:34 Asia/Kolkata] Restored product 1676 prices to old values from batch 236
+[10-May-2026 08:04:34 Asia/Kolkata] Restored product 1675 prices to old values from batch 237
+[10-May-2026 08:04:34 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:34 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:34 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:34 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:34 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:34 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:39 Asia/Kolkata] Attempting to delete purchase ID: 171 for business: 28
+[10-May-2026 08:04:39 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:04:39 Asia/Kolkata] Updated stock ID 1191 for product 1672: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:39 Asia/Kolkata] Restored product 1672 prices to old values from batch 233
+[10-May-2026 08:04:39 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:39 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:39 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:39 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:39 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:39 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:45 Asia/Kolkata] Attempting to delete purchase ID: 170 for business: 28
+[10-May-2026 08:04:45 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:04:45 Asia/Kolkata] Updated stock ID 1190 for product 1671: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:45 Asia/Kolkata] Restored product 1671 prices to old values from batch 232
+[10-May-2026 08:04:45 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:45 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:45 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:45 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:45 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:45 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:51 Asia/Kolkata] Attempting to delete purchase ID: 169 for business: 28
+[10-May-2026 08:04:51 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:04:51 Asia/Kolkata] Product 1632 has other active batches, skipping price restoration
+[10-May-2026 08:04:51 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:51 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:51 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:51 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:51 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:51 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:04:57 Asia/Kolkata] Attempting to delete purchase ID: 168 for business: 28
+[10-May-2026 08:04:57 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:04:57 Asia/Kolkata] Updated stock ID 1187 for product 1668: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:57 Asia/Kolkata] Updated stock ID 1188 for product 1669: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:57 Asia/Kolkata] Updated stock ID 1189 for product 1670: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:04:57 Asia/Kolkata] Restored product 1668 prices to old values from batch 228
+[10-May-2026 08:04:57 Asia/Kolkata] Restored product 1669 prices to old values from batch 229
+[10-May-2026 08:04:57 Asia/Kolkata] Restored product 1670 prices to old values from batch 230
+[10-May-2026 08:04:57 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:04:57 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:04:57 Asia/Kolkata] Deleted batches
+[10-May-2026 08:04:57 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:04:57 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:04:57 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:06 Asia/Kolkata] Attempting to delete purchase ID: 167 for business: 28
+[10-May-2026 08:05:06 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:05:06 Asia/Kolkata] Product 1554 has other active batches, skipping price restoration
+[10-May-2026 08:05:06 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:06 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:06 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:06 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:06 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:06 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:12 Asia/Kolkata] Attempting to delete purchase ID: 166 for business: 28
+[10-May-2026 08:05:12 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:05:12 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:05:12 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:12 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:12 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:12 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:12 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:12 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:18 Asia/Kolkata] Attempting to delete purchase ID: 165 for business: 28
+[10-May-2026 08:05:18 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:05:18 Asia/Kolkata] Product 1553 has other active batches, skipping price restoration
+[10-May-2026 08:05:18 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:18 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:18 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:18 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:18 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:18 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:26 Asia/Kolkata] Attempting to delete purchase ID: 164 for business: 28
+[10-May-2026 08:05:26 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:05:26 Asia/Kolkata] Product 1576 has other active batches, skipping price restoration
+[10-May-2026 08:05:26 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:26 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:26 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:26 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:26 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:26 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:32 Asia/Kolkata] Attempting to delete purchase ID: 163 for business: 28
+[10-May-2026 08:05:32 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:05:32 Asia/Kolkata] Updated stock ID 1184 for product 1665: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:32 Asia/Kolkata] Updated stock ID 1176 for product 1657: set quantity to old_qty (6.0000), cleared batch tracking
+[10-May-2026 08:05:32 Asia/Kolkata] Updated stock ID 1185 for product 1666: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:32 Asia/Kolkata] Updated stock ID 1186 for product 1667: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:32 Asia/Kolkata] Restored product 1665 prices to old values from batch 220
+[10-May-2026 08:05:32 Asia/Kolkata] Product 1657 has other active batches, skipping price restoration
+[10-May-2026 08:05:32 Asia/Kolkata] Restored product 1666 prices to old values from batch 222
+[10-May-2026 08:05:32 Asia/Kolkata] Restored product 1667 prices to old values from batch 223
+[10-May-2026 08:05:32 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:32 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:32 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:32 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:32 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:32 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:37 Asia/Kolkata] Attempting to delete purchase ID: 162 for business: 28
+[10-May-2026 08:05:37 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:05:37 Asia/Kolkata] Updated stock ID 1094 for product 1575: set quantity to old_qty (1.0000), cleared batch tracking
+[10-May-2026 08:05:37 Asia/Kolkata] Updated stock ID 1181 for product 1662: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:37 Asia/Kolkata] Updated stock ID 1182 for product 1663: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:37 Asia/Kolkata] Updated stock ID 1183 for product 1664: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:37 Asia/Kolkata] Product 1575 has other active batches, skipping price restoration
+[10-May-2026 08:05:37 Asia/Kolkata] Restored product 1662 prices to old values from batch 217
+[10-May-2026 08:05:37 Asia/Kolkata] Restored product 1663 prices to old values from batch 218
+[10-May-2026 08:05:37 Asia/Kolkata] Restored product 1664 prices to old values from batch 219
+[10-May-2026 08:05:37 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:37 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:37 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:37 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:37 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:37 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:45 Asia/Kolkata] Attempting to delete purchase ID: 161 for business: 28
+[10-May-2026 08:05:45 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:05:45 Asia/Kolkata] Updated stock ID 1123 for product 1604: set quantity to old_qty (12.0000), cleared batch tracking
+[10-May-2026 08:05:45 Asia/Kolkata] Updated stock ID 1180 for product 1661: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:45 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:05:45 Asia/Kolkata] Product 1604 has other active batches, skipping price restoration
+[10-May-2026 08:05:45 Asia/Kolkata] Product 1556 has other active batches, skipping price restoration
+[10-May-2026 08:05:45 Asia/Kolkata] Restored product 1661 prices to old values from batch 215
+[10-May-2026 08:05:45 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:45 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:45 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:45 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:45 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:45 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:50 Asia/Kolkata] Attempting to delete purchase ID: 160 for business: 28
+[10-May-2026 08:05:50 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:05:50 Asia/Kolkata] Updated stock ID 1179 for product 1660: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:50 Asia/Kolkata] Updated stock ID 1165 for product 1646: set quantity to old_qty (5.0000), cleared batch tracking
+[10-May-2026 08:05:50 Asia/Kolkata] Restored product 1657 prices to old values from batch 208
+[10-May-2026 08:05:50 Asia/Kolkata] Restored product 1660 prices to old values from batch 209
+[10-May-2026 08:05:50 Asia/Kolkata] Product 1646 has other active batches, skipping price restoration
+[10-May-2026 08:05:50 Asia/Kolkata] Product 1604 has other active batches, skipping price restoration
+[10-May-2026 08:05:50 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:50 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:50 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:50 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:50 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:50 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:05:59 Asia/Kolkata] Attempting to delete purchase ID: 159 for business: 28
+[10-May-2026 08:05:59 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:05:59 Asia/Kolkata] Updated stock ID 1174 for product 1655: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:59 Asia/Kolkata] Updated stock ID 1175 for product 1656: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:05:59 Asia/Kolkata] Restored product 1655 prices to old values from batch 206
+[10-May-2026 08:05:59 Asia/Kolkata] Restored product 1656 prices to old values from batch 207
+[10-May-2026 08:05:59 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:05:59 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:05:59 Asia/Kolkata] Deleted batches
+[10-May-2026 08:05:59 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:05:59 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:05:59 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:05 Asia/Kolkata] Attempting to delete purchase ID: 158 for business: 28
+[10-May-2026 08:06:05 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:06:05 Asia/Kolkata] Updated stock ID 1171 for product 1652: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:05 Asia/Kolkata] Updated stock ID 1172 for product 1653: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:05 Asia/Kolkata] Updated stock ID 1173 for product 1654: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:05 Asia/Kolkata] Restored product 1652 prices to old values from batch 203
+[10-May-2026 08:06:05 Asia/Kolkata] Restored product 1653 prices to old values from batch 204
+[10-May-2026 08:06:05 Asia/Kolkata] Restored product 1654 prices to old values from batch 205
+[10-May-2026 08:06:05 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:05 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:05 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:05 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:05 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:05 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:10 Asia/Kolkata] Attempting to delete purchase ID: 157 for business: 28
+[10-May-2026 08:06:10 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:06:10 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:06:10 Asia/Kolkata] Restored product 1651 prices to old values from batch 202
+[10-May-2026 08:06:10 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:10 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:10 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:10 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:10 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:10 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:15 Asia/Kolkata] Attempting to delete purchase ID: 156 for business: 28
+[10-May-2026 08:06:15 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:06:15 Asia/Kolkata] Updated stock ID 1167 for product 1648: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:15 Asia/Kolkata] Restored product 1648 prices to old values from batch 200
+[10-May-2026 08:06:15 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:15 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:15 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:15 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:15 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:15 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:21 Asia/Kolkata] Attempting to delete purchase ID: 155 for business: 28
+[10-May-2026 08:06:21 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:06:21 Asia/Kolkata] Updated stock ID 1166 for product 1647: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:21 Asia/Kolkata] Restored product 1647 prices to old values from batch 199
+[10-May-2026 08:06:21 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:21 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:21 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:21 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:21 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:21 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:30 Asia/Kolkata] Attempting to delete purchase ID: 154 for business: 28
+[10-May-2026 08:06:30 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:06:30 Asia/Kolkata] Updated stock ID 1164 for product 1645: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:30 Asia/Kolkata] Restored product 1645 prices to old values from batch 197
+[10-May-2026 08:06:30 Asia/Kolkata] Restored product 1646 prices to old values from batch 198
+[10-May-2026 08:06:30 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:30 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:30 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:30 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:30 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:30 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:37 Asia/Kolkata] Attempting to delete purchase ID: 153 for business: 28
+[10-May-2026 08:06:37 Asia/Kolkata] Found 5 batches
+[10-May-2026 08:06:37 Asia/Kolkata] Updated stock ID 1160 for product 1641: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:37 Asia/Kolkata] Updated stock ID 1163 for product 1644: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:37 Asia/Kolkata] Updated stock ID 1157 for product 1638: set quantity to old_qty (10.0000), cleared batch tracking
+[10-May-2026 08:06:37 Asia/Kolkata] Updated stock ID 1161 for product 1642: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:37 Asia/Kolkata] Updated stock ID 1162 for product 1643: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:37 Asia/Kolkata] Restored product 1641 prices to old values from batch 192
+[10-May-2026 08:06:37 Asia/Kolkata] Restored product 1644 prices to old values from batch 193
+[10-May-2026 08:06:37 Asia/Kolkata] Product 1638 has other active batches, skipping price restoration
+[10-May-2026 08:06:37 Asia/Kolkata] Restored product 1642 prices to old values from batch 195
+[10-May-2026 08:06:37 Asia/Kolkata] Restored product 1643 prices to old values from batch 196
+[10-May-2026 08:06:37 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:37 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:37 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:37 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:37 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:37 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:42 Asia/Kolkata] Attempting to delete purchase ID: 152 for business: 28
+[10-May-2026 08:06:42 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:06:42 Asia/Kolkata] Product 1633 has other active batches, skipping price restoration
+[10-May-2026 08:06:42 Asia/Kolkata] Product 1632 has other active batches, skipping price restoration
+[10-May-2026 08:06:42 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:42 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:42 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:42 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:42 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:42 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:50 Asia/Kolkata] Attempting to delete purchase ID: 151 for business: 28
+[10-May-2026 08:06:50 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:06:50 Asia/Kolkata] Product 1638 has other active batches, skipping price restoration
+[10-May-2026 08:06:50 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:50 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:50 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:50 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:50 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:50 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:06:55 Asia/Kolkata] Attempting to delete purchase ID: 150 for business: 28
+[10-May-2026 08:06:55 Asia/Kolkata] Found 4 batches
+[10-May-2026 08:06:55 Asia/Kolkata] Updated stock ID 1156 for product 1637: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:55 Asia/Kolkata] Updated stock ID 1158 for product 1639: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:55 Asia/Kolkata] Updated stock ID 1159 for product 1640: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:06:55 Asia/Kolkata] Restored product 1637 prices to old values from batch 185
+[10-May-2026 08:06:55 Asia/Kolkata] Restored product 1638 prices to old values from batch 186
+[10-May-2026 08:06:55 Asia/Kolkata] Restored product 1639 prices to old values from batch 187
+[10-May-2026 08:06:55 Asia/Kolkata] Restored product 1640 prices to old values from batch 188
+[10-May-2026 08:06:55 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:06:55 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:06:55 Asia/Kolkata] Deleted batches
+[10-May-2026 08:06:55 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:06:55 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:06:55 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:02 Asia/Kolkata] Attempting to delete purchase ID: 149 for business: 28
+[10-May-2026 08:07:02 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:07:02 Asia/Kolkata] Restored product 1635 prices to old values from batch 183
+[10-May-2026 08:07:02 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:07:02 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:02 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:02 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:02 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:02 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:02 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:07 Asia/Kolkata] Attempting to delete purchase ID: 148 for business: 28
+[10-May-2026 08:07:07 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:07 Asia/Kolkata] Product 1553 has other active batches, skipping price restoration
+[10-May-2026 08:07:07 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:07 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:07 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:07 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:07 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:07 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:14 Asia/Kolkata] Attempting to delete purchase ID: 147 for business: 28
+[10-May-2026 08:07:14 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:14 Asia/Kolkata] Updated stock ID 1153 for product 1634: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:07:14 Asia/Kolkata] Restored product 1634 prices to old values from batch 181
+[10-May-2026 08:07:14 Asia/Kolkata] Found 1 payments
+[10-May-2026 08:07:14 Asia/Kolkata] Deleted 1 payments
+[10-May-2026 08:07:14 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:14 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:14 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:14 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:14 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:21 Asia/Kolkata] Attempting to delete purchase ID: 146 for business: 28
+[10-May-2026 08:07:21 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:07:21 Asia/Kolkata] Restored product 1632 prices to old values from batch 179
+[10-May-2026 08:07:21 Asia/Kolkata] Restored product 1633 prices to old values from batch 180
+[10-May-2026 08:07:21 Asia/Kolkata] Found 3 payments
+[10-May-2026 08:07:21 Asia/Kolkata] Deleted 3 payments
+[10-May-2026 08:07:21 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:21 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:21 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:21 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:21 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:27 Asia/Kolkata] Attempting to delete purchase ID: 145 for business: 28
+[10-May-2026 08:07:27 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:27 Asia/Kolkata] Updated stock ID 1150 for product 1631: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:07:27 Asia/Kolkata] Restored product 1631 prices to old values from batch 178
+[10-May-2026 08:07:27 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:27 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:27 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:27 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:27 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:27 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:33 Asia/Kolkata] Attempting to delete purchase ID: 144 for business: 28
+[10-May-2026 08:07:33 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:33 Asia/Kolkata] Updated stock ID 1149 for product 1630: set quantity to old_qty (26.0000), cleared batch tracking
+[10-May-2026 08:07:33 Asia/Kolkata] Product 1630 has other active batches, skipping price restoration
+[10-May-2026 08:07:33 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:33 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:33 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:33 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:33 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:33 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:38 Asia/Kolkata] Attempting to delete purchase ID: 143 for business: 28
+[10-May-2026 08:07:38 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:38 Asia/Kolkata] Restored product 1630 prices to old values from batch 176
+[10-May-2026 08:07:38 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:38 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:38 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:38 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:38 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:38 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:45 Asia/Kolkata] Attempting to delete purchase ID: 142 for business: 28
+[10-May-2026 08:07:45 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:45 Asia/Kolkata] Updated stock ID 1126 for product 1607: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:07:45 Asia/Kolkata] Restored product 1607 prices to old values from batch 175
+[10-May-2026 08:07:45 Asia/Kolkata] Found 1 payments
+[10-May-2026 08:07:45 Asia/Kolkata] Deleted 1 payments
+[10-May-2026 08:07:45 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:45 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:45 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:45 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:45 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:52 Asia/Kolkata] Attempting to delete purchase ID: 140 for business: 28
+[10-May-2026 08:07:52 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:52 Asia/Kolkata] Updated stock ID 1124 for product 1605: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:07:52 Asia/Kolkata] Restored product 1605 prices to old values from batch 173
+[10-May-2026 08:07:52 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:52 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:52 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:52 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:52 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:52 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:07:59 Asia/Kolkata] Attempting to delete purchase ID: 141 for business: 28
+[10-May-2026 08:07:59 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:07:59 Asia/Kolkata] Updated stock ID 1125 for product 1606: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:07:59 Asia/Kolkata] Restored product 1606 prices to old values from batch 174
+[10-May-2026 08:07:59 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:07:59 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:07:59 Asia/Kolkata] Deleted batches
+[10-May-2026 08:07:59 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:07:59 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:07:59 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:08 Asia/Kolkata] Attempting to delete purchase ID: 139 for business: 28
+[10-May-2026 08:08:08 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:08:08 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:08:08 Asia/Kolkata] Restored product 1604 prices to old values from batch 172
+[10-May-2026 08:08:08 Asia/Kolkata] Found 2 payments
+[10-May-2026 08:08:08 Asia/Kolkata] Deleted 2 payments
+[10-May-2026 08:08:08 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:08 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:08 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:08 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:08 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:15 Asia/Kolkata] Attempting to delete purchase ID: 137 for business: 28
+[10-May-2026 08:08:15 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:08:15 Asia/Kolkata] Updated stock ID 1100 for product 1581: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:15 Asia/Kolkata] Updated stock ID 1102 for product 1583: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:15 Asia/Kolkata] Restored product 1581 prices to old values from batch 165
+[10-May-2026 08:08:15 Asia/Kolkata] Restored product 1583 prices to old values from batch 166
+[10-May-2026 08:08:15 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:08:15 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:15 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:15 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:15 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:15 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:22 Asia/Kolkata] Attempting to delete purchase ID: 136 for business: 28
+[10-May-2026 08:08:22 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:08:22 Asia/Kolkata] Updated stock ID 1099 for product 1580: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:22 Asia/Kolkata] Restored product 1580 prices to old values from batch 160
+[10-May-2026 08:08:22 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:08:22 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:22 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:22 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:22 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:22 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:31 Asia/Kolkata] Attempting to delete purchase ID: 135 for business: 28
+[10-May-2026 08:08:31 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:08:31 Asia/Kolkata] Updated stock ID 1098 for product 1579: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:31 Asia/Kolkata] Product 1553 has other active batches, skipping price restoration
+[10-May-2026 08:08:31 Asia/Kolkata] Restored product 1579 prices to old values from batch 159
+[10-May-2026 08:08:31 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:08:31 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:31 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:31 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:31 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:31 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:38 Asia/Kolkata] Attempting to delete purchase ID: 134 for business: 28
+[10-May-2026 08:08:38 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:08:38 Asia/Kolkata] Updated stock ID 1096 for product 1577: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:38 Asia/Kolkata] Updated stock ID 1097 for product 1578: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:38 Asia/Kolkata] Restored product 1576 prices to old values from batch 155
+[10-May-2026 08:08:38 Asia/Kolkata] Restored product 1577 prices to old values from batch 156
+[10-May-2026 08:08:38 Asia/Kolkata] Restored product 1578 prices to old values from batch 157
+[10-May-2026 08:08:38 Asia/Kolkata] Found 2 payments
+[10-May-2026 08:08:38 Asia/Kolkata] Deleted 2 payments
+[10-May-2026 08:08:38 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:38 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:38 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:38 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:38 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:44 Asia/Kolkata] Attempting to delete purchase ID: 133 for business: 28
+[10-May-2026 08:08:44 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:08:44 Asia/Kolkata] Restored product 1575 prices to old values from batch 154
+[10-May-2026 08:08:44 Asia/Kolkata] Found 2 payments
+[10-May-2026 08:08:44 Asia/Kolkata] Deleted 2 payments
+[10-May-2026 08:08:44 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:44 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:44 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:44 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:44 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:48 Asia/Kolkata] Attempting to delete purchase ID: 132 for business: 28
+[10-May-2026 08:08:48 Asia/Kolkata] Found 3 batches
+[10-May-2026 08:08:48 Asia/Kolkata] Updated stock ID 1093 for product 1574: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:48 Asia/Kolkata] Restored product 1556 prices to old values from batch 151
+[10-May-2026 08:08:48 Asia/Kolkata] Product 1552 has other active batches, skipping price restoration
+[10-May-2026 08:08:48 Asia/Kolkata] Restored product 1574 prices to old values from batch 153
+[10-May-2026 08:08:48 Asia/Kolkata] Found 1 payments
+[10-May-2026 08:08:48 Asia/Kolkata] Deleted 1 payments
+[10-May-2026 08:08:48 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:48 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:48 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:48 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:48 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:53 Asia/Kolkata] Attempting to delete purchase ID: 131 for business: 28
+[10-May-2026 08:08:53 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:08:53 Asia/Kolkata] Updated stock ID 1074 for product 1555: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:08:53 Asia/Kolkata] Restored product 1555 prices to old values from batch 150
+[10-May-2026 08:08:53 Asia/Kolkata] Found 1 payments
+[10-May-2026 08:08:53 Asia/Kolkata] Deleted 1 payments
+[10-May-2026 08:08:53 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:53 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:53 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:53 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:53 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:08:57 Asia/Kolkata] Attempting to delete purchase ID: 130 for business: 28
+[10-May-2026 08:08:57 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:08:57 Asia/Kolkata] Restored product 1553 prices to old values from batch 148
+[10-May-2026 08:08:57 Asia/Kolkata] Restored product 1554 prices to old values from batch 149
+[10-May-2026 08:08:57 Asia/Kolkata] Found 0 payments
+[10-May-2026 08:08:57 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:08:57 Asia/Kolkata] Deleted batches
+[10-May-2026 08:08:57 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:08:57 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:08:57 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:09:02 Asia/Kolkata] Attempting to delete purchase ID: 129 for business: 28
+[10-May-2026 08:09:02 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:09:02 Asia/Kolkata] Restored product 1552 prices to old values from batch 147
+[10-May-2026 08:09:02 Asia/Kolkata] Found 1 payments
+[10-May-2026 08:09:02 Asia/Kolkata] Deleted 1 payments
+[10-May-2026 08:09:02 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:09:02 Asia/Kolkata] Deleted batches
+[10-May-2026 08:09:02 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:09:02 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:09:02 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:09:13 Asia/Kolkata] Attempting to delete purchase ID: 126 for business: 28
+[10-May-2026 08:09:13 Asia/Kolkata] Found 2 batches
+[10-May-2026 08:09:13 Asia/Kolkata] Updated stock ID 1068 for product 1549: set quantity to old_qty (0.0000), cleared batch tracking
+[10-May-2026 08:09:13 Asia/Kolkata] Restored product 1549 prices to old values from batch 143
+[10-May-2026 08:09:13 Asia/Kolkata] Product 1550 has other active batches, skipping price restoration
+[10-May-2026 08:09:13 Asia/Kolkata] Found 2 payments
+[10-May-2026 08:09:13 Asia/Kolkata] Deleted 2 payments
+[10-May-2026 08:09:13 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:09:13 Asia/Kolkata] Deleted batches
+[10-May-2026 08:09:13 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:09:13 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:09:13 Asia/Kolkata] Purchase deletion successful
+[10-May-2026 08:09:19 Asia/Kolkata] Attempting to delete purchase ID: 127 for business: 28
+[10-May-2026 08:09:19 Asia/Kolkata] Found 1 batches
+[10-May-2026 08:09:19 Asia/Kolkata] Restored product 1550 prices to old values from batch 145
+[10-May-2026 08:09:19 Asia/Kolkata] Found 2 payments
+[10-May-2026 08:09:19 Asia/Kolkata] Deleted 2 payments
+[10-May-2026 08:09:19 Asia/Kolkata] Deleted purchase items
+[10-May-2026 08:09:19 Asia/Kolkata] Deleted batches
+[10-May-2026 08:09:19 Asia/Kolkata] Deleted GST credits
+[10-May-2026 08:09:19 Asia/Kolkata] Deleted purchase
+[10-May-2026 08:09:19 Asia/Kolkata] Purchase deletion successful
+[14-May-2026 17:45:44 Asia/Kolkata] Attempting to delete purchase ID: 186 for business: 25
+[14-May-2026 17:45:44 Asia/Kolkata] Found 1 batches
+[14-May-2026 17:45:44 Asia/Kolkata] Updated stock ID 1206 for product 1687: set quantity to old_qty (7.0000), cleared batch tracking
+[14-May-2026 17:45:44 Asia/Kolkata] Restored product 1687 prices to old values from batch 261
+[14-May-2026 17:45:44 Asia/Kolkata] Found 0 payments
+[14-May-2026 17:45:44 Asia/Kolkata] Deleted purchase items
+[14-May-2026 17:45:44 Asia/Kolkata] Deleted batches
+[14-May-2026 17:45:44 Asia/Kolkata] Deleted GST credits
+[14-May-2026 17:45:44 Asia/Kolkata] Deleted purchase
+[14-May-2026 17:45:44 Asia/Kolkata] Purchase deletion successful
+[14-May-2026 17:53:10 Asia/Kolkata] Attempting to delete purchase ID: 187 for business: 25
+[14-May-2026 17:53:10 Asia/Kolkata] Found 2 batches
+[14-May-2026 17:53:10 Asia/Kolkata] Updated stock ID 644 for product 626: set quantity to old_qty (9.0000), cleared batch tracking
+[14-May-2026 17:53:10 Asia/Kolkata] Updated stock ID 640 for product 622: set quantity to old_qty (5.0000), cleared batch tracking
+[14-May-2026 17:53:10 Asia/Kolkata] Restored product 626 prices to old values from batch 262
+[14-May-2026 17:53:10 Asia/Kolkata] Restored product 622 prices to old values from batch 263
+[14-May-2026 17:53:10 Asia/Kolkata] Found 0 payments
+[14-May-2026 17:53:10 Asia/Kolkata] Deleted purchase items
+[14-May-2026 17:53:10 Asia/Kolkata] Deleted batches
+[14-May-2026 17:53:10 Asia/Kolkata] Deleted GST credits
+[14-May-2026 17:53:10 Asia/Kolkata] Deleted purchase
+[14-May-2026 17:53:10 Asia/Kolkata] Purchase deletion successful
+[14-May-2026 18:01:36 Asia/Kolkata] Attempting to delete purchase ID: 188 for business: 25
+[14-May-2026 18:01:36 Asia/Kolkata] Found 2 batches
+[14-May-2026 18:01:36 Asia/Kolkata] Updated stock ID 607 for product 599: set quantity to old_qty (1030.0000), cleared batch tracking
+[14-May-2026 18:01:36 Asia/Kolkata] Updated stock ID 1210 for product 1691: set quantity to old_qty (7.0000), cleared batch tracking
+[14-May-2026 18:01:36 Asia/Kolkata] Product 599 has other active batches, skipping price restoration
+[14-May-2026 18:01:36 Asia/Kolkata] Restored product 1691 prices to old values from batch 265
+[14-May-2026 18:01:36 Asia/Kolkata] Found 0 payments
+[14-May-2026 18:01:36 Asia/Kolkata] Deleted purchase items
+[14-May-2026 18:01:36 Asia/Kolkata] Deleted batches
+[14-May-2026 18:01:36 Asia/Kolkata] Deleted GST credits
+[14-May-2026 18:01:36 Asia/Kolkata] Deleted purchase
+[14-May-2026 18:01:36 Asia/Kolkata] Purchase deletion successful
+[15-May-2026 17:57:39 Asia/Kolkata] Attempting to delete purchase ID: 191 for business: 28
+[15-May-2026 17:57:39 Asia/Kolkata] Found 2 batches
+[15-May-2026 17:57:39 Asia/Kolkata] Updated stock ID 1068 for product 1549: set quantity to old_qty (12.0000), cleared batch tracking
+[15-May-2026 17:57:39 Asia/Kolkata] Updated stock ID 1070 for product 1551: set quantity to old_qty (2.0000), cleared batch tracking
+[15-May-2026 17:57:39 Asia/Kolkata] Restored product 1549 prices to old values from batch 271
+[15-May-2026 17:57:39 Asia/Kolkata] Product 1551 has other active batches, skipping price restoration
+[15-May-2026 17:57:39 Asia/Kolkata] Found 0 payments
+[15-May-2026 17:57:39 Asia/Kolkata] Deleted purchase items
+[15-May-2026 17:57:39 Asia/Kolkata] Deleted batches
+[15-May-2026 17:57:39 Asia/Kolkata] Deleted GST credits
+[15-May-2026 17:57:39 Asia/Kolkata] Deleted purchase
+[15-May-2026 17:57:39 Asia/Kolkata] Purchase deletion successful
+[15-May-2026 17:57:43 Asia/Kolkata] Attempting to delete purchase ID: 190 for business: 28
+[15-May-2026 17:57:43 Asia/Kolkata] Found 1 batches
+[15-May-2026 17:57:43 Asia/Kolkata] Restored product 1551 prices to old values from batch 270
+[15-May-2026 17:57:43 Asia/Kolkata] Found 0 payments
+[15-May-2026 17:57:43 Asia/Kolkata] Deleted purchase items
+[15-May-2026 17:57:43 Asia/Kolkata] Deleted batches
+[15-May-2026 17:57:43 Asia/Kolkata] Deleted GST credits
+[15-May-2026 17:57:43 Asia/Kolkata] Deleted purchase
+[15-May-2026 17:57:43 Asia/Kolkata] Purchase deletion successful
+[22-May-2026 08:21:31 Asia/Kolkata] Attempting to delete purchase ID: 252 for business: 28
+[22-May-2026 08:21:31 Asia/Kolkata] Found 1 batches
+[22-May-2026 08:21:31 Asia/Kolkata] Updated stock ID 1451 for product 1932: set quantity to old_qty (0.0000), cleared batch tracking
+[22-May-2026 08:21:31 Asia/Kolkata] Product 1932 has other active batches, skipping price restoration
+[22-May-2026 08:21:31 Asia/Kolkata] Found 0 payments
+[22-May-2026 08:21:31 Asia/Kolkata] Deleted purchase items
+[22-May-2026 08:21:31 Asia/Kolkata] Deleted batches
+[22-May-2026 08:21:31 Asia/Kolkata] Deleted GST credits
+[22-May-2026 08:21:31 Asia/Kolkata] Deleted purchase
+[22-May-2026 08:21:31 Asia/Kolkata] Purchase deletion successful

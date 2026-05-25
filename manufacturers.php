@@ -54,6 +54,10 @@ if ($search !== '') {
         OR m.account_number LIKE :search 
         OR m.ifsc_code LIKE :search 
         OR m.upi_id LIKE :search
+        OR m.address LIKE :search
+        OR m.district LIKE :search
+        OR m.state LIKE :search
+        OR m.pincode LIKE :search
         OR EXISTS (
             SELECT 1 FROM manufacturer_contacts mc 
             WHERE mc.manufacturer_id = m.id 
@@ -150,6 +154,7 @@ foreach ($manufacturers as &$m) {
         $m['net_outstanding'] = $purchase_balance;
     }
 }
+unset($m); // IMPORTANT: break foreach reference to prevent duplicate/overwritten supplier rows.
 
 // 🔍 OUTSTANDING FILTER (AFTER CALCULATION)
 if ($outstanding_filter !== 'all') {
@@ -394,7 +399,7 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                             <i class="bx bx-search"></i>
                                         </span>
                                         <input type="text" name="search" class="form-control"
-                                               placeholder="Name, Contact, Phone, GSTIN..."
+                                               placeholder="Name, Contact, Phone, GSTIN, Address, District..."
                                                value="<?= htmlspecialchars($search) ?>">
                                     </div>
                                 </div>
@@ -497,6 +502,24 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                                         <strong class="d-block mb-1"><?= htmlspecialchars($m['name']) ?></strong>
                                                         <?php if (!empty($m['gstin'])): ?>
                                                             <small class="text-muted"><i class="bx bx-barcode me-1"></i><?= htmlspecialchars($m['gstin']) ?></small>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($m['address'])): ?>
+                                                            <small class="text-muted d-block">
+                                                                <i class="bx bx-map me-1"></i><?= htmlspecialchars(substr($m['address'], 0, 45)) ?><?= strlen($m['address']) > 45 ? '...' : '' ?>
+                                                            </small>
+                                                        <?php endif; ?>
+                                                        <?php
+                                                        $supplier_location_parts = array_filter([
+                                                            $m['district'] ?? '',
+                                                            $m['state'] ?? '',
+                                                            $m['pincode'] ?? ''
+                                                        ]);
+                                                        $supplier_location_text = implode(', ', $supplier_location_parts);
+                                                        ?>
+                                                        <?php if ($supplier_location_text): ?>
+                                                            <small class="text-muted d-block">
+                                                                <i class="bx bx-map-pin me-1"></i><?= htmlspecialchars($supplier_location_text) ?>
+                                                            </small>
                                                         <?php endif; ?>
                                                     </div>
                                                 </div>
@@ -670,6 +693,9 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                                             data-phone="<?= htmlspecialchars($m['phone'] ?? '') ?>"
                                                             data-email="<?= htmlspecialchars($m['email'] ?? '') ?>"
                                                             data-address="<?= htmlspecialchars($m['address'] ?? '') ?>"
+                                                            data-district="<?= htmlspecialchars($m['district'] ?? '') ?>"
+                                                            data-state="<?= htmlspecialchars($m['state'] ?? '') ?>"
+                                                            data-pincode="<?= htmlspecialchars($m['pincode'] ?? '') ?>"
                                                             data-gstin="<?= htmlspecialchars($m['gstin'] ?? '') ?>"
                                                             data-accountholder="<?= htmlspecialchars($m['account_holder_name'] ?? '') ?>"
                                                             data-bankname="<?= htmlspecialchars($m['bank_name'] ?? '') ?>"
@@ -782,9 +808,28 @@ $total_purchases_count = array_sum(array_column($manufacturers, 'total_purchases
                                     <textarea name="address" id="address" 
                                               class="form-control" 
                                               rows="2"
-                                              placeholder="Full address with city, state, and pin code"></textarea>
+                                              placeholder="Full address"></textarea>
                                 </div>
                                 <div class="col-md-6">
+                                    <label class="form-label">District</label>
+                                    <input type="text" name="district" id="district"
+                                           class="form-control"
+                                           placeholder="District">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">State</label>
+                                    <input type="text" name="state" id="state"
+                                           class="form-control"
+                                           placeholder="State">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Pincode</label>
+                                    <input type="text" name="pincode" id="pincode"
+                                           class="form-control"
+                                           maxlength="10"
+                                           placeholder="Pincode">
+                                </div>
+                                <div class="col-md-4">
                                     <label class="form-label">Shop / Warehouse</label>
                                     <select name="shop_id" id="shopId" class="form-select">
                                         <option value="">-- Select Shop (Optional) --</option>
@@ -1371,6 +1416,9 @@ $(document).ready(function() {
         const phone = $(this).data('phone');
         const email = $(this).data('email');
         const address = $(this).data('address');
+        const district = $(this).data('district') || '';
+        const state = $(this).data('state') || '';
+        const pincode = $(this).data('pincode') || '';
         const gstin = $(this).data('gstin');
         const accountholder = $(this).data('accountholder');
         const bankname = $(this).data('bankname');
@@ -1389,6 +1437,9 @@ $(document).ready(function() {
         $('#phone').val(phone);
         $('#email').val(email);
         $('#address').val(address);
+        $('#district').val(district);
+        $('#state').val(state);
+        $('#pincode').val(pincode);
         $('#gstin').val(gstin);
         $('#accountHolderName').val(accountholder);
         $('#bankName').val(bankname);
@@ -1439,9 +1490,20 @@ $(document).ready(function() {
         $('#removeQrCode').prop('checked', false);
         $('#upiId').val('');
         $('#upiQrCode').val('');
+        $('#district').val('');
+        $('#state').val('');
+        $('#pincode').val('');
         toggleOutstandingAmount();
         $('#contactsContainer').empty();
         resetContacts();
+    });
+
+    $('#pincode').on('input', function() {
+        let pincode = $(this).val().replace(/\D/g, '');
+        if (pincode.length > 10) {
+            pincode = pincode.substring(0, 10);
+        }
+        $(this).val(pincode);
     });
 
     // Make Payment button handler
@@ -1487,7 +1549,7 @@ $(document).on('click', '.make-payment-btn', function() {
         
         // Show outstanding only message
         const outstandingMessage = `
-            <div class="alert alert-info mb-3">
+            <div class="alert alert-info mb-3 outstanding-only-payment-message">
                 <i class="bx bx-info-circle me-2"></i>
                 This supplier has a debit outstanding of <strong>₹${outstandingAmount.toFixed(2)}</strong> with no pending purchase orders.
                 The payment will be applied directly to the outstanding balance.
@@ -1507,12 +1569,13 @@ $(document).on('click', '.make-payment-btn', function() {
         $('#purchasesTableFooter').hide();
         
         // Remove any outstanding message if exists
-        $('.alert-info').remove();
+        $('.outstanding-only-payment-message').remove();
         
         // Update modal title back to normal
         $('.modal-header.bg-success h5.modal-title').html('<i class="bx bx-money me-2"></i> Make Payment to: ' + name);
         
         // Load pending purchases
+        $('#paymentForm').removeData('payment-mode');
         loadPendingPurchases(id);
     }
     
@@ -1524,7 +1587,7 @@ $(document).on('click', '.make-payment-btn', function() {
 });
 
 // Process payment button - updated to handle outstanding-only payments
-$('#processPaymentBtn').on('click', function() {
+$('#processPaymentBtn').off('click').on('click', function() {
     const selectedPurchases = [];
     $('.purchase-checkbox:checked').each(function() {
         selectedPurchases.push($(this).val());
@@ -1575,11 +1638,11 @@ $('#processPaymentBtn').on('click', function() {
     // Prepare data for AJAX
     const postData = {
         manufacturer_id: $('#paymentManufacturerId').val(),
-        payment_date: $('input[name="payment_date"]').val(),
-        payment_method: $('select[name="payment_method"]').val(),
+        payment_date: $('#paymentForm').find('input[name="payment_date"]').val(),
+        payment_method: $('#paymentForm').find('select[name="payment_method"]').val(),
         amount: amount,
-        reference_no: $('input[name="reference_no"]').val(),
-        notes: $('textarea[name="notes"]').val()
+        reference_no: $('#paymentForm').find('input[name="reference_no"]').val(),
+        notes: $('#paymentForm').find('textarea[name="notes"]').val()
     };
     
     // Only add purchases if in normal mode and purchases selected
@@ -1634,7 +1697,7 @@ $('#processPaymentBtn').on('click', function() {
 
 // Clear outstanding message when modal is hidden
 $('#makePaymentModal').on('hidden.bs.modal', function () {
-    $('.alert-info').remove();
+    $('.outstanding-only-payment-message').remove();
     $('#pendingPurchasesContent').show();
     $('.card:has(#pendingPurchasesContent)').show();
     $('#paymentForm').removeData('payment-mode');
@@ -1654,101 +1717,6 @@ $('#makePaymentModal').on('hidden.bs.modal', function () {
         updateSelectedTotal();
         const allChecked = $('.purchase-checkbox:checked').length === $('.purchase-checkbox').length;
         $('#selectAllPurchases').prop('checked', allChecked);
-    });
-
-    // Process payment button
-    $('#processPaymentBtn').on('click', function() {
-        const selectedPurchases = [];
-        $('.purchase-checkbox:checked').each(function() {
-            selectedPurchases.push($(this).val());
-        });
-
-        const amount = parseFloat($('#paymentAmount').val() || 0);
-        const maxAmount = parseFloat($('#paymentAmount').attr('max') || 0);
-        
-        if (selectedPurchases.length === 0) {
-            Swal.fire({
-                icon: 'error',
-                title: 'No Selection',
-                text: 'Please select at least one purchase order to pay'
-            });
-            return;
-        }
-
-        if (amount <= 0) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Invalid Amount',
-                text: 'Please enter a valid payment amount'
-            });
-            return;
-        }
-
-        if (amount > maxAmount) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Amount Exceeded',
-                text: 'Payment amount cannot exceed ₹' + maxAmount.toFixed(2)
-            });
-            return;
-        }
-
-        // Show loading
-        Swal.fire({
-            title: 'Processing Payment',
-            html: 'Please wait...',
-            allowOutsideClick: false,
-            didOpen: () => {
-                Swal.showLoading();
-            }
-        });
-
-        // Process payment via AJAX
-        $.ajax({
-            url: 'process_supplier_payment.php',
-            method: 'POST',
-            data: {
-                manufacturer_id: $('#paymentManufacturerId').val(),
-                payment_date: $('input[name="payment_date"]').val(),
-                payment_method: $('select[name="payment_method"]').val(),
-                amount: amount,
-                reference_no: $('input[name="reference_no"]').val(),
-                notes: $('textarea[name="notes"]').val(),
-                purchases: selectedPurchases
-            },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Success!',
-                        text: response.message,
-                        timer: 1500,
-                        showConfirmButton: false
-                    }).then(() => {
-                        const modalEl = document.getElementById('makePaymentModal');
-                        const modal = bootstrap.Modal.getInstance(modalEl);
-                        if (modal) modal.hide();
-                        location.reload();
-                    });
-                } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error!',
-                        text: response.message
-                    });
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('AJAX Error:', error);
-                console.error('Response:', xhr.responseText);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: 'Failed to process payment. Please try again.'
-                });
-            }
-        });
     });
 
     // Primary checkbox change

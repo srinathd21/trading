@@ -256,6 +256,9 @@ $returns = $returns_stmt->fetchAll(PDO::FETCH_ASSOC);
                                         data-phone="<?= htmlspecialchars($customer['phone'] ?? '', ENT_QUOTES) ?>"
                                         data-email="<?= htmlspecialchars($customer['email'] ?? '', ENT_QUOTES) ?>"
                                         data-address="<?= htmlspecialchars($customer['address'] ?? '', ENT_QUOTES) ?>"
+                                        data-district="<?= htmlspecialchars($customer['district'] ?? '', ENT_QUOTES) ?>"
+                                        data-state="<?= htmlspecialchars($customer['state'] ?? '', ENT_QUOTES) ?>"
+                                        data-pincode="<?= htmlspecialchars($customer['pincode'] ?? '', ENT_QUOTES) ?>"
                                         data-gstin="<?= htmlspecialchars($customer['gstin'] ?? '', ENT_QUOTES) ?>"
                                         data-customer_type="<?= htmlspecialchars($customer['customer_type'], ENT_QUOTES) ?>"
                                         data-referral_id="<?= htmlspecialchars($customer['referral_id'] ?? '', ENT_QUOTES) ?>"
@@ -378,6 +381,24 @@ $returns = $returns_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <strong>Address:</strong>
                                 <div class="border rounded p-3 bg-light mt-2">
                                     <?= nl2br(htmlspecialchars($customer['address'])) ?>
+                                </div>
+                                <?php endif; ?>
+
+                                <?php
+                                $location_parts = array_filter([
+                                    $customer['district'] ?? '',
+                                    $customer['state'] ?? '',
+                                    $customer['pincode'] ?? ''
+                                ]);
+                                $location_text = implode(', ', $location_parts);
+                                ?>
+                                <?php if ($location_text): ?>
+                                <div class="mt-3">
+                                    <strong>District / State / Pincode:</strong>
+                                    <div class="border rounded p-3 bg-light mt-2">
+                                        <i class="bx bx-map-pin me-1 text-primary"></i>
+                                        <?= htmlspecialchars($location_text) ?>
+                                    </div>
                                 </div>
                                 <?php endif; ?>
                             </div>
@@ -527,8 +548,8 @@ $returns = $returns_stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <?php if ($pending > 0): ?>
                                                 <a href="collect_payment.php?invoice_id=<?= $purchase['id'] ?>" class="btn btn-outline-success" title="Collect"><i class="bx bx-money"></i></a>
                                                 <?php endif; ?>
-                                                <button class="btn btn-outline-warning return-btn" data-invoice-id="<?= $purchase['id'] ?>" title="Return"><i class="bx bx-refresh"></i></button>
-                                                <button class="btn btn-outline-danger delete-invoice-btn" data-invoice-id="<?= $purchase['id'] ?>" data-invoice-number="<?= htmlspecialchars($purchase['invoice_number']) ?>" title="Delete"><i class="bx bx-trash"></i></button>
+                                                <!-- <button class="btn btn-outline-warning return-btn" data-invoice-id="<?= $purchase['id'] ?>" title="Return"><i class="bx bx-refresh"></i></button> -->
+                                                <!-- <button class="btn btn-outline-danger delete-invoice-btn" data-invoice-id="<?= $purchase['id'] ?>" data-invoice-number="<?= htmlspecialchars($purchase['invoice_number']) ?>" title="Delete"><i class="bx bx-trash"></i></button> -->
                                             </div>
                                         </td>
                                     </tr>
@@ -736,6 +757,27 @@ $returns = $returns_stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label class="form-label">Address</label>
                         <textarea name="address" id="editCustAddress" class="form-control" rows="3"></textarea>
                     </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">District</label>
+                                <input type="text" name="district" id="editCustDistrict" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">State</label>
+                                <input type="text" name="state" id="editCustState" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Pincode</label>
+                                <input type="text" name="pincode" id="editCustPincode" class="form-control" maxlength="10">
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="modal-footer">
@@ -792,6 +834,9 @@ $(document).ready(function() {
         $('#editCustPhone').val($(this).data('phone'));
         $('#editCustEmail').val($(this).data('email'));
         $('#editCustAddress').val($(this).data('address'));
+        $('#editCustDistrict').val($(this).data('district') || '');
+        $('#editCustState').val($(this).data('state') || '');
+        $('#editCustPincode').val($(this).data('pincode') || '');
         $('#editCustGstin').val($(this).data('gstin'));
         $('#editCustType').val($(this).data('customer_type'));
         $('#editCustReferral').val($(this).data('referral_id'));
@@ -827,6 +872,15 @@ $(document).ready(function() {
                 $('#returnModalBody').html('<div class="alert alert-danger">Failed to load items.</div>');
             }
         });
+    });
+
+    // Pincode formatting
+    $('#editCustPincode').on('input', function() {
+        let pincode = $(this).val().replace(/\D/g, '');
+        if (pincode.length > 10) {
+            pincode = pincode.substring(0, 10);
+        }
+        $(this).val(pincode);
     });
 
     // Auto-close alerts

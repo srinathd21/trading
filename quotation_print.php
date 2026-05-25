@@ -132,23 +132,42 @@ $subtotal = $total_discount = 0;
 $total_taxable = $total_cgst = $total_sgst = $total_igst = 0;
 
 foreach ($items as $item) {
-    $line_total = $item['unit_price'] * $item['quantity'];
-    $discount = $item['discount_amount'] ?? 0;
-    $net = $line_total - $discount;
-    
-    $subtotal += $line_total;
+    $qty = (float)($item['quantity'] ?? 0);
+    $unit_price_inclusive = (float)($item['unit_price'] ?? 0);
+    $discount = (float)($item['discount_amount'] ?? 0);
+
+    $cgst_rate = (float)($item['cgst_rate'] ?? 0);
+    $sgst_rate = (float)($item['sgst_rate'] ?? 0);
+    $igst_rate = (float)($item['igst_rate'] ?? 0);
+
+    $total_gst_rate = $cgst_rate + $sgst_rate + $igst_rate;
+
+    $line_total_inclusive = $unit_price_inclusive * $qty;
+    $net_inclusive = $line_total_inclusive - $discount;
+
+    $subtotal += $line_total_inclusive;
     $total_discount += $discount;
-    
-    // Calculate tax
-    $taxable = $net;
-    $cgst_rate = $item['cgst_rate'] ?? 0;
-    $sgst_rate = $item['sgst_rate'] ?? 0;
-    $igst_rate = $item['igst_rate'] ?? 0;
-    
-    $cgst_amount = $taxable * ($cgst_rate / 100);
-    $sgst_amount = $taxable * ($sgst_rate / 100);
-    $igst_amount = $taxable * ($igst_rate / 100);
-    
+
+    if ($total_gst_rate > 0) {
+        $taxable = $net_inclusive / (1 + ($total_gst_rate / 100));
+        $total_tax = $net_inclusive - $taxable;
+
+        if ($igst_rate > 0) {
+            $igst_amount = $total_tax;
+            $cgst_amount = 0;
+            $sgst_amount = 0;
+        } else {
+            $cgst_amount = ($total_tax * $cgst_rate) / $total_gst_rate;
+            $sgst_amount = ($total_tax * $sgst_rate) / $total_gst_rate;
+            $igst_amount = 0;
+        }
+    } else {
+        $taxable = $net_inclusive;
+        $cgst_amount = 0;
+        $sgst_amount = 0;
+        $igst_amount = 0;
+    }
+
     $total_taxable += $taxable;
     $total_cgst += $cgst_amount;
     $total_sgst += $sgst_amount;

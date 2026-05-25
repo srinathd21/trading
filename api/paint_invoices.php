@@ -1,0 +1,1556 @@
+<?php
+// api/paint_invoices.php
+require_once '../includes/auth.php';
+require_once '../config/database.php';
+require_once '../includes/number_format_helper.php';
+checkAuth();
+$business_id = getBusinessId();
+$shop_id = getShopId();
+$user_id = getUserId();
+
+// === DEBUG LOG FUNCTION ===
+function debug_log($message, $data = null)
+{
+    $log_file = __DIR__ . '/../logs/invoice_api_debug.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $log_entry = "[$timestamp] $message";
+    if ($data !== null) {
+        $log_entry .= " | " . json_encode($data, JSON_PRETTY_PRINT);
+    }
+    $log_entry .= "\n";
+
+    // Ensure directory exists
+    if (!file_exists(dirname($log_file))) {
+        mkdir(dirname($log_file), 0777, true);
+    }
+
+    file_put_contents($log_file, $log_entry, FILE_APPEND);
+}
+
+
+function ensureManualInvoiceItemColumns(PDO $pdo)
+{
+    /*
+        IMPORTANT:
+        MySQL/MariaDB ALTER TABLE causes implicit COMMIT.
+        So this function must run BEFORE $pdo->beginTransaction().
+        If called while a transaction is active, do nothing to avoid:
+        "There is no active transaction".
+    */
+    if ($pdo->inTransaction()) {
+        debug_log('Skipped schema check inside active transaction');
+        return;
+    }
+
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM invoice_items")->fetchAll(PDO::FETCH_COLUMN, 0);
+        // Allow manual invoice items without a products table row when DB permits it.
+        try {
+            $pdo->exec("ALTER TABLE invoice_items MODIFY product_id INT NULL");
+        } catch (Exception $e) {
+            debug_log('Could not modify invoice_items.product_id to NULL. Continuing safely.', ['error' => $e->getMessage()]);
+        }
+        if (!in_array('product_name_snapshot', $cols, true)) {
+            $pdo->exec("ALTER TABLE invoice_items ADD COLUMN product_name_snapshot VARCHAR(255) NULL AFTER product_id");
+        }
+        if (!in_array('is_manual_item', $cols, true)) {
+            $pdo->exec("ALTER TABLE invoice_items ADD COLUMN is_manual_item TINYINT(1) NOT NULL DEFAULT 0 AFTER product_name_snapshot");
+        }
+    } catch (Exception $e) {
+        debug_log('Manual invoice item column check failed', ['error' => $e->getMessage()]);
+    }
+}
+
+
+function insertManualSellerSaleItem(
+    PDO $pdo,
+    int $invoice_id,
+    array $item,
+    int $item_index,
+    int $gst_status,
+    array $gst_settings,
+    float &$total_taxable,
+    float &$total_cgst,
+    float &$total_sgst,
+    float &$total_igst
+) {
+    $manual_name = trim($item['name'] ?? $item['product_name'] ?? $item['product_name_snapshot'] ?? 'Manual Sale Item');
+
+    if ($manual_name === '') {
+        throw new Exception("Manual product name is required in item #$item_index");
+    }
+
+    $qty = (float)($item['quantity'] ?? 0);
+    if ($qty <= 0) {
+        throw new Exception("Invalid quantity in item #$item_index");
+    }
+
+    $unit_price = (float)($item['price'] ?? 0);
+    if ($unit_price < 0) {
+        $unit_price = 0;
+    }
+
+    $discount_value = (float)($item['discount_value'] ?? $item['discount_amount'] ?? 0);
+    $discount_type = $item['discount_type'] ?? 'percentage';
+    $unit = $item['unit'] ?? 'pcs';
+
+    $line_total_before = $unit_price * $qty;
+
+    $line_discount = $discount_type === 'percentage'
+        ? ($line_total_before * ($discount_value / 100))
+        : $discount_value;
+
+    $line_discount = max(0, min($line_discount, $line_total_before));
+    $line_total = max(0, $line_total_before - $line_discount);
+
+    $hsn = trim($item['hsn_code'] ?? '');
+    $cgst_rate = (float)($item['cgst_rate'] ?? 0);
+    $sgst_rate = (float)($item['sgst_rate'] ?? 0);
+    $igst_rate = (float)($item['igst_rate'] ?? 0);
+
+    $taxable_value = $cgst_amount = $sgst_amount = $igst_amount = 0;
+
+    if ($gst_status && $hsn !== '' && ($cgst_rate + $sgst_rate + $igst_rate) > 0) {
+        $total_rate = $cgst_rate + $sgst_rate + $igst_rate;
+
+        if (!empty($gst_settings['is_inclusive'])) {
+            $taxable_value = $line_total / (1 + ($total_rate / 100));
+        } else {
+            $taxable_value = $line_total;
+        }
+
+        $cgst_amount = round($taxable_value * ($cgst_rate / 100), 2);
+        $sgst_amount = round($taxable_value * ($sgst_rate / 100), 2);
+        $igst_amount = round($taxable_value * ($igst_rate / 100), 2);
+    } else {
+        $taxable_value = $line_total;
+    }
+
+    $total_taxable += $taxable_value;
+    $total_cgst += $cgst_amount;
+    $total_sgst += $sgst_amount;
+    $total_igst += $igst_amount;
+
+    $stmt_item = $pdo->prepare("
+        INSERT INTO invoice_items (
+            invoice_id, product_id, product_name_snapshot, is_manual_item, sale_type, quantity,
+            unit_price, original_price, total_price,
+            discount_rate, discount_amount,
+            hsn_code, cgst_rate, sgst_rate, igst_rate,
+            cgst_amount, sgst_amount, igst_amount,
+            total_with_gst, taxable_value, profit,
+            gst_inclusive, referral_commission, unit
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+
+    $stmt_item->execute([
+        $invoice_id,
+        null,
+        $manual_name,
+        1,
+        'manual',
+        $qty,
+        $unit_price,
+        0,
+        $line_total,
+        $discount_type === 'percentage' ? $discount_value : 0,
+        $line_discount,
+        $hsn,
+        $cgst_rate,
+        $sgst_rate,
+        $igst_rate,
+        $cgst_amount,
+        $sgst_amount,
+        $igst_amount,
+        $line_total,
+        $taxable_value,
+        0,
+        $gst_status ? 1 : 0,
+        $item['referral_commission'] ?? 0,
+        $unit ?: 'pcs'
+    ]);
+
+    debug_log("Manual seller sale item saved - no product lookup, no stock deduction", [
+        'item_index' => $item_index,
+        'name' => $manual_name,
+        'qty' => $qty,
+        'unit_price' => $unit_price,
+        'line_total' => $line_total
+    ]);
+}
+
+header('Content-Type: application/json');
+
+try {
+    // Get action from GET or POST
+    $action = $_GET['action'] ?? '';
+
+    // If no action in GET, check POST data
+    if (empty($action) && !empty($_POST['action'])) {
+        $action = $_POST['action'];
+    }
+
+    // If still empty and we have raw input, check JSON
+    if (empty($action)) {
+        $raw_input = file_get_contents('php://input');
+        if (!empty($raw_input)) {
+            $input_data = json_decode($raw_input, true);
+            if ($input_data && isset($input_data['action'])) {
+                $action = $input_data['action'];
+            }
+        }
+    }
+
+    switch ($action) {
+        case 'get_next_invoice_number':
+            getNextInvoiceNumber();
+            break;
+        case 'get_gst_rates':
+            getGstRates();
+            break;
+        case 'save':
+            saveInvoice('save');
+            break;
+        case 'save_for_print':
+            saveInvoice('print');
+            break;
+        case 'check_credit_limit':
+            checkCustomerCreditLimit();
+            break;
+        case 'list':
+            listInvoices();
+            break;
+        case 'get_details':
+            getInvoiceDetails();
+            break;
+        case 'delete':
+            deleteInvoice();
+            break;
+        default:
+            echo json_encode(['success' => false, 'message' => 'Invalid action: ' . $action]);
+    }
+} catch (Exception $e) {
+    error_log("Invoices API Error: " . $e->getMessage());
+    debug_log("Invoices API Exception", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    echo json_encode(['success' => false, 'message' => 'Server error occurred: ' . $e->getMessage()]);
+}
+
+
+function getGstRates()
+{
+    global $pdo, $business_id;
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                id,
+                hsn_code,
+                COALESCE(description, '') AS description,
+                cgst_rate,
+                sgst_rate,
+                igst_rate,
+                (cgst_rate + sgst_rate + igst_rate) AS total_gst
+            FROM gst_rates
+            WHERE business_id = ?
+              AND status = 'active'
+            ORDER BY hsn_code ASC
+        ");
+        $stmt->execute([$business_id]);
+
+        echo json_encode([
+            'success' => true,
+            'business_id' => $business_id,
+            'rates' => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+    } catch (Exception $e) {
+        debug_log("GST rates load error", ['error' => $e->getMessage()]);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Failed to load GST rates: ' . $e->getMessage()
+        ]);
+    }
+}
+
+function getNextInvoiceNumber()
+{
+    global $pdo, $business_id, $shop_id;
+
+    $data = json_decode(file_get_contents('php://input'), true) ?: [];
+
+    $gst_type = strtolower(trim($data['invoice_type'] ?? 'gst'));
+    $is_non_gst = in_array($gst_type, ['non-gst', 'non_gst', 'nongst'], true);
+
+    $date_value = $data['invoice_date'] ?? $data['date'] ?? date('Y-m-d H:i:s');
+
+    $result = nf_generate_document_number($pdo, [
+        'business_id' => $business_id,
+        'shop_id' => $shop_id,
+        'document_type' => $is_non_gst ? 'invoice_non_gst' : 'invoice_gst',
+        'table_name' => 'invoices',
+        'number_column' => 'invoice_number',
+        'date_column' => 'created_at',
+        'date_value' => $date_value
+    ]);
+
+    if (!$result['success']) {
+        echo json_encode($result);
+        return;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'invoice_number' => $result['number'],
+        'prefix' => $result['prefix'],
+        'middle_value' => $result['middle_value'],
+        'next_number' => $result['sequence'],
+        'reset_period' => $result['reset_period']
+    ]);
+}
+function saveInvoice($action = 'save')
+{
+    global $pdo, $business_id, $shop_id, $user_id;
+
+    // Start logging
+    debug_log("=== NEW INVOICE SAVE REQUEST STARTED ===");
+    debug_log("Action: " . $action);
+
+    // Get raw input
+    $raw_input = file_get_contents('php://input');
+    if (empty($raw_input)) {
+        echo json_encode(['success' => false, 'message' => 'Empty request body']);
+        return;
+    }
+
+    debug_log("Raw input received", ['raw' => substr($raw_input, 0, 2000)]);
+
+    $data = json_decode($raw_input, true);
+    if (!$data) {
+        debug_log("Invalid JSON received");
+        echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
+        return;
+    }
+
+    // Determine if it's for print
+    $is_print = ($action === 'print');
+
+    if (!isset($data['items']) || !is_array($data['items'])) {
+        debug_log("Missing items array");
+        echo json_encode(['success' => false, 'message' => 'Missing items array']);
+        return;
+    }
+
+    // Validate required fields
+    $required_fields = ['customer_name', 'invoice_number', 'grand_total'];
+    foreach ($required_fields as $field) {
+        if (!isset($data[$field])) {
+            echo json_encode(['success' => false, 'message' => "Missing required field: $field"]);
+            return;
+        }
+    }
+
+    debug_log("Input parsed successfully", [
+        'item_count' => count($data['items']),
+        'gst_type' => $data['invoice_type'] ?? 'not set',
+        'customer_name' => $data['customer_name'] ?? 'not set',
+        'points_used' => $data['points_used'] ?? 0,
+        'points_discount' => $data['points_discount'] ?? 0,
+        'invoice_number' => $data['invoice_number']
+    ]);
+
+    // Start transaction
+    // Manual seller sale schema check must run before transaction because ALTER TABLE auto-commits in MySQL/MariaDB.
+    ensureManualInvoiceItemColumns($pdo);
+    debug_log("Manual schema check completed before transaction");
+
+    $pdo->beginTransaction();
+    debug_log("Transaction started");
+
+    try {
+        /* =========================
+           BASIC CONTEXT
+        ========================= */
+        debug_log("Context loaded", [
+            'business_id' => $business_id,
+            'shop_id' => $shop_id,
+            'seller_id' => $user_id
+        ]);
+
+        /* =========================
+           LOYALTY SETTINGS
+        ========================= */
+        $loyalty_settings = [
+            'points_per_amount' => 0.01,
+            'amount_per_point' => 100.00,
+            'redeem_value_per_point' => 1.00,
+            'min_points_to_redeem' => 50,
+            'expiry_months' => null,
+            'is_active' => 1
+        ];
+
+        try {
+            $loyalty_settings_stmt = $pdo->prepare("
+                SELECT points_per_amount, amount_per_point,
+                       redeem_value_per_point, min_points_to_redeem, expiry_months, is_active
+                FROM loyalty_settings
+                WHERE business_id = ?
+            ");
+            $loyalty_settings_stmt->execute([$business_id]);
+            $db_loyalty_settings = $loyalty_settings_stmt->fetch();
+            if ($db_loyalty_settings) {
+                $loyalty_settings = $db_loyalty_settings;
+            }
+        } catch (Exception $e) {
+            debug_log("Failed to load loyalty settings, using defaults", ['error' => $e->getMessage()]);
+        }
+
+        debug_log("Loyalty settings", $loyalty_settings);
+
+        /* =========================
+           GST TYPE FROM FRONTEND
+        ========================= */
+        $gst_type = $data['invoice_type'] ?? 'gst';
+        $force_non_gst = ($gst_type === 'non-gst');
+        debug_log("GST handling", [
+            'frontend_gst_type' => $gst_type,
+            'force_non_gst' => $force_non_gst
+        ]);
+
+        /* =========================
+           CUSTOMER ADDRESS
+        ========================= */
+        $customer_address = trim($data['customer_address'] ?? '');
+        debug_log("Customer address", ['address' => $customer_address]);
+
+        /* =========================
+           GST SETTINGS
+        ========================= */
+        $gst_settings = ['is_gst_enabled' => 0, 'is_inclusive' => 1];
+
+        if (!$force_non_gst) {
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT is_gst_enabled, is_inclusive
+                    FROM gst_settings
+                    WHERE business_id = ? AND (shop_id = ? OR shop_id IS NULL)
+                    AND status = 'active'
+                    ORDER BY shop_id DESC
+                    LIMIT 1
+                ");
+                $stmt->execute([$business_id, $shop_id]);
+                $gst = $stmt->fetch();
+                if ($gst) {
+                    $gst_settings['is_gst_enabled'] = (int) $gst['is_gst_enabled'];
+                    $gst_settings['is_inclusive'] = (int) $gst['is_inclusive'];
+                }
+            } catch (Exception $e) {
+                debug_log("Failed to load GST settings", ['error' => $e->getMessage()]);
+            }
+        }
+        debug_log("GST settings loaded", $gst_settings);
+
+        /* =========================
+           DETERMINE GST STATUS
+        ========================= */
+        $has_hsn = false;
+        foreach ($data['items'] as $i) {
+            if (!empty($i['hsn_code'])) {
+                $has_hsn = true;
+                break;
+            }
+        }
+        debug_log("HSN check", ['has_hsn' => $has_hsn]);
+
+        $gst_status = $force_non_gst ? 0 : ($gst_settings['is_gst_enabled'] && $has_hsn ? 1 : 0);
+        $invoice_type = $gst_status ? 'tax_invoice' : 'retail_bill';
+        debug_log("Invoice type decided", [
+            'gst_status' => $gst_status,
+            'invoice_type' => $invoice_type
+        ]);
+
+        /* =========================
+           CUSTOMER HANDLING
+        ========================= */
+        $customer_name = trim($data['customer_name'] ?? 'Walk-in Customer');
+        $customer_phone = preg_replace('/[^0-9]/', '', $data['customer_phone'] ?? '');
+        $customer_gstin = trim($data['customer_gstin'] ?? '');
+        $customer_type = !empty($customer_gstin) ? 'wholesale' : 'retail';
+
+        // Check customer credit limit if customer exists
+        $customer_id = $data['customer_id'] ?? null;
+
+        if ($customer_id) {
+            // Check existing customer
+            $customerCheckSql = "SELECT id, name, credit_limit, outstanding_amount
+                                 FROM customers
+                                 WHERE id = ? AND business_id = ?";
+            $customerStmt = $pdo->prepare($customerCheckSql);
+            $customerStmt->execute([$customer_id, $business_id]);
+            $customer = $customerStmt->fetch();
+
+            if ($customer) {
+                // Update customer information if provided
+                if ($customer_address) {
+                    $updateStmt = $pdo->prepare("UPDATE customers SET address = ? WHERE id = ?");
+                    $updateStmt->execute([$customer_address, $customer_id]);
+                    debug_log("Updated existing customer address", ['customer_id' => $customer_id]);
+                }
+
+                // Check credit limit
+                $creditLimit = $customer['credit_limit'] ?? 0;
+                $outstanding = $customer['outstanding_amount'] ?? 0;
+                $pending_amount = $data['pending_amount'] ?? 0;
+                $newOutstanding = $outstanding + $pending_amount;
+
+                if ($creditLimit > 0 && $newOutstanding > $creditLimit) {
+                    throw new Exception("Customer credit limit exceeded! Limit: ₹{$creditLimit}, New Outstanding: ₹{$newOutstanding}");
+                }
+            } else {
+                $customer_id = null; // Reset if not found
+            }
+        }
+
+        if (!$customer_id) {
+            // Check by phone or create new
+            if (!empty($customer_phone)) {
+                $stmt = $pdo->prepare("SELECT id FROM customers WHERE phone = ? AND business_id = ? LIMIT 1");
+                $stmt->execute([$customer_phone, $business_id]);
+                $cust = $stmt->fetch();
+
+                if ($cust) {
+                    $customer_id = $cust['id'];
+                    if ($customer_address) {
+                        $updateStmt = $pdo->prepare("UPDATE customers SET address = ? WHERE id = ?");
+                        $updateStmt->execute([$customer_address, $customer_id]);
+                        debug_log("Updated existing customer address", ['customer_id' => $customer_id]);
+                    }
+                }
+            }
+
+            if (!$customer_id) {
+                // Create new customer
+                $stmt = $pdo->prepare("
+                    INSERT INTO customers
+                    (business_id, customer_type, name, phone, gstin, address, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ");
+                $stmt->execute([
+                    $business_id,
+                    $customer_type,
+                    $customer_name,
+                    $customer_phone ?: NULL,
+                    $customer_gstin ?: NULL,
+                    $customer_address ?: NULL
+                ]);
+                $customer_id = $pdo->lastInsertId();
+                debug_log("Created new customer", ['customer_id' => $customer_id]);
+            }
+        }
+
+        /* =========================
+           LOYALTY POINTS CHECK
+        ========================= */
+        $points_used = (int) ($data['points_used'] ?? 0);
+        $points_discount = (float) ($data['points_discount'] ?? 0);
+
+        // Check if customer exists in loyalty points
+        $customer_points = null;
+        try {
+            $customer_points_stmt = $pdo->prepare("
+                SELECT * FROM customer_points
+                WHERE customer_id = ? AND business_id = ?
+            ");
+            $customer_points_stmt->execute([$customer_id, $business_id]);
+            $customer_points = $customer_points_stmt->fetch();
+
+            if (!$customer_points) {
+                // Create new customer points record
+                $create_points_stmt = $pdo->prepare("
+                    INSERT INTO customer_points
+                    (customer_id, business_id, total_points_earned, total_points_redeemed, available_points)
+                    VALUES (?, ?, 0.00, 0.00, 0.00)
+                ");
+                $create_points_stmt->execute([$customer_id, $business_id]);
+                debug_log("Created new customer points record", ['customer_id' => $customer_id]);
+
+                // Re-fetch to get the record
+                $customer_points_stmt->execute([$customer_id, $business_id]);
+                $customer_points = $customer_points_stmt->fetch();
+            }
+        } catch (Exception $e) {
+            debug_log("Customer points check failed", ['error' => $e->getMessage()]);
+            // Continue without points
+        }
+
+        // Verify customer has enough points if using points
+        if ($points_used > 0 && $customer_points) {
+            $available_points = (float) ($customer_points['available_points'] ?? 0);
+            if ($available_points < $points_used) {
+                throw new Exception("Insufficient loyalty points available. Available: " . $available_points . ", Requested: " . $points_used);
+            }
+
+            // Check minimum points requirement
+            if ($points_used < $loyalty_settings['min_points_to_redeem']) {
+                throw new Exception("Minimum " . $loyalty_settings['min_points_to_redeem'] . " points required for redemption");
+            }
+
+            debug_log("Points usage verified", [
+                'points_used' => $points_used,
+                'points_discount' => $points_discount,
+                'available_points' => $available_points
+            ]);
+        }
+
+/* =========================
+   INVOICE NUMBER + DATE & TIME
+========================= */
+$invoice_number = trim($data['invoice_number'] ?? '');
+if ($invoice_number === '') {
+    throw new Exception("Invoice number is required");
+}
+
+/*
+    Frontend can send:
+    1) 2026-05-14T11:05      from datetime-local
+    2) 2026-05-14 11:05:00   MySQL format
+    3) 2026-05-14            old date-only fallback
+*/
+$invoice_date_raw = trim($data['invoice_date'] ?? ($data['date'] ?? ''));
+
+if ($invoice_date_raw === '') {
+    throw new Exception("Invoice date and time is required");
+}
+
+// Convert datetime-local format to MySQL format
+$invoice_date_raw = str_replace('T', ' ', $invoice_date_raw);
+
+// If seconds missing, add :00
+if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $invoice_date_raw)) {
+    $invoice_date_raw .= ':00';
+}
+
+// If only date received, add current time as fallback
+if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $invoice_date_raw)) {
+    $invoice_date_raw .= ' ' . date('H:i:s');
+}
+
+// Validate full datetime
+$invoice_date_obj = DateTime::createFromFormat('Y-m-d H:i:s', $invoice_date_raw);
+
+if (!$invoice_date_obj || $invoice_date_obj->format('Y-m-d H:i:s') !== $invoice_date_raw) {
+    throw new Exception("Invalid invoice date and time format");
+}
+
+// Final values
+$invoice_date = $invoice_date_obj->format('Y-m-d');
+$created_at = $invoice_date_obj->format('Y-m-d H:i:s');
+
+$check_duplicate_sql = "SELECT id FROM invoices WHERE invoice_number = ? AND business_id = ?";
+$check_stmt = $pdo->prepare($check_duplicate_sql);
+$check_stmt->execute([$invoice_number, $business_id]);
+$existing_invoice = $check_stmt->fetch();
+
+if ($existing_invoice) {
+    debug_log("Duplicate invoice number blocked", [
+        'invoice_number' => $invoice_number,
+        'existing_id' => $existing_invoice['id']
+    ]);
+
+    throw new Exception("Invoice number already exists. Please enter a different invoice number.");
+}
+
+debug_log("Using user-entered invoice number and invoice date-time as created_at", [
+    'invoice_number' => $invoice_number,
+    'invoice_date_raw' => $invoice_date_raw,
+    'invoice_date' => $invoice_date,
+    'created_at' => $created_at
+]);
+
+    /* =========================
+   PAYMENT & TOTALS
+========================= */
+$subtotal = (float)($data['subtotal'] ?? 0);
+$overall_discount = (float)($data['overall_discount'] ?? 0);
+$total = (float)($data['grand_total'] ?? 0);
+
+// Get payment details with credit due date
+$payment_details = $data['payment_details'] ?? [];
+$cash_amount = (float)($payment_details['cash'] ?? 0);
+$upi_amount = (float)($payment_details['upi'] ?? 0);
+$bank_amount = (float)($payment_details['bank'] ?? 0);
+$cheque_amount = (float)($payment_details['cheque'] ?? 0);
+$credit_amount = (float)($payment_details['credit'] ?? 0);
+
+// Get credit reference and due date
+$credit_reference = $payment_details['credit_reference'] ?? '';
+$credit_due_date = $payment_details['credit_due_date'] ?? null;
+
+$total_paid = $cash_amount + $upi_amount + $bank_amount + $cheque_amount;
+$change_given = max(0, $total_paid - $total);
+
+// Get shipping details from the request
+$shipping_details = $data['shipping_details'] ?? [];
+$shipping_name = trim($shipping_details['name'] ?? '');
+$shipping_contact = trim($shipping_details['contact'] ?? '');
+$shipping_gstin = trim($shipping_details['gstin'] ?? '');
+$shipping_address = trim($shipping_details['address'] ?? '');
+$shipping_vehicle_number = trim($shipping_details['vehicle_number'] ?? '');
+
+$shipping_charges = (float)($shipping_details['shipping_charges'] ?? 0);
+$shipping_transport_type = trim($shipping_details['transport_type'] ?? '');
+$transport_charge = (float)($shipping_details['transport_charge'] ?? 0);
+// Calculate pending amount - use credit amount if credit payment exists
+if ($credit_amount > 0) {
+    $pending_amount = $credit_amount; // Insert credit amount as pending amount
+} else {
+    $pending_amount = max(0, $total - $total_paid); // Regular calculation when no credit
+}
+
+$payment_status = 'pending';
+if ($pending_amount == 0) $payment_status = 'paid';
+elseif ($total_paid > 0) $payment_status = 'partial';
+
+$methods = [];
+if ($cash_amount > 0) $methods[] = 'cash';
+if ($upi_amount > 0) $methods[] = 'upi';
+if ($bank_amount > 0) $methods[] = 'bank';
+if ($cheque_amount > 0) $methods[] = 'cheque';
+if ($credit_amount > 0) $methods[] = 'credit';
+$payment_method = count($methods) > 1 ? 'split' : (count($methods) === 1 ? $methods[0] : 'cash');
+
+debug_log("Payment summary", [
+    'subtotal' => $subtotal,
+    'overall_discount' => $overall_discount,
+    'points_discount' => $points_discount,
+    'total' => $total,
+    'total_paid' => $total_paid,
+    'change_given' => $change_given,
+    'pending_amount' => $pending_amount,
+    'payment_status' => $payment_status,
+    'payment_method' => $payment_method,
+    'credit_due_date' => $credit_due_date
+]);
+
+        /* =========================
+           REFERRAL
+        ========================= */
+        $referral_id = !empty($data['referral_id']) ? (int) $data['referral_id'] : null;
+        $total_referral_commission = (float) ($data['referral_commission'] ?? 0);
+        debug_log("Referral info", ['referral_id' => $referral_id, 'commission' => $total_referral_commission]);
+        // Add shipping charges to grand total if not already included
+        $total_with_shipping = $total;
+        /* =========================
+   INSERT INVOICE
+========================= */
+// Get credit due date from payment details
+$credit_due_date = null;
+if ($credit_amount > 0 && isset($payment_details['credit_due_date']) && !empty($payment_details['credit_due_date'])) {
+    $credit_due_date = $payment_details['credit_due_date'];
+} elseif ($credit_amount > 0) {
+    // Set default due date (30 days from now) if not provided
+    $credit_due_date = date('Y-m-d', strtotime('+30 days'));
+}
+
+$stmt = $pdo->prepare("
+    INSERT INTO invoices (
+        customer_id, invoice_number, invoice_type, customer_type, gst_status,
+        subtotal, discount, discount_type, overall_discount, total,
+        cash_received, change_given, pending_amount, paid_amount, payment_status,
+        cash_amount, upi_amount, bank_amount, cheque_amount,
+        cheque_number, upi_reference, bank_reference,
+        payment_method, seller_id, shop_id, business_id,
+        referral_id, referral_commission_amount,
+        points_redeemed, points_discount_amount,
+        shipping_name, shipping_contact, shipping_gstin, shipping_address,
+        shipping_vehicle_number, shipping_transport_type, shipping_charges, transport_charge,
+        credit_due_date,
+        created_at, gst_type
+    ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?,
+        ?, ?
+    )
+");
+
+$discount = $data['discount'] ?? 0;
+$discount_type = $data['discount_type'] ?? 'percent';
+
+$stmt->execute([
+    $customer_id,
+    $invoice_number,
+    $invoice_type,
+    $customer_type,
+    $gst_status,
+    $subtotal,
+    $discount,
+    $discount_type,
+    $overall_discount,
+    $total_with_shipping,
+    $total_paid,
+    $change_given,
+    $pending_amount,
+    $total_paid,
+    $payment_status,
+    $cash_amount,
+    $upi_amount,
+    $bank_amount,
+    $cheque_amount,
+    $payment_details['cheque_number'] ?? '',
+    $payment_details['upi_reference'] ?? '',
+    $payment_details['bank_reference'] ?? '',
+    $payment_method,
+    $user_id,
+    $shop_id,
+    $business_id,
+    $referral_id,
+    $total_referral_commission,
+    $points_used,
+    $points_discount,
+    $shipping_name ?: null,
+    $shipping_contact ?: null,
+    $shipping_gstin ?: null,
+    $shipping_address ?: null,
+    $shipping_vehicle_number ?: null,
+$shipping_transport_type ?: null,
+$shipping_charges,
+$transport_charge,
+    $credit_due_date,
+    $created_at,
+    $gst_type
+]);
+
+        $invoice_id = $pdo->lastInsertId();
+        debug_log("Invoice created", [
+            'invoice_id' => $invoice_id,
+            'points_used' => $points_used,
+            'points_discount' => $points_discount
+        ]);
+
+        /* =========================
+           SAVE CUSTOMER ADDRESS (if provided)
+        ========================= */
+        if ($customer_address) {
+            try {
+                // Check if table exists, create if not
+                $table_check = $pdo->query("SHOW TABLES LIKE 'customer_addresses'")->fetch();
+                if (!$table_check) {
+                    $pdo->exec("
+                        CREATE TABLE customer_addresses (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            customer_id INT NOT NULL,
+                            invoice_id INT NOT NULL,
+                            address TEXT NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            INDEX idx_customer (customer_id),
+                            INDEX idx_invoice (invoice_id)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    ");
+                }
+
+                $stmt_addr = $pdo->prepare("
+                    INSERT INTO customer_addresses (customer_id, invoice_id, address)
+                    VALUES (?, ?, ?)
+                ");
+                $stmt_addr->execute([$customer_id, $invoice_id, $customer_address]);
+                debug_log("Customer address saved");
+            } catch (Exception $e) {
+                debug_log("Address save failed (non-critical)", ['error' => $e->getMessage()]);
+            }
+        }
+
+        /* =========================
+           PROCESS ITEMS - MANUAL SELLER SALE ONLY
+           NO PRODUCT LOOKUP
+           NO STOCK DEDUCTION
+        ========================= */
+        /* schema already checked before transaction */
+
+        $total_taxable = $total_cgst = $total_sgst = $total_igst = 0;
+        $item_index = 0;
+
+        foreach ($data['items'] as $item) {
+            $item_index++;
+
+            $item['product_id'] = null;
+            $item['is_manual_item'] = 1;
+            $item['manual_item'] = 1;
+            $item['no_stock_reduce'] = 1;
+
+            insertManualSellerSaleItem(
+                $pdo,
+                (int)$invoice_id,
+                $item,
+                $item_index,
+                (int)$gst_status,
+                $gst_settings,
+                $total_taxable,
+                $total_cgst,
+                $total_sgst,
+                $total_igst
+            );
+        }
+
+        /* =========================
+           UPDATE REFERRAL & INVOICE
+        ========================= */
+        if ($referral_id && $total_referral_commission > 0) {
+            try {
+                $updateReferralStmt = $pdo->prepare("
+                    UPDATE referral_person
+                    SET debit_amount = debit_amount + ?,
+                        balance_due = balance_due + ?,
+                        total_sales_amount = total_sales_amount + ?,
+                        updated_at = NOW()
+                    WHERE id = ? AND business_id = ?
+                ");
+                $updateReferralStmt->execute([
+                    $total_referral_commission,
+                    $total_referral_commission,
+                    $total,
+                    $referral_id,
+                    $business_id
+                ]);
+                debug_log("Referral updated");
+            } catch (Exception $e) {
+                debug_log("Referral update failed", ['error' => $e->getMessage()]);
+            }
+        }
+
+        /* =========================
+           LOYALTY POINTS HANDLING
+        ========================= */
+        // 1. Deduct used points (if any)
+        if ($points_used > 0 && $customer_points) {
+            try {
+                $deduct_points_stmt = $pdo->prepare("
+                    UPDATE customer_points
+                    SET total_points_redeemed = total_points_redeemed + ?,
+                        available_points = available_points - ?,
+                        last_updated = NOW()
+                    WHERE customer_id = ? AND business_id = ?
+                ");
+                $deduct_points_stmt->execute([
+                    $points_used,
+                    $points_used,
+                    $customer_id,
+                    $business_id
+                ]);
+                debug_log("Points deducted", ['points_used' => $points_used]);
+
+                // Record points redemption
+                try {
+                    $table_check = $pdo->query("SHOW TABLES LIKE 'points_redemptions'")->fetch();
+                    if (!$table_check) {
+                        $pdo->exec("
+                            CREATE TABLE points_redemptions (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                customer_id INT NOT NULL,
+                                business_id INT NOT NULL,
+                                invoice_id INT NOT NULL,
+                                points_used INT NOT NULL,
+                                discount_amount DECIMAL(12,2) NOT NULL,
+                                redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                INDEX idx_customer (customer_id),
+                                INDEX idx_invoice (invoice_id)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                        ");
+                    }
+
+                    $redemption_stmt = $pdo->prepare("
+                        INSERT INTO points_redemptions
+                        (customer_id, business_id, invoice_id, points_used, discount_amount)
+                        VALUES (?, ?, ?, ?, ?)
+                    ");
+                    $redemption_stmt->execute([
+                        $customer_id,
+                        $business_id,
+                        $invoice_id,
+                        $points_used,
+                        $points_discount
+                    ]);
+                    debug_log("Points redemption recorded");
+                } catch (Exception $e) {
+                    debug_log("Points redemption record failed", ['error' => $e->getMessage()]);
+                }
+            } catch (Exception $e) {
+                debug_log("Points deduction failed", ['error' => $e->getMessage()]);
+            }
+        }
+
+        // 2. Calculate and add earned points (from purchase amount)
+        $points_earned = 0;
+        $points_basis = $subtotal - $points_discount;
+
+        if ($loyalty_settings['is_active'] && $loyalty_settings['points_per_amount'] > 0 && $points_basis > 0) {
+            $points_earned = $points_basis * $loyalty_settings['points_per_amount'];
+            $points_earned = round($points_earned, 2);
+
+            if ($points_earned > 0) {
+                try {
+                    $earn_points_stmt = $pdo->prepare("
+                        UPDATE customer_points
+                        SET total_points_earned = total_points_earned + ?,
+                            available_points = available_points + ?,
+                            last_updated = NOW()
+                        WHERE customer_id = ? AND business_id = ?
+                    ");
+                    $earn_points_stmt->execute([
+                        $points_earned,
+                        $points_earned,
+                        $customer_id,
+                        $business_id
+                    ]);
+                    debug_log("Points earned", ['points_earned' => $points_earned]);
+
+                    // Record points earning
+                    try {
+                        $table_check = $pdo->query("SHOW TABLES LIKE 'points_earnings'")->fetch();
+                        if (!$table_check) {
+                            $pdo->exec("
+                                CREATE TABLE points_earnings (
+                                    id INT AUTO_INCREMENT PRIMARY KEY,
+                                    customer_id INT NOT NULL,
+                                    business_id INT NOT NULL,
+                                    invoice_id INT NOT NULL,
+                                    points_earned DECIMAL(12,2) NOT NULL,
+                                    purchase_amount DECIMAL(12,2) NOT NULL,
+                                    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                    INDEX idx_customer (customer_id),
+                                    INDEX idx_invoice (invoice_id)
+                                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                            ");
+                        }
+
+                        $earning_stmt = $pdo->prepare("
+                            INSERT INTO points_earnings
+                            (customer_id, business_id, invoice_id, points_earned, purchase_amount)
+                            VALUES (?, ?, ?, ?, ?)
+                        ");
+                        $earning_stmt->execute([
+                            $customer_id,
+                            $business_id,
+                            $invoice_id,
+                            $points_earned,
+                            $points_basis
+                        ]);
+                        debug_log("Points earning recorded");
+                    } catch (Exception $e) {
+                        debug_log("Points earning record failed", ['error' => $e->getMessage()]);
+                    }
+                } catch (Exception $e) {
+                    debug_log("Points earning failed", ['error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        /* =========================
+           GST SUMMARY
+        ========================= */
+        if ($gst_status) {
+            try {
+                $table_check = $pdo->query("SHOW TABLES LIKE 'invoice_gst_summary'")->fetch();
+                if (!$table_check) {
+                    $pdo->exec("
+                        CREATE TABLE invoice_gst_summary (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            invoice_id INT NOT NULL,
+                            total_taxable_value DECIMAL(10,2) DEFAULT 0.00,
+                            total_cgst DECIMAL(10,2) DEFAULT 0.00,
+                            total_sgst DECIMAL(10,2) DEFAULT 0.00,
+                            total_igst DECIMAL(10,2) DEFAULT 0.00,
+                            total_gst DECIMAL(10,2) DEFAULT 0.00,
+                            UNIQUE KEY invoice_id (invoice_id),
+                            INDEX idx_invoice (invoice_id)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    ");
+                }
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO invoice_gst_summary
+                    (invoice_id, total_taxable_value, total_cgst, total_sgst, total_igst, total_gst)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        total_taxable_value = VALUES(total_taxable_value),
+                        total_cgst = VALUES(total_cgst),
+                        total_sgst = VALUES(total_sgst),
+                        total_igst = VALUES(total_igst),
+                        total_gst = VALUES(total_gst)
+                ");
+                $stmt->execute([
+                    $invoice_id,
+                    $total_taxable,
+                    $total_cgst,
+                    $total_sgst,
+                    $total_igst,
+                    $total_cgst + $total_sgst + $total_igst
+                ]);
+                debug_log("GST summary saved");
+            } catch (Exception $e) {
+                debug_log("GST summary save failed", ['error' => $e->getMessage()]);
+            }
+        }
+
+        // Update customer outstanding amount if credit sale
+        // if ($pending_amount > 0) {
+        //     try {
+        //         $updateCustomerSql = "UPDATE customers
+        //                              SET outstanding_amount = outstanding_amount + ?,
+        //                                  outstanding_type = 'credit'
+        //                              WHERE id = ? AND business_id = ?";
+        //         $updateStmt = $pdo->prepare($updateCustomerSql);
+        //         $updateStmt->execute([$pending_amount, $customer_id, $business_id]);
+        //         debug_log("Updated customer outstanding amount", ['pending_amount' => $pending_amount]);
+        //     } catch (Exception $e) {
+        //         debug_log("Failed to update customer outstanding", ['error' => $e->getMessage()]);
+        //     }
+        // }
+
+        // Commit transaction
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+            debug_log("Transaction committed successfully");
+        } else {
+            debug_log("No active transaction at commit point - skipped commit safely");
+        }
+
+        // SUCCESS - Send response
+        debug_log("=== INVOICE SAVE COMPLETED SUCCESSFULLY ===");
+
+        $response = [
+            'success' => true,
+            'invoice_id' => $invoice_id,
+            'invoice_number' => $invoice_number,
+            'gst_status' => $gst_status,
+            'gst_type' => $gst_type,
+            'invoice_type' => $invoice_type,
+            'payment_status' => $payment_status,
+            'pending_amount' => $pending_amount,
+            'total_paid' => $total_paid,
+            'change_given' => $change_given,
+            'points_used' => $points_used,
+            'points_discount' => $points_discount,
+            'points_earned' => $points_earned,
+            'customer_id' => $customer_id,
+            'message' => $is_print
+                ? 'Invoice saved successfully and ready for printing'
+                : 'Invoice saved successfully'
+        ];
+
+        if ($is_print) {
+            $response['print_url'] = "invoice_print.php?invoice_id=" . $invoice_id;
+        }
+
+        echo json_encode($response);
+
+    } catch (Exception $e) {
+        // Rollback if transaction was started
+        if ($pdo->inTransaction()) {
+            try {
+                $pdo->rollBack();
+                debug_log("Transaction rolled back due to error");
+            } catch (Exception $rollback_e) {
+                debug_log("Rollback failed", ['error' => $rollback_e->getMessage()]);
+            }
+        }
+
+        debug_log("CRITICAL ERROR", [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        echo json_encode([
+            'success' => false,
+            'message' => 'Failed to save invoice: ' . $e->getMessage(),
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
+function checkCustomerCreditLimit()
+{
+    global $pdo, $business_id;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    $customer_id = $data['customer_id'] ?? 0;
+    $pending_amount = (float) ($data['pending_amount'] ?? 0);
+
+    if (!$customer_id) {
+        echo json_encode(['success' => false, 'message' => 'Customer ID required']);
+        return;
+    }
+
+    try {
+        $sql = "SELECT credit_limit, outstanding_amount 
+                FROM customers 
+                WHERE id = ? AND business_id = ?";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$customer_id, $business_id]);
+        $customer = $stmt->fetch();
+
+        if (!$customer) {
+            echo json_encode(['success' => false, 'message' => 'Customer not found']);
+            return;
+        }
+
+        $creditLimit = $customer['credit_limit'] ?? 0;
+        $outstanding = $customer['outstanding_amount'] ?? 0;
+        $newOutstanding = $outstanding + $pending_amount;
+        $availableCredit = $creditLimit - $outstanding;
+
+        echo json_encode([
+            'success' => true,
+            'has_credit_limit' => $creditLimit > 0,
+            'credit_limit' => $creditLimit,
+            'outstanding_amount' => $outstanding,
+            'new_outstanding' => $newOutstanding,
+            'available_credit' => $availableCredit,
+            'can_proceed' => $creditLimit == 0 || $newOutstanding <= $creditLimit,
+            'exceeded_by' => $newOutstanding > $creditLimit ? ($newOutstanding - $creditLimit) : 0
+        ]);
+    } catch (Exception $e) {
+        debug_log("Credit check error", ['error' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error checking credit limit: ' . $e->getMessage()]);
+    }
+}
+
+// New function to list invoices
+function listInvoices()
+{
+    global $pdo, $business_id, $shop_id;
+
+    try {
+        $page = $_GET['page'] ?? 1;
+        $limit = $_GET['limit'] ?? 20;
+        $offset = ($page - 1) * $limit;
+
+        $search = $_GET['search'] ?? '';
+        $date_from = $_GET['date_from'] ?? '';
+        $date_to = $_GET['date_to'] ?? '';
+        $customer_id = $_GET['customer_id'] ?? '';
+        $payment_status = $_GET['payment_status'] ?? '';
+
+        $sql = "SELECT 
+                    i.id,
+                    i.invoice_number,
+                    i.customer_id,
+                    c.name as customer_name,
+                    i.total,
+                    i.paid_amount,
+                    i.pending_amount,
+                    i.payment_status,
+                    i.payment_method,
+                    i.created_at,
+                    i.invoice_type,
+                    u.username as seller_name
+                FROM invoices i
+                LEFT JOIN customers c ON i.customer_id = c.id
+                LEFT JOIN users u ON i.seller_id = u.id
+                WHERE i.business_id = ? AND i.shop_id = ?";
+
+        $params = [$business_id, $shop_id];
+
+        if (!empty($search)) {
+            $sql .= " AND (i.invoice_number LIKE ? OR c.name LIKE ?)";
+            $params[] = "%$search%";
+            $params[] = "%$search%";
+        }
+
+        if (!empty($customer_id)) {
+            $sql .= " AND i.customer_id = ?";
+            $params[] = $customer_id;
+        }
+
+        if (!empty($payment_status)) {
+            $sql .= " AND i.payment_status = ?";
+            $params[] = $payment_status;
+        }
+
+        if (!empty($date_from)) {
+            $sql .= " AND DATE(i.created_at) >= ?";
+            $params[] = $date_from;
+        }
+
+        if (!empty($date_to)) {
+            $sql .= " AND DATE(i.created_at) <= ?";
+            $params[] = $date_to;
+        }
+
+        $sql .= " ORDER BY i.created_at DESC LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $invoices = $stmt->fetchAll();
+
+        // Count total for pagination
+        $count_sql = "SELECT COUNT(*) as total FROM invoices i
+                     LEFT JOIN customers c ON i.customer_id = c.id
+                     WHERE i.business_id = ? AND i.shop_id = ?";
+
+        $count_params = [$business_id, $shop_id];
+
+        if (!empty($search)) {
+            $count_sql .= " AND (i.invoice_number LIKE ? OR c.name LIKE ?)";
+            $count_params[] = "%$search%";
+            $count_params[] = "%$search%";
+        }
+
+        $count_stmt = $pdo->prepare($count_sql);
+        $count_stmt->execute($count_params);
+        $total = $count_stmt->fetch()['total'];
+
+        echo json_encode([
+            'success' => true,
+            'invoices' => $invoices,
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            'total_pages' => ceil($total / $limit)
+        ]);
+    } catch (Exception $e) {
+        debug_log("List invoices error", ['error' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error listing invoices: ' . $e->getMessage()]);
+    }
+}
+
+// New function to get invoice details
+function getInvoiceDetails()
+{
+    global $pdo, $business_id;
+
+    $invoice_id = $_GET['invoice_id'] ?? 0;
+
+    if (!$invoice_id) {
+        echo json_encode(['success' => false, 'message' => 'Invoice ID required']);
+        return;
+    }
+
+    try {
+        // Get invoice basic info
+        $sql = "SELECT 
+                    i.*,
+                    c.name as customer_name,
+                    c.phone as customer_phone,
+                    c.gstin as customer_gstin,
+                    c.address as customer_address,
+                    u.username as seller_name,
+                    rp.name as referral_name
+                FROM invoices i
+                LEFT JOIN customers c ON i.customer_id = c.id
+                LEFT JOIN users u ON i.seller_id = u.id
+                LEFT JOIN referral_person rp ON i.referral_id = rp.id
+                WHERE i.id = ? AND i.business_id = ?";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$invoice_id, $business_id]);
+        $invoice = $stmt->fetch();
+
+        if (!$invoice) {
+            echo json_encode(['success' => false, 'message' => 'Invoice not found']);
+            return;
+        }
+
+        // Get invoice items
+        $items_sql = "SELECT 
+                        ii.*,
+                        COALESCE(ii.product_name_snapshot, p.product_name) AS product_name,
+                        p.product_code,
+                        p.unit_of_measure
+                    FROM invoice_items ii
+                    LEFT JOIN products p ON ii.product_id = p.id
+                    WHERE ii.invoice_id = ?
+                    ORDER BY ii.id";
+
+        $items_stmt = $pdo->prepare($items_sql);
+        $items_stmt->execute([$invoice_id]);
+        $items = $items_stmt->fetchAll();
+
+        // Get GST summary if exists
+        $gst_sql = "SELECT * FROM invoice_gst_summary WHERE invoice_id = ?";
+        $gst_stmt = $pdo->prepare($gst_sql);
+        $gst_stmt->execute([$invoice_id]);
+        $gst_summary = $gst_stmt->fetch();
+
+        echo json_encode([
+            'success' => true,
+            'invoice' => $invoice,
+            'items' => $items,
+            'gst_summary' => $gst_summary
+        ]);
+    } catch (Exception $e) {
+        debug_log("Get invoice details error", ['error' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error getting invoice details: ' . $e->getMessage()]);
+    }
+}
+
+// New function to delete invoice
+function deleteInvoice()
+{
+    global $pdo, $business_id, $user_id;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    $invoice_id = $data['invoice_id'] ?? 0;
+
+    if (!$invoice_id) {
+        echo json_encode(['success' => false, 'message' => 'Invoice ID required']);
+        return;
+    }
+
+    // Check if user has permission (add your own permission logic here)
+
+    try {
+        $pdo->beginTransaction();
+
+        // Get invoice details first for stock restoration
+        $invoice_sql = "SELECT * FROM invoices WHERE id = ? AND business_id = ?";
+        $invoice_stmt = $pdo->prepare($invoice_sql);
+        $invoice_stmt->execute([$invoice_id, $business_id]);
+        $invoice = $invoice_stmt->fetch();
+
+        if (!$invoice) {
+            throw new Exception("Invoice not found");
+        }
+
+        // Get all items from this invoice
+        $items_sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
+        $items_stmt = $pdo->prepare($items_sql);
+        $items_stmt->execute([$invoice_id]);
+        $items = $items_stmt->fetchAll();
+
+        // Restore stock for each item
+        foreach ($items as $item) {
+            // Get current stock info
+            $stock_sql = "SELECT * FROM product_stocks WHERE product_id = ? AND business_id = ?";
+            $stock_stmt = $pdo->prepare($stock_sql);
+            $stock_stmt->execute([$item['product_id'], $business_id]);
+            $stock = $stock_stmt->fetch();
+
+            if ($stock) {
+                $old_stock_quantity = (float) $stock['quantity'];
+
+                // Restore quantity (simplified - you might need to adjust based on your logic)
+                $restore_qty = $item['quantity'];
+
+                // Get conversion factor
+                $product_sql = "SELECT sec_unit_conversion FROM products WHERE id = ?";
+                $product_stmt = $pdo->prepare($product_sql);
+                $product_stmt->execute([$item['product_id']]);
+                $product = $product_stmt->fetch();
+                $sec_conversion = $product['sec_unit_conversion'] ?? 1;
+
+                $restore_sec_qty = $restore_qty * $sec_conversion;
+
+                $update_sql = "UPDATE product_stocks 
+                               SET quantity = quantity + ?, 
+                                   total_secondary_units = total_secondary_units + ?,
+                                   last_updated = NOW()
+                               WHERE product_id = ? AND business_id = ?";
+                $update_stmt = $pdo->prepare($update_sql);
+                $update_stmt->execute([$restore_qty, $restore_sec_qty, $item['product_id'], $business_id]);
+
+                // Get new stock quantity after restoration
+                $new_stock_stmt = $pdo->prepare("SELECT quantity FROM product_stocks WHERE product_id = ? AND business_id = ?");
+                $new_stock_stmt->execute([$item['product_id'], $business_id]);
+                $new_stock = $new_stock_stmt->fetch();
+                $new_stock_quantity = (float) $new_stock['quantity'];
+
+                // Generate unique adjustment number for stock restoration
+                $date = new DateTime();
+                $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+
+                // Ensure uniqueness of adjustment number
+                $check_adj = $pdo->prepare("SELECT id FROM stock_adjustments WHERE adjustment_number = ?");
+                $check_adj->execute([$adjustment_number]);
+                while ($check_adj->fetch()) {
+                    $adjustment_number = 'ADJ' . $date->format('Ymd') . '-' . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                    $check_adj->execute([$adjustment_number]);
+                }
+
+                // Record stock adjustment for restoration
+                $adj_stmt = $pdo->prepare("
+                    INSERT INTO stock_adjustments (
+                        adjustment_number,
+                        product_id,
+                        shop_id,
+                        adjustment_type,
+                        quantity,
+                        old_stock,
+                        new_stock,
+                        reason,
+                        reference_id,
+                        reference_type,
+                        notes,
+                        adjusted_by,
+                        adjusted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                $adj_stmt->execute([
+                    $adjustment_number,
+                    $item['product_id'],
+                    $shop_id,
+                    'add',
+                    $restore_qty,
+                    $old_stock_quantity,
+                    $new_stock_quantity,
+                    'Stock restoration from deleted invoice',
+                    $invoice_id,
+                    'sale_deletion',
+                    "Restored $restore_qty units from deleted invoice #{$invoice['invoice_number']}",
+                    $user_id
+                ]);
+            }
+        }
+
+        // Update customer outstanding if credit sale
+        // if ($invoice['pending_amount'] > 0) {
+        //     $customer_sql = "UPDATE customers 
+        //                     SET outstanding_amount = outstanding_amount - ? 
+        //                     WHERE id = ? AND business_id = ?";
+        //     $customer_stmt = $pdo->prepare($customer_sql);
+        //     $customer_stmt->execute([$invoice['pending_amount'], $invoice['customer_id'], $business_id]);
+        // }
+
+        // Delete invoice items
+        $delete_items_sql = "DELETE FROM invoice_items WHERE invoice_id = ?";
+        $delete_items_stmt = $pdo->prepare($delete_items_sql);
+        $delete_items_stmt->execute([$invoice_id]);
+
+        // Delete GST summary if exists
+        try {
+            $delete_gst_sql = "DELETE FROM invoice_gst_summary WHERE invoice_id = ?";
+            $delete_gst_stmt = $pdo->prepare($delete_gst_sql);
+            $delete_gst_stmt->execute([$invoice_id]);
+        } catch (Exception $e) {
+            // Table might not exist, ignore
+        }
+
+        // Delete invoice
+        $delete_sql = "DELETE FROM invoices WHERE id = ? AND business_id = ?";
+        $delete_stmt = $pdo->prepare($delete_sql);
+        $delete_stmt->execute([$invoice_id, $business_id]);
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Invoice deleted successfully'
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        debug_log("Delete invoice error", ['error' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Error deleting invoice: ' . $e->getMessage()]);
+    }
+}
+
+?>
