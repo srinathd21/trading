@@ -132,9 +132,9 @@ if (tableExists($pdo, 'businesses')) {
 
 $stmt = $pdo->prepare(" 
     SELECT m.*, s.shop_name, s.shop_code,
-           (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE manufacturer_id = m.id AND business_id = ?) AS total_purchases,
-           (SELECT COALESCE(SUM(paid_amount), 0) FROM purchases WHERE manufacturer_id = m.id AND business_id = ?) AS total_paid,
-           (SELECT COUNT(*) FROM purchases WHERE manufacturer_id = m.id AND business_id = ?) AS purchase_count
+           (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE manufacturer_id = m.id AND business_id = ? $purchaseDeletedFilter) AS total_purchases,
+           (SELECT COALESCE(SUM(paid_amount), 0) FROM purchases WHERE manufacturer_id = m.id AND business_id = ? $purchaseDeletedFilter) AS total_paid,
+           (SELECT COUNT(*) FROM purchases WHERE manufacturer_id = m.id AND business_id = ? $purchaseDeletedFilter) AS purchase_count
     FROM manufacturers m
     LEFT JOIN shops s ON m.shop_id = s.id
     WHERE m.id = ? AND m.business_id = ?
@@ -152,20 +152,43 @@ if (!$manufacturer) {
 $hasPaymentsBusinessId = tableHasColumn($pdo, 'payments', 'business_id');
 $hasPaymentsManufacturerId = tableHasColumn($pdo, 'payments', 'manufacturer_id');
 $hasPaymentsIsDeleted = tableHasColumn($pdo, 'payments', 'is_deleted');
+$hasPaymentsDeletedAt = tableHasColumn($pdo, 'payments', 'deleted_at');
 $hasPaymentsPaymentType = tableHasColumn($pdo, 'payments', 'payment_type');
 $hasAllocTable = tableExists($pdo, 'supplier_payment_allocations');
 
+$hasPurchasesIsDeleted = tableHasColumn($pdo, 'purchases', 'is_deleted');
+$hasPurchasesDeletedAt = tableHasColumn($pdo, 'purchases', 'deleted_at');
+
+$purchaseDeletedFilter = '';
+if ($hasPurchasesIsDeleted) {
+    $purchaseDeletedFilter .= ' AND COALESCE(is_deleted, 0) = 0 ';
+}
+if ($hasPurchasesDeletedAt) {
+    $purchaseDeletedFilter .= ' AND deleted_at IS NULL ';
+}
+
+$purchaseDeletedFilterAlias = '';
+if ($hasPurchasesIsDeleted) {
+    $purchaseDeletedFilterAlias .= ' AND COALESCE(p.is_deleted, 0) = 0 ';
+}
+if ($hasPurchasesDeletedAt) {
+    $purchaseDeletedFilterAlias .= ' AND p.deleted_at IS NULL ';
+}
+
 $paymentWhereParts = ["pay.type IN ('supplier', 'supplier_outstanding')"];
 if ($hasPaymentsManufacturerId) {
-    $paymentWhereParts[] = '(pay.manufacturer_id = ? OR (pay.type = \'supplier\' AND pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ?)))';
+    $paymentWhereParts[] = '(pay.manufacturer_id = ? OR (pay.type = \'supplier\' AND pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ? $purchaseDeletedFilter)))';
 } else {
-    $paymentWhereParts[] = "pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ?)";
+    $paymentWhereParts[] = "pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ? $purchaseDeletedFilter)";
 }
 if ($hasPaymentsBusinessId) {
     $paymentWhereParts[] = '(pay.business_id = ? OR pay.business_id IS NULL)';
 }
 if ($hasPaymentsIsDeleted) {
     $paymentWhereParts[] = 'COALESCE(pay.is_deleted, 0) = 0';
+}
+if ($hasPaymentsDeletedAt) {
+    $paymentWhereParts[] = 'pay.deleted_at IS NULL';
 }
 $paymentWhereParts[] = 'DATE(pay.payment_date) BETWEEN ? AND ?';
 $paymentWhereSql = implode(' AND ', $paymentWhereParts);
@@ -212,6 +235,7 @@ $transactionsSql = "
         FROM purchases p
         WHERE p.manufacturer_id = ?
           AND p.business_id = ?
+          $purchaseDeletedFilterAlias
           AND DATE(p.purchase_date) BETWEEN ? AND ?
 
         UNION ALL
@@ -254,17 +278,40 @@ $stmt = $pdo->prepare($transactionsSql);
 $stmt->execute($transactionParams);
 $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Extra safety: never print deleted payment rows in PDF export.
+if (!empty($transactions)) {
+    $transactions = array_values(array_filter($transactions, function ($row) use ($pdo) {
+        if (($row['transaction_type'] ?? '') !== 'payment') {
+            return true;
+        }
+        $paymentId = (int)($row['reference_id'] ?? 0);
+        if ($paymentId <= 0) {
+            return false;
+        }
+        $check = $pdo->prepare("SELECT COALESCE(is_deleted, 0) AS is_deleted, deleted_at FROM payments WHERE id = ? LIMIT 1");
+        $check->execute([$paymentId]);
+        $payRow = $check->fetch(PDO::FETCH_ASSOC);
+        if (!$payRow) {
+            return false;
+        }
+        return ((int)$payRow['is_deleted'] === 0) && empty($payRow['deleted_at']);
+    }));
+}
+
 $paymentBeforeWhereParts = ["pay.type IN ('supplier', 'supplier_outstanding')"];
 if ($hasPaymentsManufacturerId) {
-    $paymentBeforeWhereParts[] = '(pay.manufacturer_id = ? OR (pay.type = \'supplier\' AND pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ?)))';
+    $paymentBeforeWhereParts[] = '(pay.manufacturer_id = ? OR (pay.type = \'supplier\' AND pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ? $purchaseDeletedFilter)))';
 } else {
-    $paymentBeforeWhereParts[] = "pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ?)";
+    $paymentBeforeWhereParts[] = "pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ? $purchaseDeletedFilter)";
 }
 if ($hasPaymentsBusinessId) {
     $paymentBeforeWhereParts[] = '(pay.business_id = ? OR pay.business_id IS NULL)';
 }
 if ($hasPaymentsIsDeleted) {
     $paymentBeforeWhereParts[] = 'COALESCE(pay.is_deleted, 0) = 0';
+}
+if ($hasPaymentsDeletedAt) {
+    $paymentBeforeWhereParts[] = 'pay.deleted_at IS NULL';
 }
 $paymentBeforeWhereParts[] = 'DATE(pay.payment_date) < ?';
 $paymentBeforeWhereSql = implode(' AND ', $paymentBeforeWhereParts);
@@ -276,6 +323,7 @@ $openingSql = "
             FROM purchases
             WHERE manufacturer_id = ?
               AND business_id = ?
+              $purchaseDeletedFilter
               AND DATE(purchase_date) < ?
         ), 0) AS purchases_before,
         COALESCE((
@@ -340,6 +388,7 @@ $outstandingSql = "
     FROM purchases
     WHERE manufacturer_id = ?
       AND business_id = ?
+      $purchaseDeletedFilter
       AND GREATEST(total_amount - paid_amount, 0) > 0.01
     ORDER BY purchase_date ASC, id ASC
 ";
@@ -364,7 +413,7 @@ class StatementPDF extends FPDF {
         $this->Cell(0, 7, cleanPdfText($this->titleText), 0, 1, 'R');
         $this->Ln(2);
         $this->SetDrawColor(180, 180, 180);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
+        $this->Line(10, $this->GetY(), 287, $this->GetY());
         $this->Ln(5);
     }
 
@@ -391,7 +440,7 @@ class StatementPDF extends FPDF {
     }
 }
 
-$pdf = new StatementPDF('P', 'mm', 'A4');
+$pdf = new StatementPDF('L', 'mm', 'A4');
 $pdf->businessName = $businessName;
 $pdf->titleText = 'Supplier Statement';
 $pdf->AliasNbPages();
@@ -399,8 +448,8 @@ $pdf->AddPage();
 $pdf->SetAutoPageBreak(true, 15);
 
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(95, 5, 'GSTIN: ' . cleanPdfText($businessGstin ?: 'Not Available'), 0, 0, 'L');
-$pdf->Cell(95, 5, 'Period: ' . date('d M Y', strtotime($from_date)) . ' to ' . date('d M Y', strtotime($to_date)), 0, 1, 'R');
+$pdf->Cell(138.5, 5, 'GSTIN: ' . cleanPdfText($businessGstin ?: 'Not Available'), 0, 0, 'L');
+$pdf->Cell(138.5, 5, 'Period: ' . date('d M Y', strtotime($from_date)) . ' to ' . date('d M Y', strtotime($to_date)), 0, 1, 'R');
 if ($businessAddress !== '') {
     $pdf->Cell(0, 5, cleanPdfText($businessAddress), 0, 1, 'L');
 }
@@ -412,35 +461,35 @@ $pdf->Ln(3);
 
 $pdf->sectionTitle('Supplier Details');
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(95, 6, 'Name: ' . cleanPdfText($manufacturer['name'] ?? ''), 1, 0);
-$pdf->Cell(95, 6, 'Phone: ' . cleanPdfText($manufacturer['phone'] ?: '-'), 1, 1);
-$pdf->Cell(95, 6, 'GSTIN: ' . cleanPdfText($manufacturer['gstin'] ?: '-'), 1, 0);
-$pdf->Cell(95, 6, 'Shop: ' . cleanPdfText($manufacturer['shop_name'] ?: '-'), 1, 1);
-$pdf->Cell(190, 6, 'Address: ' . cleanPdfText($manufacturer['address'] ?: '-'), 1, 1);
+$pdf->Cell(138.5, 6, 'Name: ' . cleanPdfText($manufacturer['name'] ?? ''), 1, 0);
+$pdf->Cell(138.5, 6, 'Phone: ' . cleanPdfText($manufacturer['phone'] ?: '-'), 1, 1);
+$pdf->Cell(138.5, 6, 'GSTIN: ' . cleanPdfText($manufacturer['gstin'] ?: '-'), 1, 0);
+$pdf->Cell(138.5, 6, 'Shop: ' . cleanPdfText($manufacturer['shop_name'] ?: '-'), 1, 1);
+$pdf->Cell(277, 6, 'Address: ' . cleanPdfText($manufacturer['address'] ?: '-'), 1, 1);
 $pdf->Ln(3);
 
 $pdf->sectionTitle('Statement Summary');
 $pdf->SetFont('Arial', 'B', 9);
-$pdf->Cell(47.5, 6, 'Opening Balance', 1, 0, 'C');
-$pdf->Cell(47.5, 6, 'Purchases', 1, 0, 'C');
-$pdf->Cell(47.5, 6, 'Payments', 1, 0, 'C');
-$pdf->Cell(47.5, 6, 'Closing Balance', 1, 1, 'C');
+$pdf->Cell(69.25, 6, 'Opening Balance', 1, 0, 'C');
+$pdf->Cell(69.25, 6, 'Purchases', 1, 0, 'C');
+$pdf->Cell(69.25, 6, 'Payments', 1, 0, 'C');
+$pdf->Cell(69.25, 6, 'Closing Balance', 1, 1, 'C');
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(47.5, 7, moneyValue(abs($openingBalance)) . ' ' . ($openingBalance > 0 ? 'Dr' : ($openingBalance < 0 ? 'Cr' : '')), 1, 0, 'C');
-$pdf->Cell(47.5, 7, moneyValue($periodSummary['total_purchases']), 1, 0, 'C');
-$pdf->Cell(47.5, 7, moneyValue($periodSummary['total_payments']), 1, 0, 'C');
-$pdf->Cell(47.5, 7, moneyValue(abs($closingBalance)) . ' ' . ($closingBalance > 0 ? 'Dr' : ($closingBalance < 0 ? 'Cr' : '')), 1, 1, 'C');
+$pdf->Cell(69.25, 7, moneyValue(abs($openingBalance)) . ' ' . ($openingBalance > 0 ? 'Dr' : ($openingBalance < 0 ? 'Cr' : '')), 1, 0, 'C');
+$pdf->Cell(69.25, 7, moneyValue($periodSummary['total_purchases']), 1, 0, 'C');
+$pdf->Cell(69.25, 7, moneyValue($periodSummary['total_payments']), 1, 0, 'C');
+$pdf->Cell(69.25, 7, moneyValue(abs($closingBalance)) . ' ' . ($closingBalance > 0 ? 'Dr' : ($closingBalance < 0 ? 'Cr' : '')), 1, 1, 'C');
 $pdf->Ln(3);
 
 $pdf->sectionTitle('Transaction Statement');
-$widths = [22, 25, 28, 48, 22, 22, 23];
+$widths = [25, 25, 48, 82, 35, 35, 27];
 $pdf->SetFont('Arial', 'B', 8);
 $pdf->SetFillColor(230, 230, 230);
 $pdf->row($widths, ['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'], 7, true);
 
-$pdf->SetFont('Arial', '', 8);
+$pdf->SetFont('Arial', '', 7);
 $running = $baseOpeningBalance;
-$pdf->row($widths, [date('d M Y', strtotime($from_date)), 'OPENING', '-', 'Previous balance before selected period', $baseOpeningBalance > 0 ? moneyValue($baseOpeningBalance) : '-', $baseOpeningBalance < 0 ? moneyValue(abs($baseOpeningBalance)) : '-', moneyValue(abs($running)) . ' ' . ($running > 0 ? 'Dr' : ($running < 0 ? 'Cr' : ''))], 6, false);
+$pdf->row($widths, [date('d M Y', strtotime($from_date)), 'OPENING', '-', 'Opening balance', $baseOpeningBalance > 0 ? moneyValue($baseOpeningBalance) : '-', $baseOpeningBalance < 0 ? moneyValue(abs($baseOpeningBalance)) : '-', moneyValue(abs($running)) . ' ' . ($running > 0 ? 'Dr' : ($running < 0 ? 'Cr' : ''))], 6, false);
 
 if ($initialAmount > 0.01 && in_array($initialType, ['debit', 'credit'], true)) {
     $debit = $initialType === 'debit' ? $initialAmount : 0;
@@ -470,14 +519,19 @@ if (!empty($transactions)) {
         if (!empty($t['notes'])) {
             $desc .= ' | ' . $t['notes'];
         }
-        if (strlen($desc) > 65) {
-            $desc = substr($desc, 0, 62) . '...';
+        if (strlen($desc) > 55) {
+            $desc = substr($desc, 0, 52) . '...';
+        }
+
+        $refNo = (string)($t['reference_no'] ?: '-');
+        if (strlen($refNo) > 26) {
+            $refNo = substr($refNo, 0, 23) . '...';
         }
 
         $pdf->row($widths, [
             !empty($t['transaction_date']) ? date('d M Y', strtotime($t['transaction_date'])) : '-',
             $type,
-            $t['reference_no'] ?: '-',
+            $refNo,
             $desc,
             $debit > 0 ? moneyValue($debit) : '-',
             $credit > 0 ? moneyValue($credit) : '-',
@@ -485,7 +539,7 @@ if (!empty($transactions)) {
         ], 6, false);
     }
 } else {
-    $pdf->Cell(190, 7, 'No transactions found for this selected period.', 1, 1, 'C');
+    $pdf->Cell(277, 7, 'No transactions found for this selected period.', 1, 1, 'C');
 }
 
 $pdf->SetFont('Arial', 'B', 8);
@@ -495,7 +549,7 @@ $pdf->Ln(4);
 
 if (!empty($outstandingPurchases)) {
     $pdf->sectionTitle('Outstanding Purchase Orders');
-    $poWidths = [35, 25, 30, 30, 35, 35];
+    $poWidths = [55, 35, 45, 45, 50, 47];
     $pdf->SetFont('Arial', 'B', 8);
     $pdf->SetFillColor(230, 230, 230);
     $pdf->row($poWidths, ['PO Number', 'Date', 'Total', 'Paid', 'Due', 'Status'], 7, true);
@@ -519,11 +573,11 @@ if (!empty($outstandingPurchases)) {
 if (!empty($manufacturer['account_holder_name']) || !empty($manufacturer['bank_name']) || !empty($manufacturer['account_number'])) {
     $pdf->sectionTitle('Bank Details');
     $pdf->SetFont('Arial', '', 9);
-    $pdf->Cell(95, 6, 'Account Holder: ' . cleanPdfText($manufacturer['account_holder_name'] ?: '-'), 1, 0);
-    $pdf->Cell(95, 6, 'Bank: ' . cleanPdfText($manufacturer['bank_name'] ?: '-'), 1, 1);
-    $pdf->Cell(95, 6, 'Account No: ' . cleanPdfText($manufacturer['account_number'] ?: '-'), 1, 0);
-    $pdf->Cell(95, 6, 'IFSC: ' . cleanPdfText($manufacturer['ifsc_code'] ?: '-'), 1, 1);
-    $pdf->Cell(190, 6, 'Branch: ' . cleanPdfText($manufacturer['branch_name'] ?: '-'), 1, 1);
+    $pdf->Cell(138.5, 6, 'Account Holder: ' . cleanPdfText($manufacturer['account_holder_name'] ?: '-'), 1, 0);
+    $pdf->Cell(138.5, 6, 'Bank: ' . cleanPdfText($manufacturer['bank_name'] ?: '-'), 1, 1);
+    $pdf->Cell(138.5, 6, 'Account No: ' . cleanPdfText($manufacturer['account_number'] ?: '-'), 1, 0);
+    $pdf->Cell(138.5, 6, 'IFSC: ' . cleanPdfText($manufacturer['ifsc_code'] ?: '-'), 1, 1);
+    $pdf->Cell(277, 6, 'Branch: ' . cleanPdfText($manufacturer['branch_name'] ?: '-'), 1, 1);
     $pdf->Ln(4);
 }
 

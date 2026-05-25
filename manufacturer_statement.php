@@ -57,6 +57,17 @@ try {
     // Ignore collation setup failure.
 }
 
+$purchases_has_deleted = tableHasColumn($pdo, 'purchases', 'is_deleted');
+$purchases_has_deleted_at = tableHasColumn($pdo, 'purchases', 'deleted_at');
+
+$purchase_deleted_filter = '';
+if ($purchases_has_deleted) {
+    $purchase_deleted_filter .= ' AND COALESCE(p.is_deleted, 0) = 0 ';
+}
+if ($purchases_has_deleted_at) {
+    $purchase_deleted_filter .= ' AND p.deleted_at IS NULL ';
+}
+
 $from_date = trim($_GET['from_date'] ?? date('Y-m-01'));
 $to_date = trim($_GET['to_date'] ?? date('Y-m-d'));
 
@@ -71,7 +82,7 @@ if ($from_date > $to_date) {
 }
 
 // Get manufacturer details.
-$stmt = $pdo->prepare("\n    SELECT m.*,\n           s.shop_name,\n           s.shop_code,\n           (SELECT COALESCE(SUM(p.total_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ?) AS total_purchases,\n           (SELECT COALESCE(SUM(p.paid_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ?) AS total_paid,\n           (SELECT COUNT(*) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ?) AS purchase_count,\n           (SELECT COALESCE(SUM(GREATEST(p.total_amount - p.paid_amount, 0)), 0)\n            FROM purchases p\n            WHERE p.manufacturer_id = m.id\n              AND p.business_id = ?\n              AND GREATEST(p.total_amount - p.paid_amount, 0) > 0.01) AS purchase_balance\n    FROM manufacturers m\n    LEFT JOIN shops s ON m.shop_id = s.id\n    WHERE m.id = ? AND m.business_id = ?\n    LIMIT 1\n");
+$stmt = $pdo->prepare("\n    SELECT m.*,\n           s.shop_name,\n           s.shop_code,\n           (SELECT COALESCE(SUM(p.total_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ? $purchase_deleted_filter) AS total_purchases,\n           (SELECT COALESCE(SUM(p.paid_amount), 0) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ? $purchase_deleted_filter) AS total_paid,\n           (SELECT COUNT(*) FROM purchases p WHERE p.manufacturer_id = m.id AND p.business_id = ? $purchase_deleted_filter) AS purchase_count,\n           (SELECT COALESCE(SUM(GREATEST(p.total_amount - p.paid_amount, 0)), 0)\n            FROM purchases p\n            WHERE p.manufacturer_id = m.id\n              AND p.business_id = ?\n              AND GREATEST(p.total_amount - p.paid_amount, 0) > 0.01 $purchase_deleted_filter) AS purchase_balance\n    FROM manufacturers m\n    LEFT JOIN shops s ON m.shop_id = s.id\n    WHERE m.id = ? AND m.business_id = ?\n    LIMIT 1\n");
 $stmt->execute([$business_id, $business_id, $business_id, $business_id, $manufacturer_id, $business_id]);
 $manufacturer = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -88,10 +99,16 @@ $payments_has_deleted = tableHasColumn($pdo, 'payments', 'is_deleted');
 $payments_has_type_col = tableHasColumn($pdo, 'payments', 'payment_type');
 
 $payment_business_filter = $payments_has_business ? ' AND pay.business_id = ? ' : '';
-$payment_deleted_filter = $payments_has_deleted ? ' AND COALESCE(pay.is_deleted, 0) = 0 ' : '';
+$payments_has_deleted_at = tableHasColumn($pdo, 'payments', 'deleted_at');
+
+/*
+    Do not take deleted payment data.
+    Your payments table has is_deleted and deleted_at columns, so apply both checks.
+*/
+$payment_deleted_filter = " AND COALESCE(pay.is_deleted, 0) = 0 AND pay.deleted_at IS NULL ";
 $payment_manufacturer_filter = $payments_has_manufacturer
     ? ' pay.manufacturer_id = ? '
-    : ' pay.reference_id IN (SELECT id FROM purchases WHERE manufacturer_id = ? AND business_id = ?) ';
+    : ' pay.reference_id IN (SELECT id FROM purchases p WHERE p.manufacturer_id = ? AND p.business_id = ? ' . $purchase_deleted_filter . ') ';
 
 $payment_reference_params = $payments_has_manufacturer ? [$manufacturer_id] : [$manufacturer_id, $business_id];
 if ($payments_has_business) {
@@ -112,7 +129,7 @@ $stmt->execute($transaction_params);
 $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Opening balance: purchase debit minus payments credit before selected from date.
-$opening_payments_where = "pay.type IN ('supplier', 'supplier_outstanding') AND {$payment_manufacturer_filter} {$payment_business_filter} {$payment_deleted_filter} AND DATE(pay.payment_date) < ?";
+$opening_payments_where = "pay.type IN ('supplier', 'supplier_outstanding') AND {$payment_manufacturer_filter} {$payment_business_filter} AND COALESCE(pay.is_deleted, 0) = 0 AND pay.deleted_at IS NULL AND DATE(pay.payment_date) < ?";
 $opening_sql = "\n    SELECT\n        COALESCE((\n            SELECT SUM(p.total_amount)\n            FROM purchases p\n            WHERE p.manufacturer_id = ?\n              AND p.business_id = ?\n              AND DATE(p.purchase_date) < ?\n        ), 0) AS total_purchases_before,\n\n        COALESCE((\n            SELECT SUM(pay.amount)\n            FROM payments pay\n            WHERE {$opening_payments_where}\n        ), 0) AS total_payments_before\n";
 
 $opening_params = [$manufacturer_id, $business_id, $from_date];
@@ -477,7 +494,7 @@ $payment_count = count(array_filter($transactions, fn($t) => $t['transaction_typ
                     <div class="card-footer bg-light">
                         <div class="row">
                             <div class="col-md-6">
-                                <small class="text-muted"><i class="bx bx-info-circle me-1"></i><span class="badge-purchase badge-transaction">PURCHASE</span> Purchase Orders <span class="mx-2"></span><span class="badge-payment badge-transaction">PAYMENT</span> Payments from payments table <span class="mx-2"></span><span class="badge-outstanding badge-transaction">OUTSTANDING</span> Supplier opening/current balance</small>
+                                <small class="text-muted"><i class="bx bx-info-circle me-1"></i><span class="badge-purchase badge-transaction">PURCHASE</span> Purchase Orders <span class="mx-2"></span><span class="badge-payment badge-transaction">PAYMENT</span> Active payments only <span class="mx-2"></span><span class="badge-outstanding badge-transaction">OUTSTANDING</span> Supplier opening/current balance</small>
                             </div>
                             <div class="col-md-6 text-end">
                                 <small class="text-muted"><span class="text-warning">Dr</span> = You owe supplier | <span class="text-info">Cr</span> = Supplier owes you</small>

@@ -27,6 +27,8 @@ try {
     // ignore if already set 
 } 
 
+ensureCustomerPaymentSchema($pdo);
+
 function writeActivityLog(PDO $pdo, int $business_id, int $user_id, string $action, string $description, array $details = []): void
 {
     try {
@@ -44,7 +46,7 @@ function writeActivityLog(PDO $pdo, int $business_id, int $user_id, string $acti
             'action' => $action,
             'activity_type' => $action,
             'module' => 'collect_payment',
-            'entity_type' => 'invoice_payment',
+            'entity_type' => 'customer_payment',
             'description' => $description,
             'details' => json_encode($details, JSON_UNESCAPED_UNICODE),
             'activity_details' => json_encode($details, JSON_UNESCAPED_UNICODE),
@@ -82,6 +84,80 @@ function computeInvoicePaymentStatus($total, $paid) {
     }
     return ['pending', $pending];
 }
+
+
+function tableHasColumn(PDO $pdo, string $table, string $column): bool {
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+        $stmt->execute([$column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void {
+    if (tableHasColumn($pdo, $table, $column)) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+    } catch (Exception $e) {
+        error_log("Unable to add {$table}.{$column}: " . $e->getMessage());
+    }
+}
+
+function ensureCustomerPaymentSchema(PDO $pdo): void {
+    addColumnIfMissing($pdo, 'customer_payments', 'invoice_id', 'INT DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'total_amount', 'DECIMAL(12,2) NOT NULL DEFAULT 0.00');
+    addColumnIfMissing($pdo, 'customer_payments', 'payment_method', "VARCHAR(30) DEFAULT 'cash'");
+    addColumnIfMissing($pdo, 'customer_payments', 'reference_no', 'VARCHAR(100) DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'payment_date', 'DATE DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'notes', 'TEXT DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'created_by', 'INT DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'is_deleted', 'TINYINT(1) NOT NULL DEFAULT 0');
+    addColumnIfMissing($pdo, 'customer_payments', 'deleted_at', 'DATETIME DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'deleted_by', 'INT DEFAULT NULL');
+    addColumnIfMissing($pdo, 'customer_payments', 'delete_reason', 'TEXT DEFAULT NULL');
+}
+
+function getTableColumns(PDO $pdo, string $table): array {
+    static $cache = [];
+    if (isset($cache[$table])) {
+        return $cache[$table];
+    }
+
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$table`");
+        $cache[$table] = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        return $cache[$table];
+    } catch (Exception $e) {
+        $cache[$table] = [];
+        return [];
+    }
+}
+
+function insertDynamic(PDO $pdo, string $table, array $data): int {
+    $columns = getTableColumns($pdo, $table);
+    $insert = [];
+
+    foreach ($data as $column => $value) {
+        if (in_array($column, $columns, true)) {
+            $insert[$column] = $value;
+        }
+    }
+
+    if (empty($insert)) {
+        throw new Exception("No matching columns found for `$table` insert.");
+    }
+
+    $sql = "INSERT INTO `$table` (`" . implode('`,`', array_keys($insert)) . "`) VALUES (" . implode(',', array_fill(0, count($insert), '?')) . ")";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_values($insert));
+    return (int)$pdo->lastInsertId();
+}
+
 
 function normalizeInvoicePaymentState(array $invoice) { 
     $total = round(max(0, (float)($invoice['total'] ?? 0)), 2); 
@@ -229,13 +305,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             }
         }
 
-        $softDeleteInvoicePayments = $pdo->prepare("
-            UPDATE invoice_payments
-            SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ?
-            WHERE customer_payment_id = ? AND business_id = ? AND is_deleted = 0
-        ");
-        $softDeleteInvoicePayments->execute([$user_id, $delete_reason, $delete_payment_id, $business_id]);
-
         $softDeleteAllocations = $pdo->prepare("
             UPDATE customer_payment_allocations
             SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ?
@@ -250,7 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         ");
         $softDeletePayment->execute([$user_id, $delete_reason, $delete_payment_id, $business_id]);
 
-        writeActivityLog($pdo, $business_id, $user_id, 'invoice_payment_deleted', 'Invoice payment soft deleted and invoice balance restored', [
+        writeActivityLog($pdo, $business_id, $user_id, 'customer_payment_deleted', 'Customer payment soft deleted and invoice balance restored', [
             'payment_id' => $delete_payment_id,
             'invoice_id' => $invoice_id,
             'customer_id' => $paymentRow['customer_id'] ?? null,
@@ -280,7 +349,7 @@ $pending_amount = $invoiceState['pending'];
 $balance_amount = $invoiceState['pending']; 
 
 // Process payment 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') { 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['action'])) { 
     $payment_amount = round((float)($_POST['payment_amount'] ?? 0), 2); 
     $payment_method = trim($_POST['payment_method'] ?? 'cash'); 
     $reference = trim($_POST['reference'] ?? ''); 
@@ -372,33 +441,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $payment_method, $invoice_id, $business_id 
             ]); 
             
-            // Store summary row for customer ledger first, so invoice payment and allocation can reference it
-            $summaryStmt = $pdo->prepare(" 
-                INSERT INTO customer_payments (business_id, customer_id, invoice_id, total_amount, payment_method, reference_no, payment_date, notes, created_by, created_at, is_deleted) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0) 
-            "); 
-            $summaryStmt->execute([ 
-                $business_id, $liveInvoice['customer_id'] ?? null, $invoice_id, 
-                $payment_amount, $payment_method, 
-                $reference !== '' ? $reference : null, 
-                $payment_date, $notes !== '' ? $notes : null, 
-                $user_id 
+            // Store payment only in customer_payments as the main payment table
+            $customer_payment_id = insertDynamic($pdo, 'customer_payments', [
+                'business_id' => $business_id,
+                'customer_id' => $liveInvoice['customer_id'] ?? null,
+                'invoice_id' => $invoice_id,
+                'total_amount' => $payment_amount,
+                'amount' => $payment_amount,
+                'payment_method' => $payment_method,
+                'reference_no' => $reference !== '' ? $reference : null,
+                'reference' => $reference !== '' ? $reference : null,
+                'payment_date' => $payment_date,
+                'notes' => $notes !== '' ? $notes : null,
+                'created_by' => $user_id,
+                'recorded_by' => $user_id,
+                'created_at' => date('Y-m-d H:i:s'),
+                'is_deleted' => 0
             ]);
-            $customer_payment_id = (int)$pdo->lastInsertId();
 
-            // Record payment in invoice_payments
-            $paymentStmt = $pdo->prepare(" 
-                INSERT INTO invoice_payments (business_id, invoice_id, customer_id, customer_payment_id, payment_amount, payment_date, payment_method, reference_no, notes, created_by, created_at, is_deleted) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 0) 
-            "); 
-            $paymentStmt->execute([ 
-                $business_id, $invoice_id, $liveInvoice['customer_id'] ?? null, $customer_payment_id,
-                $payment_amount, $payment_date, $payment_method, 
-                $reference !== '' ? $reference : null, 
-                $notes !== '' ? $notes : null, 
-                $user_id 
-            ]);
-            $invoice_payment_id = (int)$pdo->lastInsertId();
+            // Do not use invoice_payments table.
+            // customer_payments is the main payment table and customer_payment_allocations stores invoice allocation.
+            $invoice_payment_id = null;
 
             // Record exact allocation for delete/restore and reporting
             $allocationStmt = $pdo->prepare("
@@ -423,9 +486,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $user_id
             ]);
 
-            writeActivityLog($pdo, $business_id, $user_id, 'invoice_payment_recorded', 'Invoice payment recorded from collect payment page', [
+            writeActivityLog($pdo, $business_id, $user_id, 'customer_payment_recorded', 'Customer payment recorded from collect payment page', [
                 'payment_id' => $customer_payment_id,
-                'invoice_payment_id' => $invoice_payment_id,
                 'invoice_id' => $invoice_id,
                 'invoice_number' => $liveInvoice['invoice_number'] ?? null,
                 'customer_id' => $liveInvoice['customer_id'] ?? null,
