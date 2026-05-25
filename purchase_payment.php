@@ -252,10 +252,81 @@ function softDeleteSupplierPayment(PDO $pdo, int $payment_id, int $business_id, 
     $allocStmt->execute([$payment_id]);
     $allocations = $allocStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    /*
+        Fallback for old supplier payments:
+        payments.reference_id is purchases.id.
+        If allocation rows are missing, reverse using the purchase from reference_id.
+
+        Requested delete effect:
+        - add payment amount back to purchases.total_amount
+        - reduce purchases.paid_amount by payment amount
+    */
+    if (!$allocations && ($payment['type'] ?? '') === 'supplier' && !empty($payment['reference_id'])) {
+        $purchase_id_from_payment = (int)$payment['reference_id'];
+        $payment_amount = round((float)($payment['amount'] ?? 0), 2);
+
+        if ($payment_amount <= 0) {
+            throw new Exception('Invalid payment amount for delete.');
+        }
+
+        $poStmt = $pdo->prepare("SELECT * FROM purchases WHERE id = ? FOR UPDATE");
+        $poStmt->execute([$purchase_id_from_payment]);
+        $po = $poStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$po) {
+            throw new Exception('Purchase not found for payment reference_id: ' . $purchase_id_from_payment);
+        }
+
+        $oldTotal = round((float)$po['total_amount'], 2);
+        $oldPaid = round((float)$po['paid_amount'], 2);
+
+        $newTotal = round($oldTotal + $payment_amount, 2);
+        $newPaid = max(0, round($oldPaid - $payment_amount, 2));
+        $newStatus = computePurchaseStatus($newTotal, $newPaid);
+
+        $stmt = $pdo->prepare("
+            UPDATE purchases
+            SET total_amount = ?,
+                paid_amount = ?,
+                payment_status = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$newTotal, $newPaid, $newStatus, $purchase_id_from_payment]);
+
+        try {
+            insertSupplierAllocation($pdo, [
+                'payment_id' => $payment_id,
+                'business_id' => $business_id ?: ($po['business_id'] ?? null),
+                'manufacturer_id' => (int)($po['manufacturer_id'] ?? ($payment['manufacturer_id'] ?? 0)),
+                'purchase_id' => $purchase_id_from_payment,
+                'purchase_number' => $po['purchase_number'] ?? null,
+                'allocation_type' => 'purchase_order',
+                'allocated_amount' => $payment_amount,
+                'po_paid_before' => $oldPaid,
+                'po_paid_after' => $newPaid,
+                'po_status_before' => $po['payment_status'] ?? computePurchaseStatus($oldTotal, $oldPaid),
+                'po_status_after' => $newStatus,
+                'is_deleted' => 1,
+                'deleted_at' => date('Y-m-d H:i:s'),
+                'deleted_by' => $user_id,
+                'delete_reason' => $reason,
+                'created_by' => $user_id,
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+        } catch (Exception $e) {
+            error_log('Unable to create fallback deleted allocation row: ' . $e->getMessage());
+        }
+
+        $stmt = $pdo->prepare("UPDATE payments SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, delete_reason = ? WHERE id = ?");
+        $stmt->execute([$user_id, $reason, $payment_id]);
+
+        return;
+    }
+
     foreach ($allocations as $allocation) {
         if ($allocation['allocation_type'] === 'purchase_order' && !empty($allocation['purchase_id'])) {
             $paidBefore = (float)($allocation['po_paid_before'] ?? 0);
-            $statusBefore = $allocation['po_status_before'] ?: computePurchaseStatus((float)$paidBefore, (float)$paidBefore);
+            $statusBefore = $allocation['po_status_before'] ?: 'pending';
             $stmt = $pdo->prepare("UPDATE purchases SET paid_amount = ?, payment_status = ? WHERE id = ?");
             $stmt->execute([$paidBefore, $statusBefore, (int)$allocation['purchase_id']]);
         }
@@ -760,13 +831,22 @@ $paymentsStmt = $pdo->prepare("
            ) AS current_po_allocated_amount
     FROM payments p
     LEFT JOIN users u ON u.id = p.recorded_by
-    WHERE p.manufacturer_id = ?
+    WHERE (
+            p.manufacturer_id = ?
+            OR (
+                (p.manufacturer_id IS NULL OR p.manufacturer_id = 0)
+                AND p.type = 'supplier'
+                AND p.reference_id IN (
+                    SELECT id FROM purchases WHERE manufacturer_id = ?
+                )
+            )
+        )
       AND p.type IN ('supplier', 'supplier_outstanding')
       AND COALESCE(p.is_deleted, 0) = 0
       AND p.created_at >= ?
     ORDER BY p.created_at DESC, p.payment_date DESC, p.id DESC
 ");
-$paymentsStmt->execute([$manufacturer_id, $last15Start]);
+$paymentsStmt->execute([$manufacturer_id, $manufacturer_id, $last15Start]);
 $payments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $deletedPaymentsStmt = $pdo->prepare("
@@ -795,14 +875,23 @@ $deletedPaymentsStmt = $pdo->prepare("
            ) AS current_po_allocated_amount
     FROM payments p
     LEFT JOIN users u ON u.id = p.recorded_by
-    WHERE p.manufacturer_id = ?
+    WHERE (
+            p.manufacturer_id = ?
+            OR (
+                (p.manufacturer_id IS NULL OR p.manufacturer_id = 0)
+                AND p.type = 'supplier'
+                AND p.reference_id IN (
+                    SELECT id FROM purchases WHERE manufacturer_id = ?
+                )
+            )
+        )
       AND p.type IN ('supplier', 'supplier_outstanding')
       AND COALESCE(p.is_deleted, 0) = 1
       AND p.created_at >= ?
     ORDER BY p.deleted_at DESC, p.id DESC
     LIMIT 20
 ");
-$deletedPaymentsStmt->execute([$manufacturer_id, $last15Start]);
+$deletedPaymentsStmt->execute([$manufacturer_id, $manufacturer_id, $last15Start]);
 $deleted_payments = $deletedPaymentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $last15Label = date('d M Y', strtotime($last15Start)) . ' to ' . date('d M Y');
