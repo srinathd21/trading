@@ -74,6 +74,17 @@ if (!function_exists('sf_normalize_image_path')) {
     }
 }
 
+
+if (!function_exists('sf_category_image_url')) {
+    function sf_category_image_url($path): string
+    {
+        return sf_normalize_image_path(
+            $path,
+            'https://via.placeholder.com/600x400?text=Category'
+        );
+    }
+}
+
 if (!function_exists('sf_store_url')) {
     function sf_store_url(string $slug, string $page = 'index', array $extra = []): string
     {
@@ -317,21 +328,31 @@ $categorySql = "
         c.category_name,
         c.category_code,
         c.description,
+        c.category_image,
         c.parent_id,
+        pc.category_name AS parent_name,
         c.category_type,
         c.status,
         (
             SELECT COUNT(*)
             FROM products p2
-            WHERE p2.category_id = c.id
-              AND p2.business_id = c.business_id
+            WHERE p2.business_id = c.business_id
               AND p2.is_active = 1
+              AND (
+                    p2.category_id = c.id
+                    OR p2.subcategory_id = c.id
+                  )
         ) AS product_count
     FROM categories c
+    LEFT JOIN categories pc
+        ON pc.id = c.parent_id
+       AND pc.business_id = c.business_id
     WHERE c.business_id = :business_id
       AND c.status = 'active'
-      AND c.parent_id IS NULL
-    ORDER BY c.category_name ASC
+    ORDER BY
+        CASE WHEN c.parent_id IS NULL THEN 0 ELSE 1 END,
+        COALESCE(pc.category_name, c.category_name) ASC,
+        c.category_name ASC
 ";
 $stmt = $pdo->prepare($categorySql);
 $stmt->execute([':business_id' => $businessId]);
@@ -362,6 +383,7 @@ $productSql = "
         p.created_at,
         p.updated_at,
         c.category_name,
+        c.category_image AS product_category_image,
         s.subcategory_name,
         COALESCE(ps.total_stock, 0) AS total_stock
     FROM products p
@@ -388,6 +410,15 @@ $productSql = "
 $stmt = $pdo->prepare($productSql);
 $stmt->execute([':business_id' => $businessId]);
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($products as $k => $productRow) {
+    $prodCatImageUrl = sf_category_image_url($productRow['product_category_image'] ?? '');
+
+    // Product templates can use this if they need parent category image.
+    $products[$k]['product_category_image_url'] = $prodCatImageUrl;
+    $products[$k]['category_image_url'] = $prodCatImageUrl;
+}
+
 
 /* =========================================================
    COUNTS

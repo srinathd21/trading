@@ -130,6 +130,37 @@ $categoryInfoBoxes = [
 
 function sf_category_image(array $category): string
 {
+    /*
+     * First priority: uploaded category image from categories.category_image.
+     * storefront.php should fetch c.category_image and may also prepare category_image_url.
+     */
+    $uploadedImage = trim((string)(
+        $category['category_image_url']
+        ?? $category['image_url']
+        ?? $category['image_path']
+        ?? $category['image']
+        ?? $category['thumbnail']
+        ?? $category['category_image']
+        ?? ''
+    ));
+
+    if ($uploadedImage !== '') {
+        if (
+            stripos($uploadedImage, 'http://') === 0 ||
+            stripos($uploadedImage, 'https://') === 0 ||
+            stripos($uploadedImage, '//') === 0 ||
+            stripos($uploadedImage, 'data:') === 0
+        ) {
+            return $uploadedImage;
+        }
+
+        $uploadedImage = ltrim(str_replace('\\', '/', $uploadedImage), '/');
+        return $uploadedImage;
+    }
+
+    /*
+     * Fallback images only if no uploaded category image is available.
+     */
     $name = strtolower(trim((string)($category['category_name'] ?? '')));
 
     if (strpos($name, 'light') !== false) {
@@ -249,7 +280,7 @@ function sf_category_count_label(array $category): string
 
     .category-page-image img{
       width:100%;
-      height:260px;
+      height:175px;
       object-fit:cover;
       transition:transform 0.4s ease;
     }
@@ -259,21 +290,22 @@ function sf_category_count_label(array $category): string
     }
 
     .category-page-body{
-      padding:22px 20px;
+      padding:14px 14px;
     }
 
     .category-page-body h4{
-      font-size:22px;
+      font-size:17px;
       font-weight:700;
       color:#111827;
-      margin-bottom:10px;
+      margin-bottom:6px;
     }
 
     .category-page-body p{
-      font-size:14px;
-      line-height:1.8;
+      font-size:13px;
+      line-height:1.5;
       color:#6b7280;
-      margin-bottom:14px;
+      margin-bottom:10px;
+      min-height:38px;
     }
 
     .category-meta{
@@ -285,14 +317,14 @@ function sf_category_count_label(array $category): string
     }
 
     .category-count{
-      font-size:13px;
+      font-size:12px;
       color:#6b7280;
       font-weight:600;
     }
 
     .category-link{
       color:var(--accent);
-      font-size:14px;
+      font-size:12px;
       font-weight:700;
     }
 
@@ -341,7 +373,7 @@ function sf_category_count_label(array $category): string
       }
 
       .category-page-image img{
-        height:220px;
+        height:160px;
       }
     }
   </style>
@@ -393,13 +425,13 @@ if (file_exists($mobileNavFile)) {
           <?php
             $categoryId    = (int)($category['id'] ?? 0);
             $categoryName  = (string)($category['category_name'] ?? 'Category');
-            $categoryDesc  = sf_trim_text((string)($category['description'] ?? ''), 110);
+            $categoryDesc  = sf_trim_text((string)($category['description'] ?? ''), 60);
             $categoryImage = sf_category_image($category);
           ?>
-          <div class="col-12 col-md-6 col-lg-4">
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <a href="<?php echo sf_h($storePageUrl . '&category_id=' . $categoryId); ?>" class="category-page-card">
               <div class="category-page-image">
-                <img src="<?php echo sf_h($categoryImage); ?>" alt="<?php echo sf_h($categoryName); ?>">
+                <img src="<?php echo sf_h($categoryImage . (strpos($categoryImage, 'uploads/categories/') !== false ? '?v=' . time() : '')); ?>" alt="<?php echo sf_h($categoryName); ?>">
               </div>
               <div class="category-page-body">
                 <h4><?php echo sf_h($categoryName); ?></h4>

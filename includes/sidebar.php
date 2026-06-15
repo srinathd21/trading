@@ -203,6 +203,7 @@ try {
                 <li><a href="users.php">User Management</a></li>
                 <li><a href="number-format-settings.php">Invoice Number Formates</a></li>
                 <li><a href="invoice-settings.php">Invoice Settings</a></li>
+                <li><a href="invoice_designs.php">Invoice Designs</a></li>
                 <li><a href="loyalty_settings.php">Loyalty Settings</a></li>
                 <li><a href="shops.php">Shop Management</a></li>
                 <li><a href="gst_rates.php">GST Rate</a></li>

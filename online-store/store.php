@@ -159,6 +159,42 @@ if (!function_exists('store_product_open_url')) {
     }
 }
 
+
+if (!function_exists('store_category_image_url')) {
+    function store_category_image_url(array $category): string {
+        $img = trim((string)(
+            $category['category_image_url']
+            ?? $category['image_url']
+            ?? $category['image_path']
+            ?? $category['image']
+            ?? $category['thumbnail']
+            ?? $category['category_image']
+            ?? ''
+        ));
+
+        if ($img !== '') {
+            if (
+                stripos($img, 'http://') === 0 ||
+                stripos($img, 'https://') === 0 ||
+                stripos($img, '//') === 0 ||
+                stripos($img, 'data:') === 0
+            ) {
+                return $img;
+            }
+
+            $img = ltrim(str_replace('\\', '/', $img), '/');
+
+            if (strpos($img, 'uploads/categories/') !== false) {
+                return $img . '?v=' . time();
+            }
+
+            return $img;
+        }
+
+        return 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=600&q=80';
+    }
+}
+
 /* =========================
    CURRENT CATEGORY NAME
 ========================= */
@@ -341,6 +377,168 @@ $storefront_address          = $storeAddress;
       color:inherit;
       text-decoration:none;
     }
+
+    /* Small category cards - same reduced size as home page */
+    .category-image{
+      height:170px;
+      background:#f3f4f6;
+      overflow:hidden;
+      border:1px solid #e5e7eb;
+    }
+
+    .category-image img{
+      width:100%;
+      height:100%;
+      object-fit:cover !important;
+      display:block;
+      transition:transform 0.35s ease;
+    }
+
+    .category-item:hover .category-image img{
+      transform:scale(1.04);
+    }
+
+    .category-name{
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-top:0;
+      padding:10px 8px;
+      font-size:14px;
+      font-weight:700;
+      text-align:center;
+      color:#111827;
+      min-height:42px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    @media (max-width: 575.98px){
+      .category-image{
+        height:140px;
+      }
+
+      .category-name{
+        font-size:12px;
+        min-height:38px;
+        padding:8px 6px;
+      }
+    }
+
+    /* Small product cards */
+    .product-item{
+      height:100%;
+    }
+
+    .product-thumb{
+      height:180px;
+      background:#f8f9fa;
+      overflow:hidden;
+      position:relative;
+    }
+
+    .product-thumb img{
+      width:100%;
+      height:100%;
+      object-fit:contain !important;
+      display:block;
+      padding:10px;
+    }
+
+    .product-info{
+      padding:12px 12px 8px !important;
+    }
+
+    .product-title{
+      font-size:14px !important;
+      line-height:1.3;
+      margin-bottom:5px !important;
+      min-height:36px;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .product-desc{
+      font-size:12px !important;
+      line-height:1.4;
+      margin-bottom:8px !important;
+      min-height:34px;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .product-price{
+      font-size:15px !important;
+      font-weight:800;
+    }
+
+    .old-price{
+      font-size:12px !important;
+    }
+
+    .product-actions{
+      padding:0 12px 12px !important;
+    }
+
+    .btn-cart{
+      min-height:34px !important;
+      padding:7px 10px !important;
+      font-size:12px !important;
+    }
+
+    .product-badge{
+      font-size:10px !important;
+      padding:4px 8px !important;
+    }
+
+    .wishlist-btn{
+      width:30px !important;
+      height:30px !important;
+      font-size:13px !important;
+    }
+
+    @media (max-width: 575.98px){
+      .product-thumb{
+        height:145px;
+      }
+
+      .product-thumb img{
+        padding:8px;
+      }
+
+      .product-info{
+        padding:10px 9px 6px !important;
+      }
+
+      .product-title{
+        font-size:12px !important;
+        min-height:32px;
+      }
+
+      .product-desc{
+        font-size:11px !important;
+        min-height:30px;
+      }
+
+      .product-price{
+        font-size:13px !important;
+      }
+
+      .product-actions{
+        padding:0 9px 10px !important;
+      }
+
+      .btn-cart{
+        min-height:31px !important;
+        font-size:11px !important;
+        padding:6px 8px !important;
+      }
+    }
+
   </style>
 
   <?php if ($customCss !== ''): ?>
@@ -426,10 +624,12 @@ if (file_exists($heroFile)) include $heroFile;
       <?php if (!empty($categories)): ?>
         <?php foreach ($categories as $category): ?>
           <?php $categoryId = (int)($category['id'] ?? 0); ?>
-          <div class="col-6 col-md-4 col-lg-2">
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <a href="<?php echo sf_h(store_category_open_url($categoryId)); ?>" class="category-item d-block">
+              <?php $categoryImage = store_category_image_url($category); ?>
               <div class="category-image">
-                <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=600&q=80" alt="<?php echo sf_h($category['category_name'] ?? 'Category'); ?>" style="object-fit:contain;">
+                <img src="<?php echo sf_h($categoryImage); ?>"
+                     alt="<?php echo sf_h($category['category_name'] ?? 'Category'); ?>">
               </div>
               <div class="category-name"><?php echo sf_h($category['category_name'] ?? 'Category'); ?></div>
             </a>
@@ -458,7 +658,7 @@ if (file_exists($heroFile)) include $heroFile;
             $productId     = (int)($product['id'] ?? 0);
             $productName   = (string)($product['product_name'] ?? 'Product');
             $categoryName  = (string)($product['category_name'] ?? '');
-            $productDesc   = sf_trim_text($product['description'] ?? '', 85);
+            $productDesc   = sf_trim_text($product['description'] ?? '', 45);
             $fallbackImage = sf_product_fallback_image($productName, $categoryName);
             $productImage  = sf_normalize_image_path($product['image_path'] ?? '', $fallbackImage);
             $price         = (float)($product['retail_price'] ?? 0);
@@ -473,7 +673,7 @@ if (file_exists($heroFile)) include $heroFile;
 
             $productOpenUrl = store_product_open_url($productId);
           ?>
-          <div class="col-6 col-md-4 col-lg-3">
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <div class="product-item">
               <a href="<?php echo sf_h($productOpenUrl); ?>" class="product-link-wrap">
                 <div class="product-thumb">

@@ -23,6 +23,80 @@ if ($current_business_id <= 0) {
 }
 
 /* -----------------------------
+   Category image upload helpers
+----------------------------- */
+if (!function_exists('category_image_upload')) {
+    function category_image_upload(string $fieldName, int $business_id): array
+    {
+        if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] === UPLOAD_ERR_NO_FILE) {
+            return ['ok' => true, 'path' => null, 'message' => ''];
+        }
+
+        if ($_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+            return ['ok' => false, 'path' => null, 'message' => 'Image upload failed. Please try again.'];
+        }
+
+        $upload_dir = 'uploads/categories/';
+        if (!is_dir($upload_dir)) {
+            @mkdir($upload_dir, 0755, true);
+        }
+
+        if (!is_dir($upload_dir) || !is_writable($upload_dir)) {
+            return ['ok' => false, 'path' => null, 'message' => 'Category upload folder is not writable: uploads/categories/'];
+        }
+
+        $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+        $allowed_mime = ['image/jpeg', 'image/png', 'image/webp'];
+
+        $original = $_FILES[$fieldName]['name'] ?? '';
+        $tmp = $_FILES[$fieldName]['tmp_name'] ?? '';
+        $size = (int)($_FILES[$fieldName]['size'] ?? 0);
+        $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+
+        if ($size > (2 * 1024 * 1024)) {
+            return ['ok' => false, 'path' => null, 'message' => 'Category image size must be below 2MB.'];
+        }
+
+        if (!in_array($ext, $allowed_ext, true)) {
+            return ['ok' => false, 'path' => null, 'message' => 'Category image must be JPG, JPEG, PNG, or WEBP.'];
+        }
+
+        $mime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo) {
+                $mime = (string)finfo_file($finfo, $tmp);
+                finfo_close($finfo);
+            }
+        }
+
+        if ($mime !== '' && !in_array($mime, $allowed_mime, true)) {
+            return ['ok' => false, 'path' => null, 'message' => 'Invalid image file type.'];
+        }
+
+        $file_name = 'cat_' . $business_id . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+        $target = $upload_dir . $file_name;
+
+        if (!move_uploaded_file($tmp, $target)) {
+            return ['ok' => false, 'path' => null, 'message' => 'Unable to save category image.'];
+        }
+
+        return ['ok' => true, 'path' => $target, 'message' => ''];
+    }
+}
+
+if (!function_exists('delete_category_image_file')) {
+    function delete_category_image_file(?string $path): void
+    {
+        $path = trim((string)$path);
+        if ($path !== '' && strpos($path, 'uploads/categories/') === 0 && file_exists($path)) {
+            @unlink($path);
+        }
+    }
+}
+
+
+/* -----------------------------
    Helper: delete category + child subcategories + linked products
    Only allow delete if linked products are NOT used in invoice_items
 ----------------------------- */
@@ -151,6 +225,28 @@ if (!function_exists('delete_categories_with_links')) {
                 $delete_products->execute(array_merge($product_ids, [$business_id]));
             }
 
+            // Step 4: collect and delete category images from upload folder
+            if (!empty($all_category_ids)) {
+                $img_placeholders = implode(',', array_fill(0, count($all_category_ids), '?'));
+                try {
+                    $img_stmt = $pdo->prepare("
+                        SELECT category_image
+                        FROM categories
+                        WHERE id IN ($img_placeholders)
+                          AND business_id = ?
+                          AND category_image IS NOT NULL
+                          AND category_image <> ''
+                    ");
+                    $img_stmt->execute(array_merge($all_category_ids, [$business_id]));
+                    $image_paths = $img_stmt->fetchAll(PDO::FETCH_COLUMN);
+                    foreach ($image_paths as $image_path) {
+                        delete_category_image_file($image_path);
+                    }
+                } catch (Exception $e) {
+                    // ignore image cleanup errors
+                }
+            }
+
             // Step 4: delete child subcategories first
             if (!empty($all_category_ids)) {
                 $all_placeholders = implode(',', array_fill(0, count($all_category_ids), '?'));
@@ -229,33 +325,71 @@ if (isset($_POST['save_category'])) {
     $name = trim($_POST['category_name'] ?? '');
     $parent_id = (isset($_POST['parent_id']) && (int)$_POST['parent_id'] === 0) ? null : (int)($_POST['parent_id'] ?? 0);
     $description = trim($_POST['description'] ?? '');
+    $remove_image = isset($_POST['remove_category_image']) ? 1 : 0;
 
     if ($name === '') {
         $error = "Category name is required.";
     } else {
         try {
+            $uploadResult = category_image_upload('category_image', $current_business_id);
+            if (!$uploadResult['ok']) {
+                throw new Exception($uploadResult['message']);
+            }
+            $uploadedImagePath = $uploadResult['path'];
+
             if ($id > 0) {
-                $stmt = $pdo->prepare("
-                    UPDATE categories
-                    SET category_name = ?, parent_id = ?, description = ?
+                $old_stmt = $pdo->prepare("
+                    SELECT category_image
+                    FROM categories
                     WHERE id = ? AND business_id = ?
+                    LIMIT 1
                 ");
-                $stmt->execute([$name, $parent_id, $description, $id, $current_business_id]);
+                $old_stmt->execute([$id, $current_business_id]);
+                $old_category = $old_stmt->fetch(PDO::FETCH_ASSOC);
+                $old_image = $old_category['category_image'] ?? '';
+
+                if ($uploadedImagePath !== null) {
+                    $stmt = $pdo->prepare("
+                        UPDATE categories
+                        SET category_name = ?, parent_id = ?, description = ?, category_image = ?
+                        WHERE id = ? AND business_id = ?
+                    ");
+                    $stmt->execute([$name, $parent_id, $description, $uploadedImagePath, $id, $current_business_id]);
+                    delete_category_image_file($old_image);
+                } elseif ($remove_image) {
+                    $stmt = $pdo->prepare("
+                        UPDATE categories
+                        SET category_name = ?, parent_id = ?, description = ?, category_image = NULL
+                        WHERE id = ? AND business_id = ?
+                    ");
+                    $stmt->execute([$name, $parent_id, $description, $id, $current_business_id]);
+                    delete_category_image_file($old_image);
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE categories
+                        SET category_name = ?, parent_id = ?, description = ?
+                        WHERE id = ? AND business_id = ?
+                    ");
+                    $stmt->execute([$name, $parent_id, $description, $id, $current_business_id]);
+                }
+
                 $success = "Category updated successfully!";
             } else {
                 $stmt = $pdo->prepare("
-                    INSERT INTO categories (category_name, parent_id, description, created_by, business_id, status)
-                    VALUES (?, ?, ?, ?, ?, 'active')
+                    INSERT INTO categories (category_name, parent_id, description, category_image, created_by, business_id, status)
+                    VALUES (?, ?, ?, ?, ?, ?, 'active')
                 ");
-                $stmt->execute([$name, $parent_id, $description, $_SESSION['user_id'], $current_business_id]);
+                $stmt->execute([$name, $parent_id, $description, $uploadedImagePath, $_SESSION['user_id'], $current_business_id]);
                 $success = "Category '$name' added successfully!";
             }
         } catch (PDOException $e) {
             if ($e->getCode() == '23000') {
                 $error = "Category name already exists.";
             } else {
-                $error = "Database error.";
+                $error = "Database error: " . $e->getMessage();
             }
+        } catch (Exception $e) {
+            $error = $e->getMessage();
         }
     }
 }
@@ -443,6 +577,7 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
                                                     <input class="form-check-input" type="checkbox" id="selectAll">
                                                 </div>
                                             </th>
+                                            <th class="text-center">Image</th>
                                             <th>Category Name</th>
                                             <th>Parent Category</th>
                                             <th class="text-center">Status</th>
@@ -461,6 +596,16 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
                                                                    type="checkbox"
                                                                    value="<?= (int)$cat['id'] ?>">
                                                         </div>
+                                                    </td>
+
+                                                    <td class="text-center">
+                                                        <?php if (!empty($cat['category_image']) && file_exists($cat['category_image'])): ?>
+                                                            <img src="<?= htmlspecialchars($cat['category_image']) ?>"
+                                                                 alt="<?= htmlspecialchars($cat['category_name']) ?>"
+                                                                 class="category-thumb">
+                                                        <?php else: ?>
+                                                            <span class="text-muted">—</span>
+                                                        <?php endif; ?>
                                                     </td>
 
                                                     <td>
@@ -507,7 +652,7 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         <div class="btn-group btn-group-sm">
                                                             <button class="btn btn-outline-warning"
                                                                     type="button"
-                                                                    onclick="editCategory(<?= (int)$cat['id'] ?>, '<?= addslashes(htmlspecialchars($cat['category_name'])) ?>', <?= $cat['parent_id'] ?: '0' ?>, '<?= addslashes(htmlspecialchars($cat['description'] ?? '')) ?>')">
+                                                                    onclick="editCategory(<?= (int)$cat['id'] ?>, '<?= addslashes(htmlspecialchars($cat['category_name'])) ?>', <?= $cat['parent_id'] ?: '0' ?>, '<?= addslashes(htmlspecialchars($cat['description'] ?? '')) ?>', '<?= addslashes(htmlspecialchars($cat['category_image'] ?? '')) ?>')">
                                                                 <i class="bx bx-edit"></i>
                                                             </button>
 
@@ -542,7 +687,7 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
 <!-- Add/Edit Modal -->
 <div class="modal fade" id="categoryModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" class="modal-content" id="categoryForm">
+        <form method="POST" enctype="multipart/form-data" class="modal-content" id="categoryForm">
             <input type="hidden" name="id" id="editId">
 
             <div class="modal-header">
@@ -572,6 +717,27 @@ $main_cats = $main_cats_stmt->fetchAll(PDO::FETCH_ASSOC);
                     <label class="form-label">Description</label>
                     <textarea name="description" id="catDesc" class="form-control" rows="3"></textarea>
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Category Image</label>
+                    <input type="file"
+                           name="category_image"
+                           id="catImage"
+                           class="form-control"
+                           accept="image/jpeg,image/jpg,image/png,image/webp">
+                    <small class="text-muted">Allowed: JPG, JPEG, PNG, WEBP. Max 2MB.</small>
+                </div>
+
+                <div class="mb-3 d-none" id="currentImageBox">
+                    <label class="form-label">Current Image</label>
+                    <div class="d-flex align-items-center gap-3">
+                        <img src="" alt="Current Category Image" id="currentCatImage" class="category-thumb-lg">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="remove_category_image" id="removeCategoryImage" value="1">
+                            <label class="form-check-label" for="removeCategoryImage">Remove current image</label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="modal-footer">
@@ -594,7 +760,7 @@ $(document).ready(function() {
         pageLength: 25,
         order: [[1, 'asc']],
         columnDefs: [
-            { orderable: false, targets: [0, 6] }
+            { orderable: false, targets: [0, 1, 7] }
         ],
         language: {
             search: "Search categories:",
@@ -786,12 +952,26 @@ $(document).ready(function() {
     <?php endif; ?>
 });
 
-function editCategory(id, name, parent, desc) {
+function editCategory(id, name, parent, desc, imagePath = '') {
     document.getElementById('modalTitle').innerHTML = '<i class="bx bx-edit"></i> Edit Category';
     document.getElementById('editId').value = id;
     document.getElementById('catName').value = name;
     document.getElementById('catParent').value = parent;
     document.getElementById('catDesc').value = desc;
+    document.getElementById('catImage').value = '';
+    document.getElementById('removeCategoryImage').checked = false;
+
+    const currentImageBox = document.getElementById('currentImageBox');
+    const currentCatImage = document.getElementById('currentCatImage');
+
+    if (imagePath && imagePath.trim() !== '') {
+        currentImageBox.classList.remove('d-none');
+        currentCatImage.src = imagePath;
+    } else {
+        currentImageBox.classList.add('d-none');
+        currentCatImage.src = '';
+    }
+
     document.getElementById('saveCategoryBtn').innerHTML = '<i class="bx bx-save me-2"></i> Update Category';
     new bootstrap.Modal(document.getElementById('categoryModal')).show();
 }
@@ -800,6 +980,10 @@ document.getElementById('categoryModal').addEventListener('hidden.bs.modal', fun
     document.getElementById('modalTitle').innerHTML = '<i class="bx bx-plus-circle"></i> Add Category';
     document.querySelector('#categoryModal form').reset();
     document.getElementById('editId').value = '';
+    document.getElementById('catImage').value = '';
+    document.getElementById('removeCategoryImage').checked = false;
+    document.getElementById('currentImageBox').classList.add('d-none');
+    document.getElementById('currentCatImage').src = '';
     document.getElementById('saveCategoryBtn').innerHTML = '<i class="bx bx-save me-2"></i> Save Category';
 });
 </script>
@@ -807,6 +991,26 @@ document.getElementById('categoryModal').addEventListener('hidden.bs.modal', fun
 <style>
 .table th { font-weight: 600; background-color: #f8f9fa; }
 .btn-group .btn { padding: 0.375rem 0.75rem; }
+
+.category-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    padding: 2px;
+}
+.category-thumb-lg {
+    width: 90px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    padding: 3px;
+}
+
 
 .swal-toast-small {
     font-size: 0.875rem !important;

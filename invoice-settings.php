@@ -40,6 +40,23 @@ try {
     // Do not stop settings page if table creation fails; save action will show error.
 }
 
+/*
+|--------------------------------------------------------------------------
+| EXTRA INVOICE SETTINGS COLUMNS
+|--------------------------------------------------------------------------
+| Live server safe mode:
+| Do NOT run ALTER TABLE / INFORMATION_SCHEMA checks inside this page.
+| Add the required columns once manually in phpMyAdmin.
+*/
+$invoiceSettingsColumnsReady = true;
+$invoiceSettingsColumnError = '';
+
+$checkInvoiceSettingsColumn = function (string $column) use ($pdo): bool {
+    // Columns are expected to be added manually in DB.
+    // This avoids "000 No connection" / host permission errors from runtime schema checks.
+    return true;
+};
+
 
 // ========== BRAND LOGO MANAGEMENT FUNCTIONS ===========
 if (isset($_POST['add_brand_logo'])) {
@@ -395,9 +412,15 @@ if (isset($_GET['toggle_account'])) {
 // ========== EXISTING INVOICE SETTINGS FUNCTIONS ==========
 
 // Handle form submission for invoice settings
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) && !isset($_POST['update_bank_account']) && !isset($_POST['add_brand_logo']) && !isset($_POST['update_brand_logo'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['add_bank_account']) && !isset($_POST['update_bank_account']) && !isset($_POST['add_brand_logo']) && !isset($_POST['update_brand_logo']) && !isset($_POST['delete_logo']) && !isset($_POST['delete_qr']) && !isset($_POST['delete_signature_logo'])) {
     try {
+        if (!$invoiceSettingsColumnsReady) {
+            throw new Exception('Invoice settings DB columns are not ready. ' . $invoiceSettingsColumnError);
+        }
+
         $company_name = $_POST['company_name'] ?? '';
+        $invoice_slogan = trim($_POST['invoice_slogan'] ?? '');
+        $show_signature_logo = isset($_POST['show_signature_logo']) ? 1 : 0;
         $company_address = $_POST['company_address'] ?? '';
         $company_phone = $_POST['company_phone'] ?? '';
         $company_email = $_POST['company_email'] ?? '';
@@ -437,6 +460,8 @@ $qr_code_data = $_POST['qr_code_data'] ?? '';
             // Update existing settings
             $sql = "UPDATE invoice_settings SET 
         company_name = ?,
+        invoice_slogan = ?,
+        show_signature_logo = ?,
         company_address = ?,
         company_phone = ?,
         company_email = ?,
@@ -453,11 +478,11 @@ $qr_code_data = $_POST['qr_code_data'] ?? '';
         } else {
             // Insert new settings
             $sql = "INSERT INTO invoice_settings (
-        business_id, shop_id, company_name, company_address, company_phone, 
+        business_id, shop_id, company_name, invoice_slogan, show_signature_logo, company_address, company_phone, 
         company_email, company_website, gst_number, pan_number, 
         invoice_terms, invoice_footer, invoice_prefix, non_gst_invoice_prefix, qr_code_data
         ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )";
         }
         
@@ -466,14 +491,14 @@ $qr_code_data = $_POST['qr_code_data'] ?? '';
         if ($exists) {
             if ($shop_id && $shop_id != 0) {
                 $stmt->execute([
-    $company_name, $company_address, $company_phone, $company_email,
+    $company_name, $invoice_slogan, $show_signature_logo, $company_address, $company_phone, $company_email,
     $company_website, $gst_number, $pan_number, $invoice_terms,
     $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data,
     $business_id, $shop_id
 ]);
             } else {
                 $stmt->execute([
-    $company_name, $company_address, $company_phone, $company_email,
+    $company_name, $invoice_slogan, $show_signature_logo, $company_address, $company_phone, $company_email,
     $company_website, $gst_number, $pan_number, $invoice_terms,
     $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data,
     $business_id
@@ -481,7 +506,7 @@ $qr_code_data = $_POST['qr_code_data'] ?? '';
             }
         } else {
             $stmt->execute([
-    $business_id, ($shop_id && $shop_id != 0) ? $shop_id : null, $company_name, $company_address, $company_phone,
+    $business_id, ($shop_id && $shop_id != 0) ? $shop_id : null, $company_name, $invoice_slogan, $show_signature_logo, $company_address, $company_phone,
     $company_email, $company_website, $gst_number, $pan_number,
     $invoice_terms, $invoice_footer, $invoice_prefix, $non_gst_invoice_prefix, $qr_code_data
 ]);
@@ -555,6 +580,55 @@ if (isset($_FILES['company_logo']) && $_FILES['company_logo']['error'] === 0) {
         }
     } else {
         $message = "Invalid file type. Only JPG, JPEG, PNG, GIF & WEBP are allowed.";
+        $message_type = "danger";
+    }
+}
+
+// Handle signature logo upload
+if (isset($_FILES['signature_logo']) && $_FILES['signature_logo']['error'] === 0) {
+    $shop_id = $_POST['signature_shop_id'] ?? ($_POST['shop_id'] ?? null);
+    if ($shop_id == 0) $shop_id = null;
+
+    $upload_dir = 'uploads/signatures/';
+
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
+    }
+
+    $allowed_types = ['image/jpeg', 'image/jpg', 'image/png'];
+    $file_type = $_FILES['signature_logo']['type'];
+
+    if (in_array($file_type, $allowed_types, true)) {
+        $file_info = pathinfo($_FILES['signature_logo']['name']);
+        $extension = strtolower($file_info['extension'] ?? '');
+
+        if (!in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+            $extension = ($file_type === 'image/png') ? 'png' : 'jpg';
+        }
+
+        if ((int)$_FILES['signature_logo']['size'] > (2 * 1024 * 1024)) {
+            $message = "Signature logo file is too large. Max 2MB allowed.";
+            $message_type = "danger";
+        } else {
+            $file_name = 'signature_' . $business_id . ($shop_id ? '_shop_' . $shop_id : '') . '_' . time() . '.' . $extension;
+            $target_path = $upload_dir . $file_name;
+
+            if (move_uploaded_file($_FILES['signature_logo']['tmp_name'], $target_path)) {
+                $sql = "INSERT INTO invoice_settings (business_id, shop_id, show_signature_logo, signature_logo_path, updated_at)
+                        VALUES (?, ?, 1, ?, NOW())
+                        ON DUPLICATE KEY UPDATE show_signature_logo = 1, signature_logo_path = ?, updated_at = NOW()";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$business_id, $shop_id, $target_path, $target_path]);
+
+                $message = "Signature logo uploaded successfully!";
+                $message_type = "success";
+            } else {
+                $message = "Failed to upload signature logo. Please try again.";
+                $message_type = "danger";
+            }
+        }
+    } else {
+        $message = "Invalid signature logo type. Only JPG, JPEG & PNG are allowed for FPDF printing.";
         $message_type = "danger";
     }
 }
@@ -687,6 +761,15 @@ try {
     $brand_logos = [];
 }
 
+
+// Ensure newly added optional settings keys are always available.
+if (!is_array($settings)) {
+    $settings = [];
+}
+$settings['invoice_slogan'] = $settings['invoice_slogan'] ?? '';
+$settings['show_signature_logo'] = $settings['show_signature_logo'] ?? 0;
+$settings['signature_logo_path'] = $settings['signature_logo_path'] ?? '';
+
 // If no settings found, use default values
 if (empty($settings)) {
     // Try to get business info as fallback
@@ -697,6 +780,9 @@ if (empty($settings)) {
     
     $settings = [
         'company_name' => $business['business_name'] ?? 'CLASSIC CAR CARE',
+        'invoice_slogan' => 'Quality is not classy...it\'s priceless',
+        'show_signature_logo' => 0,
+        'signature_logo_path' => '',
         'company_address' => $business['address'] ?? '111-J, SALEM MAIN ROAD, DHARMAPURI-636705',
         'company_phone' => $business['phone'] ?? '9943701430, 8489755755',
         'company_email' => '',
@@ -748,6 +834,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_logo'])) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_signature_logo'])) {
+    $shop_id = $_POST['delete_shop_id'] ?? null;
+    if ($shop_id == 0) $shop_id = null;
+
+    $select_sql = "SELECT signature_logo_path FROM invoice_settings WHERE business_id = ? AND " . ($shop_id ? "shop_id = ?" : "shop_id IS NULL");
+    $select_stmt = $pdo->prepare($select_sql);
+
+    if ($shop_id) {
+        $select_stmt->execute([$business_id, $shop_id]);
+    } else {
+        $select_stmt->execute([$business_id]);
+    }
+
+    $signature_data = $select_stmt->fetch();
+
+    if (!empty($signature_data['signature_logo_path']) && file_exists($signature_data['signature_logo_path'])) {
+        unlink($signature_data['signature_logo_path']);
+    }
+
+    $sql = "UPDATE invoice_settings SET signature_logo_path = NULL, show_signature_logo = 0, updated_at = NOW()
+            WHERE business_id = ? AND " . ($shop_id ? "shop_id = ?" : "shop_id IS NULL");
+    $stmt = $pdo->prepare($sql);
+
+    if ($shop_id) {
+        $stmt->execute([$business_id, $shop_id]);
+    } else {
+        $stmt->execute([$business_id]);
+    }
+
+    header('Location: invoice-settings.php?shop_id=' . ($shop_id ?? 0) . '&msg=' . urlencode('Signature logo deleted successfully!') . '&type=success');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_qr'])) {
     $shop_id = $_POST['delete_shop_id'] ?? null;
     if ($shop_id == 0) $shop_id = null;
@@ -791,345 +910,382 @@ if (isset($_GET['msg'])) {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bill Settings - Vehicle Service Center</title>
     <?php include('includes/head.php'); ?>
     <style>
-        .preview-section {
-            border: 1px solid #dee2e6;
-            padding: 30px;
-            margin-bottom: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        
-        /* Align logo and QR code vertically centered */
-        .preview-section .row {
-            align-items: center;
-        }
-        
-        /* Add left margin/padding to the middle text section */
-        .preview-section .col-md-8 {
-            padding-left: 40px;
-        }
-        
-        /* Optional: Add subtle left border for better visual separation */
-        .preview-section .col-md-8 {
-            border-left: 1px solid #e0e0e0;
-            margin-left: 20px;
-        }
-        
-        /* Responsive adjustment for smaller screens */
-        @media (max-width: 768px) {
-            .preview-section .col-md-8 {
-                padding-left: 15px;
-                border-left: none;
-                margin-left: 0;
-                margin-top: 20px;
-                border-top: 1px solid #e0e0e0;
-                padding-top: 20px;
-            }
-            
-            .preview-section .col-md-2 {
-                text-align: center;
-            }
-        }
-        
-        /* Improve text spacing in preview */
-        .preview-section h4 {
-            margin-bottom: 12px;
-            font-weight: 600;
-        }
-        
-        .preview-section p {
-            margin-bottom: 8px;
-            line-height: 1.5;
-        }
-        
-        .logo-preview, .qr-preview {
-            max-width: 200px;
-            max-height: 200px;
-            border: 1px solid #dee2e6;
-            padding: 5px;
-            background: white;
-            object-fit: contain;
-            border-radius: 5px;
-        }
-        
-        .file-upload-area {
-            border: 2px dashed #007bff;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 15px;
-            border-radius: 5px;
-        }
-        .file-upload-area:hover {
-            background: #f8f9fa;
-        }
-        .settings-nav {
-            background: #343a40;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .settings-nav a {
-            color: white;
-            margin-right: 15px;
-            text-decoration: none;
-        }
-        .settings-nav a:hover {
-            color: #ddd;
-        }
-        .delete-btn {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: rgba(220, 53, 69, 0.9);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .delete-btn:hover {
-            background: rgb(200, 35, 51);
-            transform: scale(1.1);
-        }
-        .preview-container {
-            position: relative;
-            display: inline-block;
-        }
-        .image-info {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 5px;
-        }
-        .shop-selector {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border-left: 4px solid #007bff;
-        }
-        .shop-tab {
-            display: inline-block;
-            padding: 8px 15px;
-            margin-right: 10px;
-            background: #e9ecef;
-            border-radius: 4px;
-            text-decoration: none;
-            color: #495057;
-            font-weight: 500;
-        }
-        .shop-tab.active {
-            background: #007bff;
-            color: white;
-        }
-        .shop-tab:hover {
-            background: #dee2e6;
-            text-decoration: none;
-            color: #495057;
-        }
-        
-        /* Bank Account Management Styles */
-        .bank-account-card {
-            border-left: 4px solid #007bff;
-            transition: all 0.3s;
-            margin-bottom: 15px;
-            border-radius: 8px;
-        }
-        .bank-account-card.default {
-            border-left-color: #28a745;
-            background-color: #f8fff9;
-        }
-        .bank-account-card.inactive {
-            border-left-color: #dc3545;
-            opacity: 0.7;
-        }
-        .bank-status-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-        }
-        .account-actions {
-            margin-top: 10px;
-        }
-        .account-number {
-            font-family: monospace;
-            background: #f8f9fa;
-            padding: 2px 5px;
-            border-radius: 3px;
-        }
-        .bank-account-item {
-            padding: 10px;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-        .bank-account-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .bank-account-badges {
-            display: flex;
-            gap: 5px;
-        }
-        .bank-details-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-top: 5px;
-        }
-        .bank-detail-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .bank-detail-item i {
-            color: #6c757d;
-        }
-        
+    .preview-section {
+        border: 1px solid #dee2e6;
+        padding: 30px;
+        margin-bottom: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
 
-        .brand-logo-card {
-            border-left: 4px solid #6f42c1;
-            transition: all 0.25s ease;
-            border-radius: 8px;
+    /* Align logo and QR code vertically centered */
+    .preview-section .row {
+        align-items: center;
+    }
+
+    /* Add left margin/padding to the middle text section */
+    .preview-section .col-md-8 {
+        padding-left: 40px;
+    }
+
+    /* Optional: Add subtle left border for better visual separation */
+    .preview-section .col-md-8 {
+        border-left: 1px solid #e0e0e0;
+        margin-left: 20px;
+    }
+
+    /* Responsive adjustment for smaller screens */
+    @media (max-width: 768px) {
+        .preview-section .col-md-8 {
+            padding-left: 15px;
+            border-left: none;
+            margin-left: 0;
+            margin-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
         }
-        .brand-logo-card.inactive {
-            opacity: .65;
-            border-left-color: #dc3545;
+
+        .preview-section .col-md-2 {
+            text-align: center;
         }
-        .brand-logo-preview-box {
-            min-height: 70px;
-            border: 1px dashed #ced4da;
-            border-radius: 8px;
-            background: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 8px;
-        }
-        .brand-logo-preview-box img {
-            max-width: 100%;
-            max-height: 60px;
-            object-fit: contain;
-        }
-        .brand-logo-meta {
-            font-size: .8rem;
-            color: #6c757d;
-        }
-        .preview-container .delete-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: rgba(220, 53, 69, 0.9);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        }
+    }
+
+    /* Improve text spacing in preview */
+    .preview-section h4 {
+        margin-bottom: 12px;
+        font-weight: 600;
+    }
+
+    .preview-section p {
+        margin-bottom: 8px;
+        line-height: 1.5;
+    }
+
+    .logo-preview,
+    .qr-preview {
+        max-width: 200px;
+        max-height: 200px;
+        border: 1px solid #dee2e6;
+        padding: 5px;
+        background: white;
+        object-fit: contain;
+        border-radius: 5px;
+    }
+
+    .file-upload-area {
+        border: 2px dashed #007bff;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        margin-bottom: 15px;
+        border-radius: 5px;
+    }
+
+    .file-upload-area:hover {
+        background: #f8f9fa;
+    }
+
+    .settings-nav {
+        background: #343a40;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+
+    .settings-nav a {
+        color: white;
+        margin-right: 15px;
+        text-decoration: none;
+    }
+
+    .settings-nav a:hover {
+        color: #ddd;
+    }
+
+    .delete-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: rgba(220, 53, 69, 0.9);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .delete-btn:hover {
+        background: rgb(200, 35, 51);
+        transform: scale(1.1);
+    }
+
+    .preview-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    .image-info {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 5px;
+    }
+
+    .shop-selector {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border-left: 4px solid #007bff;
+    }
+
+    .shop-tab {
+        display: inline-block;
+        padding: 8px 15px;
+        margin-right: 10px;
+        background: #e9ecef;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #495057;
+        font-weight: 500;
+    }
+
+    .shop-tab.active {
+        background: #007bff;
+        color: white;
+    }
+
+    .shop-tab:hover {
+        background: #dee2e6;
+        text-decoration: none;
+        color: #495057;
+    }
+
+    /* Bank Account Management Styles */
+    .bank-account-card {
+        border-left: 4px solid #007bff;
+        transition: all 0.3s;
+        margin-bottom: 15px;
+        border-radius: 8px;
+    }
+
+    .bank-account-card.default {
+        border-left-color: #28a745;
+        background-color: #f8fff9;
+    }
+
+    .bank-account-card.inactive {
+        border-left-color: #dc3545;
+        opacity: 0.7;
+    }
+
+    .bank-status-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+    }
+
+    .account-actions {
+        margin-top: 10px;
+    }
+
+    .account-number {
+        font-family: monospace;
+        background: #f8f9fa;
+        padding: 2px 5px;
+        border-radius: 3px;
+    }
+
+    .bank-account-item {
+        padding: 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+
+    .bank-account-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .bank-account-badges {
+        display: flex;
+        gap: 5px;
+    }
+
+    .bank-details-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-top: 5px;
+    }
+
+    .bank-detail-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .bank-detail-item i {
+        color: #6c757d;
+    }
+
+
+    .brand-logo-card {
+        border-left: 4px solid #6f42c1;
+        transition: all 0.25s ease;
+        border-radius: 8px;
+    }
+
+    .brand-logo-card.inactive {
+        opacity: .65;
+        border-left-color: #dc3545;
+    }
+
+    .brand-logo-preview-box {
+        min-height: 70px;
+        border: 1px dashed #ced4da;
+        border-radius: 8px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+    }
+
+    .brand-logo-preview-box img {
+        max-width: 100%;
+        max-height: 60px;
+        object-fit: contain;
+    }
+
+    .brand-logo-meta {
+        font-size: .8rem;
+        color: #6c757d;
+    }
+
+    .preview-container .delete-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(220, 53, 69, 0.9);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
     </style>
 </head>
+
 <body data-sidebar="dark">
-<!-- Loader -->
+    <!-- Loader -->
 
-<!-- Begin page -->
-<div id="layout-wrapper">
-    <?php include('includes/topbar.php'); ?>
-    
-    <!-- ========== Left Sidebar Start ========== -->
-    <div class="vertical-menu">
-        <div data-simplebar class="h-100">
-            <?php include('includes/sidebar.php'); ?>
+    <!-- Begin page -->
+    <div id="layout-wrapper">
+        <?php include('includes/topbar.php'); ?>
+
+        <!-- ========== Left Sidebar Start ========== -->
+        <div class="vertical-menu">
+            <div data-simplebar class="h-100">
+                <?php include('includes/sidebar.php'); ?>
+            </div>
         </div>
-    </div>
-    <!-- Left Sidebar End -->
+        <!-- Left Sidebar End -->
 
-    <!-- ============================================================== -->
-    <!-- Start right Content here -->
-    <!-- ============================================================== -->
-    <div class="main-content">
-        <div class="page-content">
-            <div class="container-fluid">
-                
-                <!-- Page Title -->
-                <div class="row">
-                    <div class="col-12">
-                        <div class="page-title-box d-flex align-items-center justify-content-between">
-                            <h4 class="mb-0">Invoice & Bill Settings</h4>
-                            <div class="page-title-right">
-                                <ol class="breadcrumb m-0">
-                                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                    <li class="breadcrumb-item active">Invoice Settings</li>
-                                </ol>
+        <!-- ============================================================== -->
+        <!-- Start right Content here -->
+        <!-- ============================================================== -->
+        <div class="main-content">
+            <div class="page-content">
+                <div class="container-fluid">
+
+                    <!-- Page Title -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="page-title-box d-flex align-items-center justify-content-between">
+                                <h4 class="mb-0">Invoice & Bill Settings</h4>
+                                <div class="page-title-right">
+                                    <ol class="breadcrumb m-0">
+                                        <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                                        <li class="breadcrumb-item active">Invoice Settings</li>
+                                    </ol>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Shop Selector -->
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <div class="shop-selector">
-                            <h5 class="mb-3">Select Shop/Store</h5>
-                            <div>
-                                <a href="?shop_id=0" class="shop-tab <?php echo (!isset($_GET['shop_id']) || $_GET['shop_id'] == 0) ? 'active' : ''; ?>">
-                                    <i class="fas fa-building"></i> Business Default
-                                </a>
-                                <?php foreach ($shops as $shop): ?>
-                                <a href="?shop_id=<?php echo $shop['id']; ?>" class="shop-tab <?php echo (isset($_GET['shop_id']) && $_GET['shop_id'] == $shop['id']) ? 'active' : ''; ?>">
-                                    <i class="fas fa-store"></i> <?php echo htmlspecialchars($shop['shop_name']); ?> (<?php echo htmlspecialchars($shop['shop_code']); ?>)
-                                </a>
-                                <?php endforeach; ?>
-                            </div>
-                            <div class="mt-3">
-                                <small class="text-muted">
-                                    <i class="fas fa-info-circle"></i> 
-                                    Business Default settings apply to all shops unless overridden by shop-specific settings.
-                                </small>
+                    <!-- Shop Selector -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="shop-selector">
+                                <h5 class="mb-3">Select Shop/Store</h5>
+                                <div>
+                                    <a href="?shop_id=0"
+                                        class="shop-tab <?php echo (!isset($_GET['shop_id']) || $_GET['shop_id'] == 0) ? 'active' : ''; ?>">
+                                        <i class="fas fa-building"></i> Business Default
+                                    </a>
+                                    <?php foreach ($shops as $shop): ?>
+                                    <a href="?shop_id=<?php echo $shop['id']; ?>"
+                                        class="shop-tab <?php echo (isset($_GET['shop_id']) && $_GET['shop_id'] == $shop['id']) ? 'active' : ''; ?>">
+                                        <i class="fas fa-store"></i> <?php echo htmlspecialchars($shop['shop_name']); ?>
+                                        (<?php echo htmlspecialchars($shop['shop_code']); ?>)
+                                    </a>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i>
+                                        Business Default settings apply to all shops unless overridden by shop-specific
+                                        settings.
+                                    </small>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Message Display -->
-                <?php if (!empty($message)): ?>
-                <div class="row">
-                    <div class="col-12">
-                        <div class="alert alert-<?php echo $message_type; ?> alert-dismissible fade show" role="alert">
-                            <?php echo $message; ?>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    <!-- Message Display -->
+                    <?php if (!empty($message)): ?>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="alert alert-<?php echo $message_type; ?> alert-dismissible fade show"
+                                role="alert">
+                                <?php echo $message; ?>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"
+                                    aria-label="Close"></button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <?php endif; ?>
+                    <?php endif; ?>
 
-                <!-- Preview Section -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">
-                                    Preview - 
-                                    <?php if (!$selected_shop_id): ?>
+                    <!-- Preview Section -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        Preview -
+                                        <?php if (!$selected_shop_id): ?>
                                         Business Default Settings
-                                    <?php else: 
+                                        <?php else: 
                                         $current_shop = null;
                                         foreach ($shops as $shop) {
                                             if ($shop['id'] == $selected_shop_id) {
@@ -1138,43 +1294,59 @@ if (isset($_GET['msg'])) {
                                             }
                                         }
                                     ?>
-                                        <?php echo htmlspecialchars($current_shop['shop_name'] ?? 'Selected Shop'); ?> Settings
-                                    <?php endif; ?>
-                                </h5>
-                                <div class="preview-section">
-                                    <div class="row">
-                                        <div class="col-md-2">
-                                            <?php if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])): ?>
+                                        <?php echo htmlspecialchars($current_shop['shop_name'] ?? 'Selected Shop'); ?>
+                                        Settings
+                                        <?php endif; ?>
+                                    </h5>
+                                    <div class="preview-section">
+                                        <div class="row">
+                                            <div class="col-md-2">
+                                                <?php if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])): ?>
                                                 <div class="preview-container">
-                                                    <img src="<?php echo $settings['logo_path']; ?>" alt="Company Logo" class="logo-preview img-fluid">
-                                                    <button type="button" class="delete-btn" onclick="deleteImage('logo', <?php echo $selected_shop_id ? $selected_shop_id : 0; ?>)">
+                                                    <img src="<?php echo $settings['logo_path']; ?>" alt="Company Logo"
+                                                        class="logo-preview img-fluid">
+                                                    <button type="button" class="delete-btn"
+                                                        onclick="deleteImage('logo', <?php echo $selected_shop_id ? $selected_shop_id : 0; ?>)">
                                                         <i class="fas fa-times"></i>
                                                     </button>
                                                 </div>
                                                 <div class="image-info">
-                                                    Logo uploaded (<?php echo strtoupper(pathinfo($settings['logo_path'], PATHINFO_EXTENSION)); ?>)
+                                                    Logo uploaded
+                                                    (<?php echo strtoupper(pathinfo($settings['logo_path'], PATHINFO_EXTENSION)); ?>)
                                                 </div>
-                                            <?php else: ?>
+                                                <?php else: ?>
                                                 <div class="alert alert-warning">No logo uploaded</div>
-                                            <?php endif; ?>
-                                        </div>
-                                        <div class="col-md-8">
-                                            <h4><?php echo htmlspecialchars($settings['company_name']); ?></h4>
-                                            <p class="mb-1"><?php echo nl2br(htmlspecialchars($settings['company_address'])); ?></p>
-                                            <p class="mb-1">Phone: <?php echo htmlspecialchars($settings['company_phone']); ?></p>
-                                            <?php if (!empty($settings['company_email'])): ?>
-                                            <p class="mb-1">Email: <?php echo htmlspecialchars($settings['company_email']); ?></p>
-                                            <?php endif; ?>
-                                            <?php if (!empty($settings['company_website'])): ?>
-                                            <p class="mb-1">Website: <?php echo htmlspecialchars($settings['company_website']); ?></p>
-                                            <?php endif; ?>
-                                            <p class="mb-1">GST: <?php echo htmlspecialchars($settings['gst_number']); ?></p>
-                                            <?php if (!empty($settings['pan_number'])): ?>
-                                            <p class="mb-1">PAN: <?php echo htmlspecialchars($settings['pan_number']); ?></p>
-                                            <?php endif; ?>
-                                            
-                                            <!-- Bank Accounts in Preview -->
-                                            <?php if (!empty($bank_accounts)): ?>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="col-md-8">
+                                                <h4><?php echo htmlspecialchars($settings['company_name']); ?></h4>
+                                                <?php if (!empty($settings['invoice_slogan'])): ?>
+                                                <p class="mb-1 text-primary">
+                                                    <em><?php echo htmlspecialchars($settings['invoice_slogan']); ?></em>
+                                                </p>
+                                                <?php endif; ?>
+                                                <p class="mb-1">
+                                                    <?php echo nl2br(htmlspecialchars($settings['company_address'])); ?>
+                                                </p>
+                                                <p class="mb-1">Phone:
+                                                    <?php echo htmlspecialchars($settings['company_phone']); ?></p>
+                                                <?php if (!empty($settings['company_email'])): ?>
+                                                <p class="mb-1">Email:
+                                                    <?php echo htmlspecialchars($settings['company_email']); ?></p>
+                                                <?php endif; ?>
+                                                <?php if (!empty($settings['company_website'])): ?>
+                                                <p class="mb-1">Website:
+                                                    <?php echo htmlspecialchars($settings['company_website']); ?></p>
+                                                <?php endif; ?>
+                                                <p class="mb-1">GST:
+                                                    <?php echo htmlspecialchars($settings['gst_number']); ?></p>
+                                                <?php if (!empty($settings['pan_number'])): ?>
+                                                <p class="mb-1">PAN:
+                                                    <?php echo htmlspecialchars($settings['pan_number']); ?></p>
+                                                <?php endif; ?>
+
+                                                <!-- Bank Accounts in Preview -->
+                                                <?php if (!empty($bank_accounts)): ?>
                                                 <div class="mt-3 pt-3 border-top">
                                                     <h6 class="text-primary">Bank Accounts:</h6>
                                                     <?php 
@@ -1182,311 +1354,414 @@ if (isset($_GET['msg'])) {
                                                         return $account['is_active'] == 1;
                                                     });
                                                     ?>
-                                                    
+
                                                     <?php if (!empty($active_accounts)): ?>
-                                                        <?php foreach ($active_accounts as $account): ?>
-                                                        <div class="bank-detail-item">
-                                                            <i class="fas fa-university"></i>
-                                                            <strong><?php echo htmlspecialchars($account['bank_name']); ?>:</strong>
-                                                            A/C: <?php echo htmlspecialchars($account['account_number']); ?>
-                                                            <?php if ($account['account_holder_name']): ?>
-                                                                (<?php echo htmlspecialchars($account['account_holder_name']); ?>)
-                                                            <?php endif; ?>
-                                                            <?php if ($account['is_default']): ?>
-                                                                <span class="badge bg-success ms-2">Default</span>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                        <?php endforeach; ?>
+                                                    <?php foreach ($active_accounts as $account): ?>
+                                                    <div class="bank-detail-item">
+                                                        <i class="fas fa-university"></i>
+                                                        <strong><?php echo htmlspecialchars($account['bank_name']); ?>:</strong>
+                                                        A/C: <?php echo htmlspecialchars($account['account_number']); ?>
+                                                        <?php if ($account['account_holder_name']): ?>
+                                                        (<?php echo htmlspecialchars($account['account_holder_name']); ?>)
+                                                        <?php endif; ?>
+                                                        <?php if ($account['is_default']): ?>
+                                                        <span class="badge bg-success ms-2">Default</span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <?php endforeach; ?>
                                                     <?php else: ?>
-                                                        <p class="text-muted">No active bank accounts</p>
+                                                    <p class="text-muted">No active bank accounts</p>
                                                     <?php endif; ?>
                                                 </div>
-                                            <?php endif; ?>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <?php if (!empty($settings['qr_code_path']) && file_exists($settings['qr_code_path'])): ?>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <?php if (!empty($settings['qr_code_path']) && file_exists($settings['qr_code_path'])): ?>
                                                 <div class="preview-container">
-                                                    <img src="<?php echo $settings['qr_code_path']; ?>" alt="QR Code" class="qr-preview img-fluid">
-                                                    <button type="button" class="delete-btn" onclick="deleteImage('qr', <?php echo $selected_shop_id ? $selected_shop_id : 0; ?>)">
+                                                    <img src="<?php echo $settings['qr_code_path']; ?>" alt="QR Code"
+                                                        class="qr-preview img-fluid">
+                                                    <button type="button" class="delete-btn"
+                                                        onclick="deleteImage('qr', <?php echo $selected_shop_id ? $selected_shop_id : 0; ?>)">
                                                         <i class="fas fa-times"></i>
                                                     </button>
                                                 </div>
                                                 <div class="image-info">
-                                                    QR Code uploaded (<?php echo strtoupper(pathinfo($settings['qr_code_path'], PATHINFO_EXTENSION)); ?>)
+                                                    QR Code uploaded
+                                                    (<?php echo strtoupper(pathinfo($settings['qr_code_path'], PATHINFO_EXTENSION)); ?>)
                                                 </div>
-                                            <?php else: ?>
+                                                <?php else: ?>
                                                 <div class="alert alert-info">QR Code not uploaded</div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form method="POST" enctype="multipart/form-data" id="invoice-settings-form">
+                        <!-- Hidden shop_id field -->
+                        <input type="hidden" name="shop_id"
+                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                        <!-- Company Information -->
+                        <div class="row mb-4" id="company-info">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Company Information</h5>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Company Name *</label>
+                                                <input type="text" class="form-control" name="company_name"
+                                                    value="<?php echo htmlspecialchars($settings['company_name']); ?>"
+                                                    required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Invoice Slogan</label>
+                                                <input type="text" class="form-control" name="invoice_slogan"
+                                                    value="<?php echo htmlspecialchars($settings['invoice_slogan'] ?? ''); ?>"
+                                                    placeholder="Quality is not classy...it's priceless">
+                                                <small class="form-text text-muted">This will print under company name
+                                                    in Design 2.</small>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Company Phone *</label>
+                                                <input type="text" class="form-control" name="company_phone"
+                                                    value="<?php echo htmlspecialchars($settings['company_phone']); ?>"
+                                                    required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Company Email</label>
+                                                <input type="email" class="form-control" name="company_email"
+                                                    value="<?php echo htmlspecialchars($settings['company_email']); ?>">
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Website</label>
+                                                <input type="text" class="form-control" name="company_website"
+                                                    value="<?php echo htmlspecialchars($settings['company_website']); ?>">
+                                            </div>
+                                            <div class="col-12 mb-3">
+                                                <label class="form-label">Company Address *</label>
+                                                <textarea class="form-control" name="company_address" rows="3"
+                                                    required><?php echo htmlspecialchars($settings['company_address']); ?></textarea>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">GST Number *</label>
+                                                <input type="text" class="form-control" name="gst_number"
+                                                    value="<?php echo htmlspecialchars($settings['gst_number']); ?>"
+                                                    required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">PAN Number</label>
+                                                <input type="text" class="form-control" name="pan_number"
+                                                    value="<?php echo htmlspecialchars($settings['pan_number']); ?>">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Logo Upload -->
+                        <div class="row mb-4" id="logo-upload">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Company Logo</h5>
+                                        <input type="hidden" name="logo_shop_id"
+                                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+                                        <div class="file-upload-area"
+                                            onclick="document.getElementById('logo-upload-input').click()">
+                                            <i class="fas fa-cloud-upload-alt fa-2x mb-2"></i>
+                                            <p>Click to upload company logo</p>
+                                            <p class="text-muted small">Recommended size: 300x150px, Max size: 2MB</p>
+                                            <p class="text-muted small">Supported formats: JPG, JPEG, PNG, GIF, WEBP</p>
+                                            <p class="text-muted small">File will be saved with original extension</p>
+                                        </div>
+                                        <input type="file" id="logo-upload-input" name="company_logo"
+                                            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                            style="display: none;" onchange="previewImage(this, 'logo-preview-area')">
+
+                                        <div id="logo-preview-area">
+                                            <?php if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])): ?>
+                                            <div class="mt-3">
+                                                <p>Current Logo
+                                                    (<?php echo strtoupper(pathinfo($settings['logo_path'], PATHINFO_EXTENSION)); ?>):
+                                                </p>
+                                                <div class="preview-container">
+                                                    <img src="<?php echo $settings['logo_path']; ?>" alt="Current Logo"
+                                                        class="logo-preview">
+                                                </div>
+                                            </div>
                                             <?php endif; ?>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <form method="POST" enctype="multipart/form-data" id="invoice-settings-form">
-                    <!-- Hidden shop_id field -->
-                    <input type="hidden" name="shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-                    
-                    <!-- Company Information -->
-                    <div class="row mb-4" id="company-info">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title">Company Information</h5>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Company Name *</label>
-                                            <input type="text" class="form-control" name="company_name" 
-                                                   value="<?php echo htmlspecialchars($settings['company_name']); ?>" required>
+
+                        <!-- Signature Logo Upload -->
+                        <div class="row mb-4" id="signature-logo-upload">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Authorised Signature Logo</h5>
+                                        <input type="hidden" name="signature_shop_id"
+                                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i>
+                                            This signature logo will print in Design 2 only when "Show Signature Logo"
+                                            is enabled.
                                         </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Company Phone *</label>
-                                            <input type="text" class="form-control" name="company_phone" 
-                                                   value="<?php echo htmlspecialchars($settings['company_phone']); ?>" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Company Email</label>
-                                            <input type="email" class="form-control" name="company_email" 
-                                                   value="<?php echo htmlspecialchars($settings['company_email']); ?>">
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Website</label>
-                                            <input type="text" class="form-control" name="company_website" 
-                                                   value="<?php echo htmlspecialchars($settings['company_website']); ?>">
-                                        </div>
-                                        <div class="col-12 mb-3">
-                                            <label class="form-label">Company Address *</label>
-                                            <textarea class="form-control" name="company_address" rows="3" required><?php echo htmlspecialchars($settings['company_address']); ?></textarea>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">GST Number *</label>
-                                            <input type="text" class="form-control" name="gst_number" 
-                                                   value="<?php echo htmlspecialchars($settings['gst_number']); ?>" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">PAN Number</label>
-                                            <input type="text" class="form-control" name="pan_number" 
-                                                   value="<?php echo htmlspecialchars($settings['pan_number']); ?>">
+
+                                        <div class="row align-items-center">
+                                            <div class="col-md-4 mb-3">
+                                                <label class="form-label d-block">Show Signature Logo in Invoice</label>
+                                                <div class="form-check form-switch">
+                                                    <input type="checkbox" class="form-check-input"
+                                                        id="showSignatureLogo" name="show_signature_logo"
+                                                        <?php echo !empty($settings['show_signature_logo']) ? 'checked' : ''; ?>>
+                                                    <label class="form-check-label" for="showSignatureLogo">Enable
+                                                        Signature Logo</label>
+                                                </div>
+                                                <small class="text-muted">If disabled, only normal authorised signature
+                                                    text will print.</small>
+                                            </div>
+
+                                            <div class="col-md-4 mb-3">
+                                                <label class="form-label">Upload Signature Logo</label>
+                                                <input type="file" id="signature-upload-input" name="signature_logo"
+                                                    class="form-control" accept="image/jpeg,image/jpg,image/png"
+                                                    onchange="previewImage(this, 'signature-preview-area')">
+                                                <small class="text-muted">JPG/JPEG/PNG only. Recommended transparent
+                                                    PNG. Max 2MB.</small>
+                                            </div>
+
+                                            <div class="col-md-4 mb-3" id="signature-preview-area">
+                                                <?php if (!empty($settings['signature_logo_path']) && file_exists($settings['signature_logo_path'])): ?>
+                                                <div class="preview-container">
+                                                    <img src="<?php echo $settings['signature_logo_path']; ?>"
+                                                        alt="Signature Logo" class="logo-preview img-fluid">
+                                                    <button type="button" class="delete-btn"
+                                                        onclick="deleteImage('signature_logo', <?php echo $selected_shop_id ? $selected_shop_id : 0; ?>)">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="image-info">
+                                                    Signature logo uploaded
+                                                    (<?php echo strtoupper(pathinfo($settings['signature_logo_path'], PATHINFO_EXTENSION)); ?>)
+                                                </div>
+                                                <?php else: ?>
+                                                <div class="alert alert-warning mb-0">No signature logo uploaded</div>
+                                                <?php endif; ?>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Logo Upload -->
-                    <div class="row mb-4" id="logo-upload">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title">Company Logo</h5>
-                                    <input type="hidden" name="logo_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-                                    <div class="file-upload-area" onclick="document.getElementById('logo-upload-input').click()">
-                                        <i class="fas fa-cloud-upload-alt fa-2x mb-2"></i>
-                                        <p>Click to upload company logo</p>
-                                        <p class="text-muted small">Recommended size: 300x150px, Max size: 2MB</p>
-                                        <p class="text-muted small">Supported formats: JPG, JPEG, PNG, GIF, WEBP</p>
-                                        <p class="text-muted small">File will be saved with original extension</p>
-                                    </div>
-                                    <input type="file" id="logo-upload-input" name="company_logo" 
-                                           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" style="display: none;"
-                                           onchange="previewImage(this, 'logo-preview-area')">
-                                    
-                                    <div id="logo-preview-area">
-                                        <?php if (!empty($settings['logo_path']) && file_exists($settings['logo_path'])): ?>
-                                        <div class="mt-3">
-                                            <p>Current Logo (<?php echo strtoupper(pathinfo($settings['logo_path'], PATHINFO_EXTENSION)); ?>):</p>
-                                            <div class="preview-container">
-                                                <img src="<?php echo $settings['logo_path']; ?>" alt="Current Logo" class="logo-preview">
+
+                        <!-- Brand Logos Footer Management -->
+                        <div class="row mb-4" id="brand-logos">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title mb-4">
+                                            <i class="fas fa-images me-2"></i>
+                                            Footer Brand Logos
+                                            <button type="button" class="btn btn-primary btn-sm float-end"
+                                                data-bs-toggle="modal" data-bs-target="#addBrandLogoModal">
+                                                <i class="fas fa-plus"></i> Add Brand Logo
+                                            </button>
+                                        </h5>
+
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            These logos will print in the bottom footer of the invoice. Use manual width
+                                            and height in <strong>mm</strong>. For FPDF, use JPG/JPEG/PNG images.
+                                        </div>
+
+                                        <?php if (empty($brand_logos)): ?>
+                                        <div class="alert alert-warning mb-0">
+                                            <i class="fas fa-exclamation-circle me-2"></i>
+                                            No brand logos added yet. Add logos to show them at the invoice bottom
+                                            footer.
+                                        </div>
+                                        <?php else: ?>
+                                        <div class="row">
+                                            <?php foreach ($brand_logos as $logo): ?>
+                                            <div class="col-md-4 col-lg-3 mb-3">
+                                                <div
+                                                    class="card brand-logo-card h-100 <?php echo empty($logo['is_active']) ? 'inactive' : ''; ?>">
+                                                    <div class="card-body">
+                                                        <div
+                                                            class="d-flex justify-content-between align-items-start mb-2">
+                                                            <strong><?php echo htmlspecialchars($logo['logo_name'] ?: 'Brand Logo'); ?></strong>
+                                                            <?php if (!empty($logo['is_active'])): ?>
+                                                            <span class="badge bg-success">Active</span>
+                                                            <?php else: ?>
+                                                            <span class="badge bg-danger">Inactive</span>
+                                                            <?php endif; ?>
+                                                        </div>
+
+                                                        <div class="brand-logo-preview-box mb-2">
+                                                            <?php if (!empty($logo['logo_path']) && file_exists($logo['logo_path'])): ?>
+                                                            <img src="<?php echo htmlspecialchars($logo['logo_path']); ?>"
+                                                                alt="Brand Logo">
+                                                            <?php else: ?>
+                                                            <span class="text-muted">File missing</span>
+                                                            <?php endif; ?>
+                                                        </div>
+
+                                                        <div class="brand-logo-meta mb-2">
+                                                            Width:
+                                                            <strong><?php echo htmlspecialchars($logo['width_mm']); ?>
+                                                                mm</strong><br>
+                                                            Height:
+                                                            <strong><?php echo htmlspecialchars($logo['height_mm']); ?>
+                                                                mm</strong><br>
+                                                            Sort:
+                                                            <strong><?php echo (int)$logo['sort_order']; ?></strong>
+                                                        </div>
+
+                                                        <div class="d-flex gap-1 flex-wrap">
+                                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#editBrandLogoModal"
+                                                                onclick="editBrandLogo(<?php echo (int)$logo['id']; ?>)">
+                                                                <i class="fas fa-edit"></i> Edit
+                                                            </button>
+
+                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&toggle_brand_logo=<?php echo (int)$logo['id']; ?>"
+                                                                class="btn btn-sm btn-outline-<?php echo !empty($logo['is_active']) ? 'warning' : 'success'; ?>">
+                                                                <i class="fas fa-power-off"></i>
+                                                                <?php echo !empty($logo['is_active']) ? 'Hide' : 'Show'; ?>
+                                                            </a>
+
+                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&delete_brand_logo=<?php echo (int)$logo['id']; ?>"
+                                                                class="btn btn-sm btn-outline-danger"
+                                                                onclick="return confirm('Are you sure you want to delete this brand logo?')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <?php endforeach; ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
+                        <!-- Bank Details (Modified for Multiple Accounts) -->
+                        <div class="row mb-4" id="bank-details">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title mb-4">
+                                            <i class="fas fa-university me-2"></i>
+                                            Bank Accounts Management
+                                            <button type="button" class="btn btn-primary btn-sm float-end"
+                                                data-bs-toggle="modal" data-bs-target="#addBankAccountModal">
+                                                <i class="fas fa-plus"></i> Add Bank Account
+                                            </button>
+                                        </h5>
 
-                    <!-- Brand Logos Footer Management -->
-                    <div class="row mb-4" id="brand-logos">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title mb-4">
-                                        <i class="fas fa-images me-2"></i>
-                                        Footer Brand Logos
-                                        <button type="button" class="btn btn-primary btn-sm float-end" data-bs-toggle="modal" data-bs-target="#addBrandLogoModal">
-                                            <i class="fas fa-plus"></i> Add Brand Logo
-                                        </button>
-                                    </h5>
-
-                                    <div class="alert alert-info">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        These logos will print in the bottom footer of the invoice. Use manual width and height in <strong>mm</strong>. For FPDF, use JPG/JPEG/PNG images.
-                                    </div>
-
-                                    <?php if (empty($brand_logos)): ?>
-                                        <div class="alert alert-warning mb-0">
-                                            <i class="fas fa-exclamation-circle me-2"></i>
-                                            No brand logos added yet. Add logos to show them at the invoice bottom footer.
-                                        </div>
-                                    <?php else: ?>
-                                        <div class="row">
-                                            <?php foreach ($brand_logos as $logo): ?>
-                                                <div class="col-md-4 col-lg-3 mb-3">
-                                                    <div class="card brand-logo-card h-100 <?php echo empty($logo['is_active']) ? 'inactive' : ''; ?>">
-                                                        <div class="card-body">
-                                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                                <strong><?php echo htmlspecialchars($logo['logo_name'] ?: 'Brand Logo'); ?></strong>
-                                                                <?php if (!empty($logo['is_active'])): ?>
-                                                                    <span class="badge bg-success">Active</span>
-                                                                <?php else: ?>
-                                                                    <span class="badge bg-danger">Inactive</span>
-                                                                <?php endif; ?>
-                                                            </div>
-
-                                                            <div class="brand-logo-preview-box mb-2">
-                                                                <?php if (!empty($logo['logo_path']) && file_exists($logo['logo_path'])): ?>
-                                                                    <img src="<?php echo htmlspecialchars($logo['logo_path']); ?>" alt="Brand Logo">
-                                                                <?php else: ?>
-                                                                    <span class="text-muted">File missing</span>
-                                                                <?php endif; ?>
-                                                            </div>
-
-                                                            <div class="brand-logo-meta mb-2">
-                                                                Width: <strong><?php echo htmlspecialchars($logo['width_mm']); ?> mm</strong><br>
-                                                                Height: <strong><?php echo htmlspecialchars($logo['height_mm']); ?> mm</strong><br>
-                                                                Sort: <strong><?php echo (int)$logo['sort_order']; ?></strong>
-                                                            </div>
-
-                                                            <div class="d-flex gap-1 flex-wrap">
-                                                                <button type="button" class="btn btn-sm btn-outline-primary"
-                                                                        data-bs-toggle="modal" data-bs-target="#editBrandLogoModal"
-                                                                        onclick="editBrandLogo(<?php echo (int)$logo['id']; ?>)">
-                                                                    <i class="fas fa-edit"></i> Edit
-                                                                </button>
-
-                                                                <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&toggle_brand_logo=<?php echo (int)$logo['id']; ?>"
-                                                                   class="btn btn-sm btn-outline-<?php echo !empty($logo['is_active']) ? 'warning' : 'success'; ?>">
-                                                                    <i class="fas fa-power-off"></i>
-                                                                    <?php echo !empty($logo['is_active']) ? 'Hide' : 'Show'; ?>
-                                                                </a>
-
-                                                                <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&delete_brand_logo=<?php echo (int)$logo['id']; ?>"
-                                                                   class="btn btn-sm btn-outline-danger"
-                                                                   onclick="return confirm('Are you sure you want to delete this brand logo?')">
-                                                                    <i class="fas fa-trash"></i>
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Bank Details (Modified for Multiple Accounts) -->
-                    <div class="row mb-4" id="bank-details">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title mb-4">
-                                        <i class="fas fa-university me-2"></i>
-                                        Bank Accounts Management
-                                        <button type="button" class="btn btn-primary btn-sm float-end" data-bs-toggle="modal" data-bs-target="#addBankAccountModal">
-                                            <i class="fas fa-plus"></i> Add Bank Account
-                                        </button>
-                                    </h5>
-                                    
-                                    <?php if (empty($bank_accounts)): ?>
+                                        <?php if (empty($bank_accounts)): ?>
                                         <div class="alert alert-info">
                                             <i class="fas fa-info-circle me-2"></i>
-                                            No bank accounts added yet. Add your first bank account to display on invoices.
+                                            No bank accounts added yet. Add your first bank account to display on
+                                            invoices.
                                             <div class="mt-2">
-                                                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBankAccountModal">
+                                                <button type="button" class="btn btn-primary btn-sm"
+                                                    data-bs-toggle="modal" data-bs-target="#addBankAccountModal">
                                                     <i class="fas fa-plus"></i> Add First Bank Account
                                                 </button>
                                             </div>
                                         </div>
-                                    <?php else: ?>
+                                        <?php else: ?>
                                         <div class="row">
                                             <?php foreach ($bank_accounts as $account): ?>
                                             <div class="col-md-6 mb-3">
-                                                <div class="card bank-account-card h-100 <?php echo $account['is_default'] ? 'default' : ''; ?> <?php echo !$account['is_active'] ? 'inactive' : ''; ?>">
+                                                <div
+                                                    class="card bank-account-card h-100 <?php echo $account['is_default'] ? 'default' : ''; ?> <?php echo !$account['is_active'] ? 'inactive' : ''; ?>">
                                                     <div class="card-body">
                                                         <div class="bank-status-badge">
                                                             <?php if ($account['is_default']): ?>
-                                                                <span class="badge bg-success">Default</span>
+                                                            <span class="badge bg-success">Default</span>
                                                             <?php endif; ?>
                                                             <?php if (!$account['is_active']): ?>
-                                                                <span class="badge bg-danger">Inactive</span>
+                                                            <span class="badge bg-danger">Inactive</span>
                                                             <?php endif; ?>
                                                         </div>
-                                                        
+
                                                         <h6 class="card-title">
                                                             <i class="fas fa-bank me-2"></i>
                                                             <?php echo htmlspecialchars($account['bank_name']); ?>
                                                             <?php if ($account['account_type']): ?>
-                                                                <small class="text-muted">(<?php echo htmlspecialchars($account['account_type']); ?>)</small>
+                                                            <small
+                                                                class="text-muted">(<?php echo htmlspecialchars($account['account_type']); ?>)</small>
                                                             <?php endif; ?>
                                                         </h6>
-                                                        
+
                                                         <div class="mb-2">
                                                             <strong>Account Number:</strong>
-                                                            <span class="account-number"><?php echo htmlspecialchars($account['account_number']); ?></span>
+                                                            <span
+                                                                class="account-number"><?php echo htmlspecialchars($account['account_number']); ?></span>
                                                         </div>
-                                                        
+
                                                         <?php if ($account['account_holder_name']): ?>
                                                         <div class="mb-2">
                                                             <strong>Account Holder:</strong>
                                                             <?php echo htmlspecialchars($account['account_holder_name']); ?>
                                                         </div>
                                                         <?php endif; ?>
-                                                        
+
                                                         <?php if ($account['ifsc_code']): ?>
                                                         <div class="mb-2">
                                                             <strong>IFSC Code:</strong>
                                                             <?php echo htmlspecialchars($account['ifsc_code']); ?>
                                                         </div>
                                                         <?php endif; ?>
-                                                        
+
                                                         <?php if ($account['branch_name']): ?>
                                                         <div class="mb-2">
                                                             <strong>Branch:</strong>
                                                             <?php echo htmlspecialchars($account['branch_name']); ?>
                                                         </div>
                                                         <?php endif; ?>
-                                                        
+
                                                         <?php if ($account['upi_id']): ?>
                                                         <div class="mb-2">
                                                             <strong>UPI ID:</strong>
                                                             <?php echo htmlspecialchars($account['upi_id']); ?>
                                                         </div>
                                                         <?php endif; ?>
-                                                        
+
                                                         <div class="account-actions mt-3">
-                                                            <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                                    data-bs-toggle="modal" data-bs-target="#editBankAccountModal"
-                                                                    onclick="editBankAccount(<?php echo $account['id']; ?>)">
+                                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#editBankAccountModal"
+                                                                onclick="editBankAccount(<?php echo $account['id']; ?>)">
                                                                 <i class="fas fa-edit"></i> Edit
                                                             </button>
-                                                            
-                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&toggle_account=<?php echo $account['id']; ?>" 
-                                                               class="btn btn-sm btn-outline-<?php echo $account['is_active'] ? 'warning' : 'success'; ?>">
+
+                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&toggle_account=<?php echo $account['id']; ?>"
+                                                                class="btn btn-sm btn-outline-<?php echo $account['is_active'] ? 'warning' : 'success'; ?>">
                                                                 <i class="fas fa-power-off"></i>
                                                                 <?php echo $account['is_active'] ? 'Deactivate' : 'Activate'; ?>
                                                             </a>
-                                                            
-                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&delete_account=<?php echo $account['id']; ?>" 
-                                                               class="btn btn-sm btn-outline-danger"
-                                                               onclick="return confirm('Are you sure you want to delete this bank account?')">
+
+                                                            <a href="?shop_id=<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>&delete_account=<?php echo $account['id']; ?>"
+                                                                class="btn btn-sm btn-outline-danger"
+                                                                onclick="return confirm('Are you sure you want to delete this bank account?')">
                                                                 <i class="fas fa-trash"></i> Delete
                                                             </a>
                                                         </div>
@@ -1495,109 +1770,119 @@ if (isset($_GET['msg'])) {
                                             </div>
                                             <?php endforeach; ?>
                                         </div>
-                                        
+
                                         <div class="alert alert-info mt-3">
                                             <i class="fas fa-info-circle me-2"></i>
-                                            Only <strong>active</strong> bank accounts will appear on invoices. 
-                                            The <strong>default</strong> account will be shown first on invoices if multiple active accounts exist.
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- QR Code Settings -->
-                    <div class="row mb-4" id="qr-code">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title">QR Code Settings</h5>
-                                    <input type="hidden" name="qr_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-                                    <div class="row">
-                                        <div class="col-md-12 mb-3">
-                                            <label class="form-label">QR Code Data (Optional - For reference)</label>
-                                            <input type="text" class="form-control" name="qr_code_data" 
-                                                   value="<?php echo htmlspecialchars($settings['qr_code_data']); ?>"
-                                                   placeholder="UPI ID: yourname@upi or Payment Link">
-                                            <small class="form-text text-muted">
-                                                This is for reference only. Upload your QR code image below.
-                                            </small>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- QR Code Upload -->
-                                    <div class="file-upload-area" onclick="document.getElementById('qr-upload-input').click()">
-                                        <i class="fas fa-qrcode fa-2x mb-2"></i>
-                                        <p>Click to upload QR Code image</p>
-                                        <p class="text-muted small">Recommended size: 200x200px, Max size: 1MB</p>
-                                        <p class="text-muted small">Supported formats: JPG, JPEG, PNG, GIF, WEBP</p>
-                                        <p class="text-muted small">File will be saved with original extension</p>
-                                    </div>
-                                    <input type="file" id="qr-upload-input" name="qr_code_file" 
-                                           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" style="display: none;"
-                                           onchange="previewImage(this, 'qr-preview-area')">
-                                    
-                                    <div id="qr-preview-area">
-                                        <?php if (!empty($settings['qr_code_path']) && file_exists($settings['qr_code_path'])): ?>
-                                        <div class="mt-3">
-                                            <p>Current QR Code (<?php echo strtoupper(pathinfo($settings['qr_code_path'], PATHINFO_EXTENSION)); ?>):</p>
-                                            <div class="preview-container">
-                                                <img src="<?php echo $settings['qr_code_path']; ?>" alt="QR Code" class="qr-preview">
-                                            </div>
+                                            Only <strong>active</strong> bank accounts will appear on invoices.
+                                            The <strong>default</strong> account will be shown first on invoices if
+                                            multiple active accounts exist.
                                         </div>
                                         <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Invoice Settings -->
-                    <div class="row mb-4" id="invoice-settings">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title">Invoice Settings</h5>
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3">
-    <label class="form-label">GST Invoice Prefix</label>
-    <input type="text" class="form-control" name="invoice_prefix" 
-           value="<?php echo htmlspecialchars($settings['invoice_prefix'] ?? 'INV'); ?>">
-    <small class="form-text text-muted">e.g., INV, GST, TAX etc.</small>
-</div>
-
-<div class="col-md-4 mb-3">
-    <label class="form-label">Non GST Invoice Prefix</label>
-    <input type="text" class="form-control" name="non_gst_invoice_prefix" 
-           value="<?php echo htmlspecialchars($settings['non_gst_invoice_prefix'] ?? 'NGST'); ?>">
-    <small class="form-text text-muted">e.g., NGS, BILL, CASH etc.</small>
-</div>
-                                        <div class="col-12 mb-3">
-                                            <label class="form-label">Invoice Terms & Conditions</label>
-                                            <textarea class="form-control" name="invoice_terms" rows="5"><?php echo htmlspecialchars($settings['invoice_terms']); ?></textarea>
-                                            <small class="form-text text-muted">Each line will be shown as a separate point in invoice.</small>
+                        <!-- QR Code Settings -->
+                        <div class="row mb-4" id="qr-code">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">QR Code Settings</h5>
+                                        <input type="hidden" name="qr_shop_id"
+                                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+                                        <div class="row">
+                                            <div class="col-md-12 mb-3">
+                                                <label class="form-label">QR Code Data (Optional - For
+                                                    reference)</label>
+                                                <input type="text" class="form-control" name="qr_code_data"
+                                                    value="<?php echo htmlspecialchars($settings['qr_code_data']); ?>"
+                                                    placeholder="UPI ID: yourname@upi or Payment Link">
+                                                <small class="form-text text-muted">
+                                                    This is for reference only. Upload your QR code image below.
+                                                </small>
+                                            </div>
                                         </div>
-                                        <div class="col-12 mb-3">
-                                            <label class="form-label">Invoice Footer Message</label>
-                                            <textarea class="form-control" name="invoice_footer" rows="3"><?php echo htmlspecialchars($settings['invoice_footer']); ?></textarea>
+
+                                        <!-- QR Code Upload -->
+                                        <div class="file-upload-area"
+                                            onclick="document.getElementById('qr-upload-input').click()">
+                                            <i class="fas fa-qrcode fa-2x mb-2"></i>
+                                            <p>Click to upload QR Code image</p>
+                                            <p class="text-muted small">Recommended size: 200x200px, Max size: 1MB</p>
+                                            <p class="text-muted small">Supported formats: JPG, JPEG, PNG, GIF, WEBP</p>
+                                            <p class="text-muted small">File will be saved with original extension</p>
+                                        </div>
+                                        <input type="file" id="qr-upload-input" name="qr_code_file"
+                                            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                            style="display: none;" onchange="previewImage(this, 'qr-preview-area')">
+
+                                        <div id="qr-preview-area">
+                                            <?php if (!empty($settings['qr_code_path']) && file_exists($settings['qr_code_path'])): ?>
+                                            <div class="mt-3">
+                                                <p>Current QR Code
+                                                    (<?php echo strtoupper(pathinfo($settings['qr_code_path'], PATHINFO_EXTENSION)); ?>):
+                                                </p>
+                                                <div class="preview-container">
+                                                    <img src="<?php echo $settings['qr_code_path']; ?>" alt="QR Code"
+                                                        class="qr-preview">
+                                                </div>
+                                            </div>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Submit Button -->
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body">
-                                    <button type="submit" class="btn btn-success btn-lg">
-                                        <i class="fas fa-save"></i> Save Invoice Settings for 
-                                        <?php if (!$selected_shop_id): ?>
+                        <!-- Invoice Settings -->
+                        <div class="row mb-4" id="invoice-settings">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Invoice Settings</h5>
+                                        <div class="row">
+                                            <div class="col-md-4 mb-3">
+                                                <label class="form-label">GST Invoice Prefix</label>
+                                                <input type="text" class="form-control" name="invoice_prefix"
+                                                    value="<?php echo htmlspecialchars($settings['invoice_prefix'] ?? 'INV'); ?>">
+                                                <small class="form-text text-muted">e.g., INV, GST, TAX etc.</small>
+                                            </div>
+
+                                            <div class="col-md-4 mb-3">
+                                                <label class="form-label">Non GST Invoice Prefix</label>
+                                                <input type="text" class="form-control" name="non_gst_invoice_prefix"
+                                                    value="<?php echo htmlspecialchars($settings['non_gst_invoice_prefix'] ?? 'NGST'); ?>">
+                                                <small class="form-text text-muted">e.g., NGS, BILL, CASH etc.</small>
+                                            </div>
+                                            <div class="col-12 mb-3">
+                                                <label class="form-label">Invoice Terms & Conditions</label>
+                                                <textarea class="form-control" name="invoice_terms"
+                                                    rows="5"><?php echo htmlspecialchars($settings['invoice_terms']); ?></textarea>
+                                                <small class="form-text text-muted">Each line will be shown as a
+                                                    separate point in invoice.</small>
+                                            </div>
+                                            <div class="col-12 mb-3">
+                                                <label class="form-label">Invoice Footer Message</label>
+                                                <textarea class="form-control" name="invoice_footer"
+                                                    rows="3"><?php echo htmlspecialchars($settings['invoice_footer']); ?></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <button type="submit" class="btn btn-success btn-lg">
+                                            <i class="fas fa-save"></i> Save Invoice Settings for
+                                            <?php if (!$selected_shop_id): ?>
                                             Business Default
-                                        <?php else: 
+                                            <?php else: 
                                             $current_shop = null;
                                             foreach ($shops as $shop) {
                                                 if ($shop['id'] == $selected_shop_id) {
@@ -1607,245 +1892,263 @@ if (isset($_GET['msg'])) {
                                             }
                                         ?>
                                             <?php echo htmlspecialchars($current_shop['shop_name'] ?? 'Selected Shop'); ?>
-                                        <?php endif; ?>
-                                    </button>
-                                    
-                                    <button type="button" class="btn btn-secondary btn-lg" onclick="resetForm()">
-                                        <i class="fas fa-undo"></i> Reset Form
-                                    </button>
+                                            <?php endif; ?>
+                                        </button>
+
+                                        <button type="button" class="btn btn-secondary btn-lg" onclick="resetForm()">
+                                            <i class="fas fa-undo"></i> Reset Form
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </form>
+
+                </div><!-- container-fluid -->
+            </div><!-- End Page-content -->
+
+            <?php include('includes/footer.php'); ?>
+        </div><!-- end main content-->
+    </div><!-- END layout-wrapper -->
+
+
+    <!-- Add Brand Logo Modal -->
+    <div class="modal fade" id="addBrandLogoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> Add Footer Brand Logo</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="brand_shop_id"
+                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                        <div class="mb-3">
+                            <label class="form-label">Logo Name</label>
+                            <input type="text" name="brand_logo_name" class="form-control"
+                                placeholder="Example: SKF, Fenner, Oxford">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Logo Image <span class="text-danger">*</span></label>
+                            <input type="file" name="brand_logo_file" class="form-control"
+                                accept="image/jpeg,image/jpg,image/png" required>
+                            <small class="text-muted">Only JPG/JPEG/PNG supported for FPDF printing.</small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Width (mm)</label>
+                                <input type="number" name="brand_width_mm" class="form-control" value="24" min="1"
+                                    max="80" step="0.1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Height (mm)</label>
+                                <input type="number" name="brand_height_mm" class="form-control" value="8" min="1"
+                                    max="25" step="0.1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Sort Order</label>
+                                <input type="number" name="brand_sort_order" class="form-control" value="0">
+                            </div>
+                        </div>
+
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="brandAddActive" name="brand_is_active"
+                                checked>
+                            <label class="form-check-label" for="brandAddActive">Show on invoice footer</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="add_brand_logo" class="btn btn-primary">Add Brand Logo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Brand Logo Modal -->
+    <div class="modal fade" id="editBrandLogoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-edit me-2"></i> Edit Footer Brand Logo</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="brand_logo_id" id="edit_brand_logo_id">
+                        <input type="hidden" name="brand_shop_id"
+                            value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                        <div class="mb-3">
+                            <label class="form-label">Logo Name</label>
+                            <input type="text" name="brand_logo_name" id="edit_brand_logo_name" class="form-control">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Replace Logo Image</label>
+                            <input type="file" name="brand_logo_file" class="form-control"
+                                accept="image/jpeg,image/jpg,image/png">
+                            <small class="text-muted">Leave empty to keep current logo.</small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Width (mm)</label>
+                                <input type="number" name="brand_width_mm" id="edit_brand_width_mm" class="form-control"
+                                    min="1" max="80" step="0.1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Height (mm)</label>
+                                <input type="number" name="brand_height_mm" id="edit_brand_height_mm"
+                                    class="form-control" min="1" max="25" step="0.1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Sort Order</label>
+                                <input type="number" name="brand_sort_order" id="edit_brand_sort_order"
+                                    class="form-control">
+                            </div>
+                        </div>
+
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="edit_brand_is_active"
+                                name="brand_is_active">
+                            <label class="form-check-label" for="edit_brand_is_active">Show on invoice footer</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="update_brand_logo" class="btn btn-primary">Update Brand
+                            Logo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Bank Account Modal -->
+    <div class="modal fade" id="addBankAccountModal" tabindex="-1" aria-labelledby="addBankAccountModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST" id="addBankAccountForm">
+                    <input type="hidden" name="shop_id"
+                        value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addBankAccountModalLabel">
+                            <i class="fas fa-plus-circle me-2"></i> Add New Bank Account
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Bank Name *</label>
+                                <input type="text" class="form-control" name="bank_name" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Account Number *</label>
+                                <input type="text" class="form-control" name="account_number" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Account Holder Name</label>
+                                <input type="text" class="form-control" name="account_holder_name">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">IFSC Code</label>
+                                <input type="text" class="form-control" name="ifsc_code">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Branch Name</label>
+                                <input type="text" class="form-control" name="branch_name">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Account Type</label>
+                                <select class="form-control" name="account_type">
+                                    <option value="">Select Type</option>
+                                    <option value="Savings">Savings Account</option>
+                                    <option value="Current">Current Account</option>
+                                    <option value="Salary">Salary Account</option>
+                                    <option value="Fixed Deposit">Fixed Deposit</option>
+                                </select>
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">UPI ID</label>
+                                <input type="text" class="form-control" name="upi_id" placeholder="username@upi">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
+                                        checked>
+                                    <label class="form-check-label" for="is_active">
+                                        Active (Will appear on invoices)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="is_default" id="is_default">
+                                    <label class="form-check-label" for="is_default">
+                                        Set as Default Account
+                                    </label>
                                 </div>
                             </div>
                         </div>
                     </div>
-
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="add_bank_account" class="btn btn-primary">Add Account</button>
+                    </div>
                 </form>
-
-            </div><!-- container-fluid -->
-        </div><!-- End Page-content -->
-
-        <?php include('includes/footer.php'); ?>
-    </div><!-- end main content-->
-</div><!-- END layout-wrapper -->
-
-
-<!-- Add Brand Logo Modal -->
-<div class="modal fade" id="addBrandLogoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" enctype="multipart/form-data">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> Add Footer Brand Logo</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="brand_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-
-                    <div class="mb-3">
-                        <label class="form-label">Logo Name</label>
-                        <input type="text" name="brand_logo_name" class="form-control" placeholder="Example: SKF, Fenner, Oxford">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Logo Image <span class="text-danger">*</span></label>
-                        <input type="file" name="brand_logo_file" class="form-control" accept="image/jpeg,image/jpg,image/png" required>
-                        <small class="text-muted">Only JPG/JPEG/PNG supported for FPDF printing.</small>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Width (mm)</label>
-                            <input type="number" name="brand_width_mm" class="form-control" value="24" min="1" max="80" step="0.1">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Height (mm)</label>
-                            <input type="number" name="brand_height_mm" class="form-control" value="8" min="1" max="25" step="0.1">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Sort Order</label>
-                            <input type="number" name="brand_sort_order" class="form-control" value="0">
-                        </div>
-                    </div>
-
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input" id="brandAddActive" name="brand_is_active" checked>
-                        <label class="form-check-label" for="brandAddActive">Show on invoice footer</label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="add_brand_logo" class="btn btn-primary">Add Brand Logo</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Edit Brand Logo Modal -->
-<div class="modal fade" id="editBrandLogoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" enctype="multipart/form-data">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i> Edit Footer Brand Logo</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="brand_logo_id" id="edit_brand_logo_id">
-                    <input type="hidden" name="brand_shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
+    <!-- Edit Bank Account Modal -->
+    <div class="modal fade" id="editBankAccountModal" tabindex="-1" aria-labelledby="editBankAccountModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST" id="editBankAccountForm">
+                    <input type="hidden" name="account_id" id="edit_account_id">
+                    <input type="hidden" name="shop_id"
+                        value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
 
-                    <div class="mb-3">
-                        <label class="form-label">Logo Name</label>
-                        <input type="text" name="brand_logo_name" id="edit_brand_logo_name" class="form-control">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editBankAccountModalLabel">
+                            <i class="fas fa-edit me-2"></i> Edit Bank Account
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Replace Logo Image</label>
-                        <input type="file" name="brand_logo_file" class="form-control" accept="image/jpeg,image/jpg,image/png">
-                        <small class="text-muted">Leave empty to keep current logo.</small>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Width (mm)</label>
-                            <input type="number" name="brand_width_mm" id="edit_brand_width_mm" class="form-control" min="1" max="80" step="0.1">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Height (mm)</label>
-                            <input type="number" name="brand_height_mm" id="edit_brand_height_mm" class="form-control" min="1" max="25" step="0.1">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Sort Order</label>
-                            <input type="number" name="brand_sort_order" id="edit_brand_sort_order" class="form-control">
-                        </div>
-                    </div>
-
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input" id="edit_brand_is_active" name="brand_is_active">
-                        <label class="form-check-label" for="edit_brand_is_active">Show on invoice footer</label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="update_brand_logo" class="btn btn-primary">Update Brand Logo</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Add Bank Account Modal -->
-<div class="modal fade" id="addBankAccountModal" tabindex="-1" aria-labelledby="addBankAccountModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <form method="POST" id="addBankAccountForm">
-                <input type="hidden" name="shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-                
-                <div class="modal-header">
-                    <h5 class="modal-title" id="addBankAccountModalLabel">
-                        <i class="fas fa-plus-circle me-2"></i> Add New Bank Account
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Bank Name *</label>
-                            <input type="text" class="form-control" name="bank_name" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Account Number *</label>
-                            <input type="text" class="form-control" name="account_number" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Account Holder Name</label>
-                            <input type="text" class="form-control" name="account_holder_name">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">IFSC Code</label>
-                            <input type="text" class="form-control" name="ifsc_code">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Branch Name</label>
-                            <input type="text" class="form-control" name="branch_name">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Account Type</label>
-                            <select class="form-control" name="account_type">
-                                <option value="">Select Type</option>
-                                <option value="Savings">Savings Account</option>
-                                <option value="Current">Current Account</option>
-                                <option value="Salary">Salary Account</option>
-                                <option value="Fixed Deposit">Fixed Deposit</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">UPI ID</label>
-                            <input type="text" class="form-control" name="upi_id" placeholder="username@upi">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="is_active" id="is_active" checked>
-                                <label class="form-check-label" for="is_active">
-                                    Active (Will appear on invoices)
-                                </label>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="is_default" id="is_default">
-                                <label class="form-check-label" for="is_default">
-                                    Set as Default Account
-                                </label>
+                    <div class="modal-body">
+                        <div id="editFormContent">
+                            <!-- Dynamic content will be loaded here -->
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="add_bank_account" class="btn btn-primary">Add Account</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Bank Account Modal -->
-<div class="modal fade" id="editBankAccountModal" tabindex="-1" aria-labelledby="editBankAccountModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <form method="POST" id="editBankAccountForm">
-                <input type="hidden" name="account_id" id="edit_account_id">
-                <input type="hidden" name="shop_id" value="<?php echo $selected_shop_id ? $selected_shop_id : 0; ?>">
-                
-                <div class="modal-header">
-                    <h5 class="modal-title" id="editBankAccountModalLabel">
-                        <i class="fas fa-edit me-2"></i> Edit Bank Account
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="editFormContent">
-                        <!-- Dynamic content will be loaded here -->
-                        <div class="text-center py-4">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="update_bank_account" class="btn btn-primary">Update Account</button>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="update_bank_account" class="btn btn-primary">Update Account</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
-</div>
 
-<?php include('includes/rightbar.php'); ?>
-<?php include('includes/scripts.php'); ?>
+    <?php include('includes/rightbar.php'); ?>
+    <?php include('includes/scripts.php'); ?>
 
-<script>
+    <script>
     // File upload preview
     function previewImage(input, previewAreaId) {
         const file = input.files[0];
@@ -1874,20 +2177,20 @@ if (isset($_GET['msg'])) {
             const form = document.createElement('form');
             form.method = 'POST';
             form.style.display = 'none';
-            
+
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'delete_' + type;
             input.value = '1';
             form.appendChild(input);
-            
+
             // Add shop_id for deletion
             const shopInput = document.createElement('input');
             shopInput.type = 'hidden';
             shopInput.name = 'delete_shop_id';
             shopInput.value = shopId;
             form.appendChild(shopInput);
-            
+
             document.body.appendChild(form);
             form.submit();
         }
@@ -1904,7 +2207,9 @@ if (isset($_GET['msg'])) {
     const brandLogos = <?php echo json_encode($brand_logos ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
     function editBrandLogo(id) {
-        const logo = brandLogos.find(function(item) { return parseInt(item.id) === parseInt(id); });
+        const logo = brandLogos.find(function(item) {
+            return parseInt(item.id) === parseInt(id);
+        });
         if (!logo) return;
 
         document.getElementById('edit_brand_logo_id').value = logo.id || '';
@@ -1921,17 +2226,21 @@ if (isset($_GET['msg'])) {
         $.ajax({
             url: 'get_bank_account.php',
             method: 'GET',
-            data: { account_id: accountId },
+            data: {
+                account_id: accountId
+            },
             success: function(response) {
                 $('#edit_account_id').val(accountId);
                 $('#editFormContent').html(response);
             },
             error: function() {
-                $('#editFormContent').html('<div class="alert alert-danger">Failed to load account details.</div>');
+                $('#editFormContent').html(
+                    '<div class="alert alert-danger">Failed to load account details.</div>');
             }
         });
     }
-</script>
+    </script>
 
 </body>
+
 </html>

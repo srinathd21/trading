@@ -66,6 +66,44 @@ $storefront_store_url        = $storeUrl;
 $storefront_store_page_url   = $storePageUrl;
 $storefront_contact_page_url = $contactPageUrl;
 
+
+if (!function_exists('sf_home_category_image')) {
+    function sf_home_category_image(array $category): string
+    {
+        $img = trim((string)(
+            $category['category_image_url']
+            ?? $category['image_url']
+            ?? $category['image_path']
+            ?? $category['image']
+            ?? $category['thumbnail']
+            ?? $category['category_image']
+            ?? ''
+        ));
+
+        if ($img !== '') {
+            if (
+                stripos($img, 'http://') === 0 ||
+                stripos($img, 'https://') === 0 ||
+                stripos($img, '//') === 0 ||
+                stripos($img, 'data:') === 0
+            ) {
+                return $img;
+            }
+
+            $img = ltrim(str_replace('\\', '/', $img), '/');
+
+            // Cache refresh for newly uploaded category images
+            if (strpos($img, 'uploads/categories/') !== false) {
+                return $img . '?v=' . time();
+            }
+
+            return $img;
+        }
+
+        return 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80';
+    }
+}
+
 /* Correct routed targets through storefront.php */
 $categoryOpenBase = 'storefront.php?slug=' . urlencode($slug) . '&page=category-open';
 $productOpenBase  = 'storefront.php?slug=' . urlencode($slug) . '&page=product-open';
@@ -258,7 +296,7 @@ $productOpenBase  = 'storefront.php?slug=' . urlencode($slug) . '&page=product-o
     .category-landing-card{
       position:relative;
       overflow:hidden;
-      min-height:340px;
+      min-height:220px;
       display:flex;
       align-items:flex-end;
       background:#f3f4f6;
@@ -282,22 +320,22 @@ $productOpenBase  = 'storefront.php?slug=' . urlencode($slug) . '&page=product-o
       position:relative;
       z-index:2;
       width:100%;
-      padding:24px;
+      padding:14px;
       background:linear-gradient(to top, rgba(17,24,39,0.88), rgba(17,24,39,0.2));
       color:#fff;
     }
 
     .category-landing-overlay h4{
-      font-size:24px;
+      font-size:17px;
       font-weight:700;
-      margin-bottom:8px;
+      margin-bottom:5px;
     }
 
     .category-landing-overlay p{
       margin:0;
       color:#e5e7eb;
-      line-height:1.6;
-      font-size:14px;
+      line-height:1.4;
+      font-size:12px;
     }
 
     .why-strip{
@@ -374,6 +412,70 @@ $productOpenBase  = 'storefront.php?slug=' . urlencode($slug) . '&page=product-o
       text-decoration:line-through;
       margin-left:8px;
       font-weight:500;
+    }
+
+    /* Small home page product cards */
+    .product-showcase img{
+      height:180px !important;
+      padding:10px;
+      background:#f8f9fa;
+    }
+
+    .product-showcase-body{
+      padding:12px !important;
+    }
+
+    .product-showcase-body h5{
+      font-size:14px !important;
+      line-height:1.3;
+      margin-bottom:5px !important;
+      min-height:36px;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .product-showcase-body p{
+      font-size:12px !important;
+      line-height:1.4;
+      margin-bottom:8px !important;
+      min-height:34px;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .product-showcase-body .btn{
+      font-size:12px;
+      padding:5px 10px;
+    }
+
+    @media (max-width: 575.98px){
+      .product-showcase img{
+        height:145px !important;
+        padding:8px;
+      }
+
+      .product-showcase-body{
+        padding:10px 9px !important;
+      }
+
+      .product-showcase-body h5{
+        font-size:12px !important;
+        min-height:32px;
+      }
+
+      .product-showcase-body p{
+        font-size:11px !important;
+        min-height:30px;
+      }
+
+      .product-showcase-body .btn{
+        font-size:11px;
+        padding:4px 8px;
+      }
     }
 
     .trust-box{
@@ -499,6 +601,22 @@ $productOpenBase  = 'storefront.php?slug=' . urlencode($slug) . '&page=product-o
       .landing-hero h1{
         font-size:28px;
       }
+
+      .category-landing-card{
+        min-height:170px;
+      }
+
+      .category-landing-overlay{
+        padding:10px;
+      }
+
+      .category-landing-overlay h4{
+        font-size:14px;
+      }
+
+      .category-landing-overlay p{
+        font-size:11px;
+      }
     }
   </style>
 
@@ -584,12 +702,13 @@ if (file_exists($mobileNavFile)) {
     <div class="row g-4">
       <?php if (!empty($categories)): ?>
         <?php foreach ($categories as $category): ?>
-          <div class="col-md-6 col-lg-3">
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <a href="<?php echo sf_h($categoryOpenBase . '&id=' . (int)$category['id']); ?>" class="category-landing-card">
-              <img src="https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80" alt="<?php echo sf_h($category['category_name']); ?>" style="object-fit:contain;">
+              <?php $homeCategoryImage = sf_home_category_image($category); ?>
+              <img src="<?php echo sf_h($homeCategoryImage); ?>" alt="<?php echo sf_h($category['category_name']); ?>" style="object-fit:cover;">
               <div class="category-landing-overlay">
                 <h4><?php echo sf_h($category['category_name']); ?></h4>
-                <p><?php echo sf_h(sf_trim_text($category['description'] ?? '', 90) ?: 'Explore products under this category.'); ?></p>
+                <p><?php echo sf_h(sf_trim_text($category['description'] ?? '', 45) ?: 'Explore products.'); ?></p>
               </div>
             </a>
           </div>
@@ -618,12 +737,12 @@ if (file_exists($mobileNavFile)) {
           <?php
             $productImage = sf_normalize_image_path($product['image_path'] ?? '', 'https://via.placeholder.com/700x700?text=Product');
           ?>
-          <div class="col-6 col-md-4 col-lg-3">
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
             <a href="<?php echo sf_h($productOpenBase . '&id=' . (int)$product['id']); ?>" class="product-showcase">
               <img src="<?php echo sf_h($productImage); ?>" alt="<?php echo sf_h($product['product_name'] ?? 'Product'); ?>" style="object-fit:contain;">
               <div class="product-showcase-body">
                 <h5><?php echo sf_h($product['product_name'] ?? 'Product'); ?></h5>
-                <p><?php echo sf_h(sf_trim_text($product['description'] ?? '', 85) ?: ($product['category_name'] ?? 'View product details')); ?></p>
+                <p><?php echo sf_h(sf_trim_text($product['description'] ?? '', 45) ?: ($product['category_name'] ?? 'View product details')); ?></p>
                 <div class="mt-2">
                   <span class="btn btn-sm btn-outline-dark">View Product</span>
                 </div>
